@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/alexv/**)",
+      "WebFetch(domain:github.com)",
+      "Bash(node --version:*)",
+      "Bash(npm --version:*)",
+      "WebFetch(domain:docs.coplay.dev)",
+      "Bash(uvx:*)",
+      "Bash(CLAUDECODE= claude mcp add --help)",
+      "Bash(CLAUDECODE= claude mcp add -s local -t stdio -e MCP_TOOL_TIMEOUT=720000 UnityMCP -- \"C:/Users/alexv/AppData/Local/Programs/Python/Python310/Scripts/uvx.exe\" --from \"mcpforunityserver==9.4.6\" mcp-for-unity)",
+      "Bash(CLAUDECODE= claude mcp add -s local -t stdio UnityMCP -- \"C:/Users/alexv/AppData/Local/Programs/Python/Python310/Scripts/uvx.exe\" --from \"mcpforunityserver==9.4.6\" mcp-for-unity)",
+      "Bash(CLAUDECODE= claude mcp list:*)",
+      "mcp__UnityMCP__find_gameobjects"
+    ]
+  }
+}
