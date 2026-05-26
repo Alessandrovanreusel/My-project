@@ -1,40 +1,30 @@
 using UnityEngine;
 
 /// <summary>
-/// A chase camera that follows behind the player character.
-/// It stays at a set distance behind and height above the target,
-/// smoothly interpolating so it doesn't feel jerky.
+/// First-person POV camera that sits at the character's head position
+/// and looks where the mouse points. The ThirdPersonController handles
+/// the mouse input — this script just positions and rotates the camera.
 /// </summary>
 public class ThirdPersonCamera : MonoBehaviour
 {
     [Header("Target")]
-    // The Transform we want the camera to follow. You can drag the player
-    // into this field in the Inspector. If left empty, Start() auto-finds it.
+    // The player's Transform. The camera reads the character's Y rotation (yaw)
+    // from this to know which direction to face horizontally.
     [SerializeField] private Transform target;
 
-    [Header("Offset")]
-    // How far behind the character the camera sits (in units).
-    // Bigger = more zoomed out, smaller = closer to the character.
-    [SerializeField] private float distance = 8f;
+    // --- Private references found at runtime ---
 
-    // How high above the character the camera sits (in units).
-    // This creates the "over the shoulder" perspective.
-    [SerializeField] private float height = 4f;
+    // The Head bone inside the character's skeleton.
+    // We position the camera exactly here so you see from the character's eyes.
+    private Transform _headBone;
 
-    [Header("Smoothing")]
-    // How quickly the camera catches up to its desired position.
-    // Higher = snappier, lower = more floaty/cinematic.
-    [SerializeField] private float positionSmooth = 5f;
-
-    // How quickly the camera rotates to look at the target.
-    // Higher = instant tracking, lower = slow lazy turn.
-    [SerializeField] private float rotationSmooth = 5f;
+    // Reference to the controller script to read CameraPitch (vertical look angle).
+    // The controller handles mouse input and calculates the pitch — we just read it.
+    private ThirdPersonController _controller;
 
     private void Start()
     {
-        // If no target was assigned in the Inspector, try to find the player by name.
-        // GameObject.Find searches the entire scene for an object with this exact name.
-        // It's slow, which is why we only call it once in Start(), not every frame.
+        // Auto-find the player if not assigned in the Inspector.
         if (target == null)
         {
             GameObject player = GameObject.Find("main characters");
@@ -42,52 +32,50 @@ public class ThirdPersonCamera : MonoBehaviour
                 target = player.transform;
         }
 
-        // On the very first frame, snap the camera to the correct position instantly
-        // (no smoothing). Without this, the camera would start at (0,0,0) and slowly
-        // drift to the player, which looks bad.
         if (target != null)
         {
-            // Calculate position: start at the player, go backward by 'distance',
-            // then go up by 'height'. target.forward is the direction the player faces.
-            Vector3 pos = target.position - target.forward * distance + Vector3.up * height;
-            transform.position = pos;
+            // Find the Head bone deep inside the skeleton hierarchy.
+            // Transform.Find uses a path relative to the parent, with "/" separating children.
+            // This is the bone path we mapped from the Blender-exported skeleton.
+            _headBone = target.Find("Armature/Hips/Spine/Chest/Neck/Head/Head_end");
 
-            // Point the camera at a spot slightly above the player's feet.
-            // The +4f offset aims at roughly chest/head level instead of the ground.
-            transform.LookAt(target.position + Vector3.up * 4f);
+            if (_headBone == null)
+                Debug.LogWarning("POV Camera: Head bone not found! Falling back to target position + height offset.");
+
+            // Get the controller script so we can read the pitch (up/down look angle).
+            _controller = target.GetComponent<ThirdPersonController>();
+
+            // Snap camera to head position on the first frame (no smoothing needed).
+            transform.position = GetHeadPosition();
+            transform.rotation = Quaternion.Euler(0f, target.eulerAngles.y, 0f);
         }
     }
 
-    // LateUpdate runs AFTER all Update() calls are done.
-    // This is important: the player moves in Update(), and the camera follows in LateUpdate().
-    // If both used Update(), the camera might move BEFORE the player, causing jittery visuals.
+    // LateUpdate runs AFTER all Update() calls.
+    // The character moves and rotates in Update(), then the camera follows in LateUpdate().
+    // This order prevents the camera from lagging one frame behind the character.
     private void LateUpdate()
     {
-        // If there's no target, do nothing (avoids NullReferenceException).
         if (target == null) return;
 
-        // Calculate where we WANT the camera to be:
-        // Behind the player (- forward * distance) and above them (+ up * height).
-        Vector3 desiredPosition = target.position
-            - target.forward * distance
-            + Vector3.up * height;
+        // ROTATION first: combine yaw (character body facing) with pitch (up/down look).
+        float pitch = _controller != null ? _controller.CameraPitch : 0f;
+        transform.rotation = Quaternion.Euler(pitch, target.eulerAngles.y, 0f);
 
-        // Vector3.Lerp smoothly blends between current position and desired position.
-        // The third parameter controls how fast: positionSmooth * Time.deltaTime makes it
-        // frame-rate independent. Without Time.deltaTime, the camera would move faster
-        // at higher FPS and slower at lower FPS.
-        transform.position = Vector3.Lerp(transform.position, desiredPosition, positionSmooth * Time.deltaTime);
+        // POSITION: at the head, then nudged slightly forward so we see past the character mesh.
+        // Without this offset, you'd see the inside of the character's head model.
+        transform.position = GetHeadPosition() + transform.forward * 1f;
+    }
 
-        // Calculate the direction from camera to a point above the player (chest level).
-        Vector3 lookTarget = target.position + Vector3.up * 4f;
+    // Returns the world position of the character's head.
+    // If the head bone was found, use its exact position.
+    // Otherwise, fall back to a height offset above the character's feet.
+    private Vector3 GetHeadPosition()
+    {
+        if (_headBone != null)
+            return _headBone.position;
 
-        // Quaternion.LookRotation creates a rotation that "faces" from our position
-        // toward the look target. Think of it as "which way should I point to see that spot?"
-        Quaternion desiredRotation = Quaternion.LookRotation(lookTarget - transform.position);
-
-        // Quaternion.Slerp (Spherical Linear Interpolation) smoothly rotates from our
-        // current rotation toward the desired one. This prevents jarring instant snapping
-        // when the player turns quickly.
-        transform.rotation = Quaternion.Slerp(transform.rotation, desiredRotation, rotationSmooth * Time.deltaTime);
+        // Fallback: CharacterController height is ~8.86, so head is near Y=8.5 above feet.
+        return target.position + Vector3.up * 8.5f;
     }
 }

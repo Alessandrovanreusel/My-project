@@ -10,14 +10,20 @@ public class ThirdPersonController : MonoBehaviour
 {
     [Header("Movement")]
     // Walking speed in units per second. The character moves this fast by default.
-    [SerializeField] private float walkSpeed = 5f;
+    [SerializeField] private float walkSpeed = 7f;
 
     // Sprint speed — used when holding the Sprint button (Shift by default).
-    [SerializeField] private float sprintSpeed = 10f;
+    [SerializeField] private float sprintSpeed = 14f;
 
-    // How long (in seconds) it takes the character to rotate toward the movement direction.
-    // Lower = snappier turning, higher = more sluggish. 0.12 feels responsive but not instant.
-    [SerializeField] private float rotationSmoothTime = 0.12f;
+    // Maximum vertical step the character can climb without jumping (in units).
+    // Anything taller blocks movement; anything shorter is auto-stepped over.
+    // ~22% of character height (8.86) is a natural "knee-step" feel.
+    [SerializeField] private float stepOffset = 2f;
+
+    [Header("Mouse Look")]
+    // How fast the camera turns when you move the mouse.
+    // Higher = faster turning, lower = slower. Adjust to taste.
+    [SerializeField] private float mouseSensitivity = 0.15f;
 
     [Header("Jumping")]
     // How high the character jumps (in meters/units).
@@ -43,15 +49,23 @@ public class ThirdPersonController : MonoBehaviour
     // Updated by the Input System via OnMove() callback.
     private Vector2 _moveInput;
 
+    // Raw mouse delta from the Look action. X = horizontal, Y = vertical.
+    private Vector2 _lookInput;
+
     // Is the player currently holding the sprint button?
     private bool _isSprinting;
 
     // Current vertical speed (for gravity and jumping). Negative = falling, positive = rising.
     private float _verticalVelocity;
 
-    // Used internally by SmoothDampAngle to track rotation momentum.
-    // We never set this ourselves — Mathf.SmoothDampAngle reads and writes it.
-    private float _rotationVelocity;
+    // Tracks the camera's vertical angle (looking up/down).
+    // Positive = looking down, negative = looking up. Clamped to prevent flipping.
+    private float _pitch;
+
+    // Public property so the camera script can read our pitch value.
+    // This is how two scripts on different GameObjects communicate:
+    // the camera reads this every frame in LateUpdate to know how far up/down to tilt.
+    public float CameraPitch => _pitch;
 
     // Set to true when the player presses Jump, consumed when the jump actually happens.
     // This "request" pattern prevents double-jumps and ensures the jump only fires once.
@@ -63,19 +77,47 @@ public class ThirdPersonController : MonoBehaviour
         // so we do it once in Awake rather than every frame.
         _controller = GetComponent<CharacterController>();
 
+        // Override the CharacterController's Inspector stepOffset with our serialized value.
+        // This makes the script the source of truth for movement tuning.
+        _controller.stepOffset = stepOffset;
+
         // If no camera was assigned in the Inspector, automatically find the Main Camera.
         // Camera.main returns the camera tagged "MainCamera" in the scene.
         if (cameraTransform == null && Camera.main != null)
             cameraTransform = Camera.main.transform;
+
+        // Lock the cursor to the center of the screen and hide it.
+        // This is standard for POV/FPS games — you don't want the mouse cursor
+        // floating around the screen. The mouse delta still works for looking around.
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
 
     // Update runs once per frame. We process physics and movement here.
-    // The order matters: gravity first, then jump (which overrides gravity), then move.
+    // The order matters: look first (so rotation is current), gravity, jump, then move.
     private void Update()
     {
-        ApplyGravity();  // Pull the character down each frame
-        HandleJump();    // Check if we should launch upward
-        Move();          // Move horizontally + apply vertical velocity
+        HandleMouseLook(); // Rotate character based on mouse input
+        ApplyGravity();    // Pull the character down each frame
+        HandleJump();      // Check if we should launch upward
+        Move();            // Move horizontally + apply vertical velocity
+    }
+
+    // Applies mouse input to rotate the character (yaw) and track pitch (up/down).
+    // Yaw = horizontal mouse movement = rotating the character body left/right.
+    // Pitch = vertical mouse movement = tilting the camera up/down (stored for the camera to read).
+    private void HandleMouseLook()
+    {
+        // Rotate the character body left/right based on horizontal mouse movement.
+        // transform.Rotate spins the object around an axis. We only rotate around Y (up).
+        float yaw = _lookInput.x * mouseSensitivity;
+        transform.Rotate(0f, yaw, 0f);
+
+        // Track pitch (vertical look angle) but DON'T rotate the character body up/down.
+        // The camera script reads CameraPitch and applies it to the camera only.
+        // We subtract because moving mouse UP (positive Y) should look UP (negative pitch).
+        // Clamp to ±80° so you can't flip the camera upside down.
+        _pitch = Mathf.Clamp(_pitch - _lookInput.y * mouseSensitivity, -80f, 80f);
     }
 
     // =====================================================================
@@ -107,6 +149,14 @@ public class ThirdPersonController : MonoBehaviour
     public void OnSprint(InputValue value)
     {
         _isSprinting = value.isPressed;
+    }
+
+    // Called every frame while the mouse moves (or right stick on gamepad).
+    // The "Look" action is already defined in InputSystem_Actions with <Pointer>/delta binding.
+    // Delta means "how many pixels the mouse moved this frame", not the absolute position.
+    public void OnLook(InputValue value)
+    {
+        _lookInput = value.Get<Vector2>();
     }
 
     // =====================================================================
@@ -160,46 +210,23 @@ public class ThirdPersonController : MonoBehaviour
         // This prevents tiny drift from analog sticks causing unwanted movement.
         if (inputDirection.magnitude >= 0.1f)
         {
-            // CAMERA-RELATIVE MOVEMENT — this is the key trick for 3rd person controllers.
-            //
-            // Atan2 gives us the angle of our input direction (in radians → convert to degrees).
-            // Then we ADD the camera's Y rotation. This means:
-            //   - Press W → move in the direction the CAMERA is looking
-            //   - Press D → move to the RIGHT of where the camera is looking
-            // Without the camera angle, W would always mean "world north" regardless of camera.
-            float targetAngle = Mathf.Atan2(inputDirection.x, inputDirection.z) * Mathf.Rad2Deg
-                                + cameraTransform.eulerAngles.y;
-
-            // Smoothly rotate the CHARACTER to face the movement direction.
-            // SmoothDampAngle handles the wrap-around at 360°→0° gracefully.
-            // _rotationVelocity is a ref parameter that SmoothDamp uses internally
-            // to track momentum — it makes the rotation feel organic, not robotic.
-            float angle = Mathf.SmoothDampAngle(
-                transform.eulerAngles.y,   // Where we're facing now
-                targetAngle,               // Where we want to face
-                ref _rotationVelocity,     // Internal velocity tracker
-                rotationSmoothTime         // How long the smooth transition takes
-            );
-
-            // Apply the rotation. We only rotate around Y (left/right turning).
-            // X and Z stay at 0 so the character doesn't tilt forward or sideways.
-            transform.rotation = Quaternion.Euler(0f, angle, 0f);
-
-            // Convert the target angle into a world-space direction vector.
-            // Quaternion.Euler creates a rotation, then we multiply by Vector3.forward
-            // to get "which way is forward after rotating by targetAngle degrees?"
-            moveDirection = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
+            // POV MOVEMENT — the character always faces where the mouse points.
+            // We use the CHARACTER's own forward/right directions (not camera).
+            // In POV mode, the camera faces the same direction as the character,
+            // so transform.forward IS the camera's forward direction.
+            //   W → transform.forward (where you're looking)
+            //   S → -transform.forward (backward)
+            //   A → -transform.right (left)
+            //   D → transform.right (right)
+            moveDirection = transform.forward * inputDirection.z
+                          + transform.right * inputDirection.x;
         }
 
         // Combine horizontal movement with vertical velocity (gravity/jumping).
-        // moveDirection.normalized * speed = horizontal movement at desired speed.
-        // Vector3.up * _verticalVelocity = vertical movement (falling or jumping).
         Vector3 finalMove = moveDirection.normalized * speed + Vector3.up * _verticalVelocity;
 
         // CharacterController.Move() applies the movement with collision detection.
-        // Multiply by Time.deltaTime to make it frame-rate independent:
-        // at 60 FPS each frame moves 1/60th of the speed, at 30 FPS each frame moves 1/30th.
-        // The result is the same distance per second regardless of frame rate.
+        // Multiply by Time.deltaTime to make it frame-rate independent.
         _controller.Move(finalMove * Time.deltaTime);
     }
 }
