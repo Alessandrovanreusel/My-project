@@ -80,5 +80,9 @@ Desktop.ini
 # Agent definitions (BMad/GDS agents authored under .github/agents — not GitHub Actions CI)
 /.agents/
 /.github/agents/
-# Concept docs & raw asset inventory (design reference, not Unity runtime assets)
+# Source/staging art — raw Blender (.blend) + master FBX + concept doc.
+# These are the SOURCE files; the pieces actually used get imported into Assets/
+# (which IS tracked). Kept out of git on purpose: the 214MB "game map .blend"
+# exceeds GitHub's 100MB per-file limit. Version source art via Git LFS or external
+# storage if it ever needs tracking.
 /CAMERA GAME SHARED FOLDER/
