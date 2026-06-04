@@ -69,3 +69,16 @@ crashlytics-build.properties
 .DS_Store*
 Thumbs.db
 Desktop.ini
+
+# --- Non-Unity tooling & planning artifacts (NOT needed to open or build the project) ---
+# BMad Method framework + generated planning/implementation artifacts (GDD, epics, stories, sprint status)
+/_bmad/
+/_bmad-output/
+# Claude Code: config, skills, and project guidance
+/.claude/
+/CLAUDE.md
+# Agent definitions (BMad/GDS agents authored under .github/agents — not GitHub Actions CI)
+/.agents/
+/.github/agents/
+# Concept docs & raw asset inventory (design reference, not Unity runtime assets)
+/CAMERA GAME SHARED FOLDER/
