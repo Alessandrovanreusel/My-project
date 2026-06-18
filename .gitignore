@@ -86,3 +86,7 @@ Desktop.ini
 # exceeds GitHub's 100MB per-file limit. Version source art via Git LFS or external
 # storage if it ever needs tracking.
 /CAMERA GAME SHARED FOLDER/
+
+# Unity crash-recovery backups (auto-created after an unexpected shutdown; not real content)
+/Assets/_Recovery/
+/Assets/_Recovery.meta
