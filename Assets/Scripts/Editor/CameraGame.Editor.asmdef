@@ -1,0 +1,14 @@
+{
+    "name": "CameraGame.Editor",
+    "rootNamespace": "CameraGame.Editor",
+    "references": [
+        "CameraGame"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "autoReferenced": true,
+    "noEngineReferences": false
+}
