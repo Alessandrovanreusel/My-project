@@ -59,11 +59,27 @@ namespace CameraGame.Events
             EventActor actor = _pool.Get();
             if (actor == null) return;   // pool disabled (e.g. null prefab guard) — stay quiet
 
+            // The actor disables itself in Awake on an invalid EventDefinition (AC3). A disabled actor
+            // never runs its FSM, so it would never raise Despawned — counting it would pin a concurrency
+            // slot forever and silently wedge spawning. Detect it once, return it, and stand the manager
+            // down with one clear error (symmetric to the actor's own fail-soft).
+            if (!actor.enabled)
+            {
+                GameLog.Error("Events", $"{name}: pooled actor '{actor.name}' is disabled (invalid EventDefinition?) — disabling EventManager.", this);
+                _pool.Return(actor);
+                enabled = false;
+                return;
+            }
+
             Transform anchor = spawnPoint != null ? spawnPoint : transform;
             actor.transform.SetPositionAndRotation(anchor.position, anchor.rotation);
 
             // Symmetric subscribe-on-spawn / unsubscribe-on-return: no handler accumulation across reuse.
             actor.Despawned += HandleDespawned;
+
+            // Start the lifecycle AFTER positioning so the Spawn-phase cue/anim fire at the spawn point,
+            // not at the prefab's authored pose (the actor no longer self-starts from OnEnable).
+            actor.Begin();
             _activeCount++;
         }
 

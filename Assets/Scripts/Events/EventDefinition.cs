@@ -105,6 +105,14 @@ namespace CameraGame.Events
                 }
             }
 
+            // A zero-duration Peak would make IsAtPeak true for only a single frame, which a poll-based
+            // grader can miss. Other phases may legitimately be 0, but the Peak must have real duration.
+            if (peak.duration <= 0f)
+            {
+                reason = $"EventDefinition '{name}' must give the Peak phase a duration > 0";
+                return false;
+            }
+
             reason = null;
             return true;
         }

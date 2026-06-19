@@ -14,6 +14,10 @@ namespace CameraGame.Events
     ///
     /// Animation, NavMesh, and audio are all OPTIONAL and fail-soft — this is what lets the engine be
     /// verified in 1.6 with a controller-less, route-less stub before the real Town Drunk lands in 1.7.
+    ///
+    /// The lifecycle is started by the manager via <see cref="Begin"/> AFTER positioning — not from
+    /// OnEnable — so neither a prewarm Instantiate nor a pooled re-Get() (both of which toggle the
+    /// GameObject active) can run a spurious, mis-placed lifecycle (Story 1.6 review).
     /// </summary>
     [RequireComponent(typeof(NavMeshAgent), typeof(Animator))]
     public class EventActor : MonoBehaviour, ISubject
@@ -26,15 +30,16 @@ namespace CameraGame.Events
 
         // Cached components (cached in Awake, never GetComponent in Update — consistency rule).
         private Animator _animator;
-        private NavMeshAgent _agent;
+        private NavMeshAgent _agent;             // cached for Story 1.7's NavMesh routing (fail-soft; unused in 1.6)
         private AudioSource _cueSource;          // optional — a 3D directional rig is Story 1.8
-        private Renderer[] _renderers;           // all child renderers, for whole-subject bounds
+        private Renderer[] _renderers;           // all child renderers (incl. inactive), for whole-subject bounds
 
         // Fail-soft readiness flags resolved once in Awake.
         private bool _animReady;                 // has a runtime controller → CrossFade is safe
 
         private EventPhase _phase;
         private float _timer;
+        private bool _running;                   // true from Begin() until despawn; gates Update and latches the single Despawn signal
 
         // --- ISubject -------------------------------------------------------------------------------
 
@@ -99,27 +104,41 @@ namespace CameraGame.Events
             _animator = GetComponent<Animator>();
             _agent = GetComponent<NavMeshAgent>();
             _cueSource = GetComponent<AudioSource>();
-            _renderers = GetComponentsInChildren<Renderer>();
+
+            // includeInactive: true so a child renderer that is inactive at Awake (revealed later in a
+            // phase, e.g. a prop at Peak) still contributes to Bounds for grading.
+            _renderers = GetComponentsInChildren<Renderer>(true);
 
             // Animation is only safe to drive when a controller is assigned (the stub has none in 1.6).
             _animReady = _animator != null && _animator.runtimeAnimatorController != null;
         }
 
-        private void OnEnable()
+        /// <summary>
+        /// Starts (or restarts) the lifecycle. The <see cref="EventManager"/> calls this AFTER it has
+        /// positioned the actor, so phase side-effects (cue/anim) fire at the spawn location. Driving the
+        /// FSM from an explicit call rather than OnEnable means neither a prewarm Instantiate nor a pooled
+        /// re-Get() (both of which toggle the GameObject active) runs a spurious lifecycle.
+        /// </summary>
+        public void Begin()
         {
-            // Skip if Awake disabled us (invalid config) — OnEnable won't fire while disabled, but guard
-            // defensively. Re-init the FSM here so a pooled re-Get() always starts a clean lifecycle.
-            if (!enabled || definition == null) return;
+            if (!enabled || definition == null) return;   // invalid config already disabled us in Awake
+
+            _running = true;
 
             // Peak begins after Spawn + Build elapse, so seed the countdown with their combined duration.
             TimeToPeak = definition.GetPhase(EventPhase.Spawn).duration
                        + definition.GetPhase(EventPhase.Build).duration;
 
+            _timer = 0f;                    // EnterPhase carries the overshoot remainder; start clean.
             EnterPhase(EventPhase.Spawn);
         }
 
         private void Update()
         {
+            // Only run between Begin() and despawn — never on an instance that is merely active (prewarm,
+            // or Get() before the manager has called Begin()).
+            if (!_running) return;
+
             // AC3: never throw from Update. The only state touched here is timers + the data-driven FSM.
             _timer -= Time.deltaTime;
             TimeToPeak -= Time.deltaTime;   // continuous — keeps counting through and past the peak
@@ -138,7 +157,10 @@ namespace CameraGame.Events
                 case EventPhase.Peak:     EnterPhase(EventPhase.WindDown); break;
                 case EventPhase.WindDown: EnterPhase(EventPhase.Despawn);  break;
                 case EventPhase.Despawn:
-                    // Lifecycle complete — hand ourselves back via the event; the manager pools us.
+                    // Lifecycle complete — hand ourselves back exactly once. Clearing _running first stops
+                    // Update re-entering this case if anything delays the manager's SetActive(false)
+                    // (e.g. a second Despawned subscriber, or a future deferred/animated return).
+                    _running = false;
                     Despawned?.Invoke(this);
                     break;
             }
@@ -149,7 +171,8 @@ namespace CameraGame.Events
         {
             _phase = next;
             EventDefinition.PhaseConfig phase = definition.GetPhase(next);
-            _timer = phase.duration;
+            _timer += phase.duration;       // carry any overshoot from the previous phase so the timeline
+                                            // doesn't drift later than wall-clock across many transitions.
 
             // Animation fail-soft: only CrossFade when a controller exists and this phase names a state.
             if (_animReady && phase.AnimStateHash != 0)
