@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d79805381a98a8f4cab0729b37ae9fc7, type: 3}
+  m_Name: _StubEvent
+  m_EditorClassIdentifier: CameraGame::CameraGame.Events.EventDefinition
+  Id: StubEvent
+  cueRadius: 25
+  spawn:
+    duration: 1
+    animStateName:
+    cue: {fileID: 0}
+  build:
+    duration: 1
+    animStateName:
+    cue: {fileID: 0}
+  peak:
+    duration: 1
+    animStateName:
+    cue: {fileID: 0}
+  windDown:
+    duration: 1
+    animStateName:
+    cue: {fileID: 0}
+  despawn:
+    duration: 1
+    animStateName:
+    cue: {fileID: 0}
