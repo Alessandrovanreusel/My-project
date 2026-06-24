@@ -26,6 +26,9 @@ namespace CameraGame.Events
         [SerializeField, Tooltip("Optional spawn anchor (position/rotation). Falls back to this object's transform. Place it on the baked NavMesh.")]
         private Transform spawnPoint;
 
+        [SerializeField, Tooltip("Optional NavMesh route the spawned actor walks (Story 1.7). Null = the actor runs its lifecycle in place.")]
+        private EventRoute route;
+
         private ObjectPool<EventActor> _pool;
         private int _activeCount;
         private float _respawnTimer;   // counts down; spawn when it reaches 0 and capacity is free
@@ -78,8 +81,9 @@ namespace CameraGame.Events
             actor.Despawned += HandleDespawned;
 
             // Start the lifecycle AFTER positioning so the Spawn-phase cue/anim fire at the spawn point,
-            // not at the prefab's authored pose (the actor no longer self-starts from OnEnable).
-            actor.Begin();
+            // not at the prefab's authored pose (the actor no longer self-starts from OnEnable). The scene
+            // route (if any) is handed in here so the actor walks pub→alley (Story 1.7).
+            actor.Begin(route);
             _activeCount++;
         }
 

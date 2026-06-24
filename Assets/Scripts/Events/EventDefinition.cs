@@ -26,6 +26,9 @@ namespace CameraGame.Events
             [Tooltip("Optional audio cue played once on entering this phase. Leave empty for none.")]
             public AudioClip cue;
 
+            [Tooltip("If true, the actor walks toward the next route waypoint during this phase; if false it stands still.")]
+            public bool advanceAlongRoute = false;
+
             // Cached so we don't re-hash the string on every phase entry. Not serialized — recomputed
             // lazily and invalidated by EventDefinition.OnValidate when the name is edited.
             [System.NonSerialized] private bool _hashCached;
