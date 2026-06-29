@@ -145,6 +145,13 @@ namespace CameraGame.Events
             _route = route;
             _waypointIndex = 0;
 
+            // The manager repositions this pooled actor with transform.SetPositionAndRotation BEFORE calling
+            // Begin. Moving a NavMeshAgent by its transform does NOT reliably re-sync it onto the mesh — Warp
+            // does. Snap to the spawn position so isOnNavMesh reflects reality this frame (so the guard below
+            // and the first SetDestination both work). Warp no-ops gracefully if the agent is disabled/off-mesh.
+            if (_navReady && _agent.enabled && !_agent.isOnNavMesh)
+                _agent.Warp(transform.position);
+
             // AC3 — the owed isOnNavMesh guard (deferred from Story 1.6). If we were given a real route but
             // the agent can't use the NavMesh (disabled or the spawn point is off-mesh), warn ONCE and carry
             // on: the timed FSM still runs to completion, the drunk just performs it in place. Recoverable ⇒
