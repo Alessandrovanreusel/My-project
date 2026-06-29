@@ -145,10 +145,15 @@ namespace CameraGame.Events
             _route = route;
             _waypointIndex = 0;
 
-            // The manager repositions this pooled actor with transform.SetPositionAndRotation BEFORE calling
-            // Begin. Moving a NavMeshAgent by its transform does NOT reliably re-sync it onto the mesh — Warp
-            // does. Snap to the spawn position so isOnNavMesh reflects reality this frame (so the guard below
-            // and the first SetDestination both work). Warp no-ops gracefully if the agent is disabled/off-mesh.
+            // The agent ships DISABLED on the prefab so a prewarmed/pooled instance that is momentarily off
+            // the NavMesh (e.g. parked at the manager's y=20 anchor) never logs Unity's "Failed to create
+            // agent". The manager has already positioned us at the (on-mesh) spawn point, so enabling here
+            // places the agent cleanly on the mesh — the 1.6 stub used the same agent-disabled trick.
+            if (_navReady && !_agent.enabled)
+                _agent.enabled = true;
+
+            // Belt-and-braces: moving a NavMeshAgent by its transform doesn't reliably re-sync it (matters on
+            // a pooled reuse where the agent was already enabled), so Warp snaps it onto the mesh at the spawn.
             if (_navReady && _agent.enabled && !_agent.isOnNavMesh)
                 _agent.Warp(transform.position);
 
