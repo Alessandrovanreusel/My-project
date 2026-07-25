@@ -38,6 +38,16 @@ procedure. Look at the feature, decide what would actually convince you it works
   right?" into "is the box on him?", which you can actually answer.
 - Prefer an editor `[MenuItem]` so a run is one `execute_menu_item` call and repeatable.
 
+**Put the project back exactly as you found it — every time, automatically.** A test world is
+scaffolding, not a destination. Anything the rig swaps out or mutates must be restored when the run
+ends, without Alexv having to ask: the open scene, project settings, layers, time scale, physics or
+quality settings, a config asset's values. Record the previous state *before* you change it and restore
+it on the way out — the photo-shoot rig stores the scene path in `SessionState` (which survives the
+domain reloads that entering and leaving play mode cause) and reopens it when play mode ends. **Never
+leave the editor sitting in the test world or on test settings:** the next story would be developed
+inside it, against values nobody chose, and the damage would not be obvious until much later. Write
+test output to `Temp/` (Unity-generated and git-ignored) so nothing lands in `Assets/` either.
+
 **Drive the real path, never a re-implementation.** Call the same method the player's input calls. A
 bench that re-creates the logic tests your copy of it, not the game. Play mode over edit mode wherever
 behaviour differs — Animators, physics, and pooling do not run in edit mode, and a subject frozen in
