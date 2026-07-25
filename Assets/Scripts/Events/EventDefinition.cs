@@ -23,8 +23,9 @@ namespace CameraGame.Events
             [Tooltip("Animator state to CrossFade into on entering this phase. Leave empty for no animation change this phase.")]
             public string animStateName = "";
 
-            [Tooltip("Optional accent played ONCE on entering this phase (e.g. a hiccup at the Peak). Layers on " +
-                     "top of the event-level loopCue on the same AudioSource — it does not replace the bed.")]
+            [Tooltip("Optional accent played ONCE on entering this phase. Layers on top of the event-level " +
+                     "loopCue on the same AudioSource — it does not replace the bed. Must be MONO, same as " +
+                     "the bed: it is spatialised through the same source.")]
             public AudioClip cue;
 
             [Tooltip("If true, the actor walks toward the next route waypoint during this phase; if false it stands still.")]
@@ -70,8 +71,11 @@ namespace CameraGame.Events
         public float cueRadius = 100f;
 
         [Min(0.01f), Tooltip("Distance (WORLD UNITS) within which the cue plays at full volume; beyond it the " +
-                             "logarithmic rolloff toward cueRadius begins. Roughly one body-height keeps the cue " +
-                             "from being deafening when the player walks up to the actor.")]
+                             "cue fades along a custom inverse-distance curve that reaches true silence at " +
+                             "cueRadius. (NOT Unity's built-in Logarithmic mode — that one plateaus and stays " +
+                             "faintly audible forever, which is the bug this replaced.) Roughly one " +
+                             "body-height keeps the cue from being deafening when the player walks up to the " +
+                             "actor. Must be between 0.1% and 50% of cueRadius or it is clamped, with a warning.")]
         public float cueFalloffStart = 8f;
 
         [Tooltip("Spawn phase — the actor appears.")]            public PhaseConfig spawn = new();

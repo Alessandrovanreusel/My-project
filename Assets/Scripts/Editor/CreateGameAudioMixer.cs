@@ -31,10 +31,14 @@ namespace CameraGame.EditorTools
 
         private static readonly StringBuilder Report = new StringBuilder();
 
+        /// <summary>Set by any Log line starting with FAIL/EXCEPTION, so Create() can surface the outcome.</summary>
+        private static bool _failed;
+
         [MenuItem("Tools/Audio/Create GameAudio Mixer")]
         public static void Create()
         {
             Report.Clear();
+            _failed = false;
             try
             {
                 Run();
@@ -45,8 +49,27 @@ namespace CameraGame.EditorTools
             }
             finally
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(ReportPath));
-                File.WriteAllText(ReportPath, Report.ToString());
+                // The report file is a debugging convenience, NOT the result channel. It used to be the only
+                // output, which meant every failure path — a missing internal API, a null controller, a
+                // Unity-version change — looked exactly like "the menu item does nothing". Worse, Temp/ is
+                // cleared when the project reopens, so the evidence could be gone before anyone looked.
+                // The console now always gets a verdict; the file keeps the detail.
+                try
+                {
+                    string dir = Path.GetDirectoryName(ReportPath);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                    File.WriteAllText(ReportPath, Report.ToString());
+                }
+                catch (Exception e)
+                {
+                    // Never let the report write swallow the diagnosis it exists to preserve.
+                    Debug.LogWarning($"[Audio] Could not write {ReportPath}: {e.Message}\n{Report}");
+                }
+
+                if (_failed)
+                    Debug.LogError($"[Audio] Create GameAudio Mixer FAILED. Details in {ReportPath}:\n{Report}");
+                else
+                    Debug.Log($"[Audio] GameAudio mixer ready at {MixerPath}. Details in {ReportPath}.");
             }
         }
 
@@ -59,7 +82,12 @@ namespace CameraGame.EditorTools
                 return;
             }
 
-            object controller = AssetDatabase.LoadAssetAtPath<AudioMixer>(MixerPath);
+            // Typed as AudioMixer, NOT object. UnityEngine.Object overloads == / != so that a destroyed or
+            // native-side-null object still compares equal to null. Through an `object` reference those
+            // operators are bypassed and every null check below silently degrades into a plain reference
+            // comparison — which would let a half-created mixer walk straight past the explicit FAIL branch
+            // and into a NullReferenceException inside EnsureSfxGroup.
+            var controller = AssetDatabase.LoadAssetAtPath<AudioMixer>(MixerPath);
             if (controller != null)
             {
                 Log($"Mixer already exists at {MixerPath}; ensuring the {SfxGroupName} group is present.");
@@ -67,13 +95,25 @@ namespace CameraGame.EditorTools
             else
             {
                 MethodInfo create = controllerType.GetMethod(
-                    "CreateMixerControllerAtPath", BindingFlags.Public | BindingFlags.Static);
+                    "CreateMixerControllerAtPath",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
                 if (create == null)
                 {
-                    DumpApi(controllerType, "CreateMixerControllerAtPath not found");
+                    DumpApi(controllerType, "CreateMixerControllerAtPath not found", "Mixer");
                     return;
                 }
-                controller = create.Invoke(null, new object[] { MixerPath });
+
+                // Unity's factory will not create the folder for us, and a fresh clone that has the committed
+                // .mixer deleted has no Assets/Audio/Mixers/ either.
+                string folder = Path.GetDirectoryName(MixerPath).Replace('\\', '/');
+                if (!AssetDatabase.IsValidFolder(folder))
+                {
+                    Directory.CreateDirectory(folder);
+                    AssetDatabase.Refresh();
+                    Log($"Created missing folder {folder}.");
+                }
+
+                controller = create.Invoke(null, new object[] { MixerPath }) as AudioMixer;
                 Log($"Created mixer at {MixerPath}.");
             }
 
@@ -101,7 +141,7 @@ namespace CameraGame.EditorTools
                 Log("NOTE: SanitizeGroupViews() not found — mixer window may need a manual group-view fix.");
             }
 
-            EditorUtility.SetDirty((UnityEngine.Object)controller);
+            EditorUtility.SetDirty(controller);
             AssetDatabase.SaveAssets();
             AssetDatabase.ImportAsset(MixerPath, ImportAssetOptions.ForceUpdate);
             AssetDatabase.Refresh();
@@ -121,9 +161,9 @@ namespace CameraGame.EditorTools
         }
 
         /// <summary>Adds the single SFX group under Master, mirroring what the Audio Mixer window does.</summary>
-        private static void EnsureSfxGroup(Type controllerType, object controller)
+        private static void EnsureSfxGroup(Type controllerType, AudioMixer controller)
         {
-            var mixer = (AudioMixer)controller;
+            AudioMixer mixer = controller;
             if (mixer.FindMatchingGroups(string.Empty).Any(g => g.name == SfxGroupName))
             {
                 Log("SFX group already present — skipping creation.");
@@ -144,7 +184,7 @@ namespace CameraGame.EditorTools
 
             if (createGroup == null || addChild == null)
             {
-                DumpApi(controllerType, "group-creation API not found");
+                DumpApi(controllerType, "group-creation API not found", "Group");
                 return;
             }
 
@@ -163,6 +203,15 @@ namespace CameraGame.EditorTools
                 .GetProperty("masterGroup", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
                 ?.GetValue(controller);
             Log("masterGroup resolved: " + (master != null));
+
+            // Bail rather than parent to nothing. AddObjectToAsset has ALREADY run, so continuing with a null
+            // parent leaves an SFX group inside the .mixer file that routes nowhere — a mixer that looks
+            // created and is quietly broken, which is worse than one that visibly failed.
+            if (master == null)
+            {
+                Log("FAIL: masterGroup could not be resolved — refusing to parent the SFX group to nothing.");
+                return;
+            }
 
             Invoke(addChild, controller, group, master);
             if (addToView != null) Invoke(addToView, controller, group);
@@ -189,16 +238,25 @@ namespace CameraGame.EditorTools
         private static string Sig(MethodInfo m) =>
             m == null ? "<null>" : m.Name + "(" + string.Join(", ", m.GetParameters().Select(p => p.ParameterType.Name)) + ")";
 
-        /// <summary>Logs the reflected surface so a future Unity version change is diagnosable, not mysterious.</summary>
-        private static void DumpApi(Type t, string why)
+        /// <summary>
+        /// Logs the reflected surface so a future Unity version change is diagnosable, not mysterious.
+        /// <paramref name="nameFilter"/> must match the members the CALLER was looking for — a fixed
+        /// "Group"/"Snapshot" filter used to exclude CreateMixerControllerAtPath, i.e. the one method whose
+        /// disappearance this dump exists to explain, leaving a header and an empty list.
+        /// </summary>
+        private static void DumpApi(Type t, string why, string nameFilter)
         {
-            Log($"{why}. Candidate members on {t.FullName}:");
+            Log($"FAIL: {why}. Candidate members matching '{nameFilter}' on {t.FullName}:");
             foreach (MethodInfo m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
-                                      .Where(m => m.Name.Contains("Group") || m.Name.Contains("Snapshot"))
+                                      .Where(m => m.Name.IndexOf(nameFilter, StringComparison.OrdinalIgnoreCase) >= 0)
                                       .OrderBy(m => m.Name))
                 Log("  " + m.ReturnType.Name + " " + Sig(m));
         }
 
-        private static void Log(string line) => Report.AppendLine(line);
+        private static void Log(string line)
+        {
+            if (line.StartsWith("FAIL") || line.StartsWith("EXCEPTION")) _failed = true;
+            Report.AppendLine(line);
+        }
     }
 }

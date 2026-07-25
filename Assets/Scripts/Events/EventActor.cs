@@ -151,22 +151,92 @@ namespace CameraGame.Events
             // perfectly valid silent event and says nothing; but a cue that was authored and then cannot
             // possibly work is an authoring mistake, and it fails in the worst way — the cue is audible, so
             // everything sounds fine until someone notices they can't tell which direction it is coming from.
-            // Awake-only, so this costs nothing per frame.
-            if (definition.loopCue != null)
+            // Awake-only, so this costs nothing per frame AND the warning cannot spam once per spawn.
+            //
+            // Gated on "any cue at all", not just loopCue: a per-phase accent plays through the SAME
+            // AudioSource (EnterPhase → PlayOneShot), so an accent-only event needs exactly the same rig.
+            if (HasAnyCue())
             {
                 if (_cueSource == null)
                 {
-                    GameLog.Warn("Events", $"{SubjectId}: a loop cue is assigned but this prefab has no AudioSource — the event will be silent.");
+                    GameLog.Warn("Events", $"{SubjectId}: a cue clip is assigned but this prefab has no AudioSource — the event will be silent.");
                 }
                 else
                 {
-                    if (definition.loopCue.channels > 1)
-                        GameLog.Warn("Events", $"{SubjectId}: cue clip '{definition.loopCue.name}' has {definition.loopCue.channels} channels — Unity only spatialises MONO clips, so this cue will be audible but not locatable.");
+                    // Unity logs "Can not play a disabled audio source" as an ERROR, once per Play/PlayOneShot
+                    // — i.e. once per spawn forever, under no GameLog category anyone would think to grep.
+                    if (!_cueSource.enabled)
+                        GameLog.Warn("Events", $"{SubjectId}: the cue AudioSource is disabled — the event will be silent.");
 
                     if (_cueSource.spatialBlend < 1f)
                         GameLog.Warn("Events", $"{SubjectId}: cue AudioSource spatialBlend is {_cueSource.spatialBlend:0.##}; it must be 1.0 (fully 3D) for the cue to be directional.");
+
+                    WarnIfNotMono(definition.loopCue);
+                    foreach (EventPhase p in (EventPhase[])Enum.GetValues(typeof(EventPhase)))
+                        WarnIfNotMono(definition.GetPhase(p).cue);
+
+                    // The distances are as easy to mis-author as the clips and get no Inspector feedback at
+                    // all: [Min(0f)] permits cueRadius = 0, and nothing relates the two fields to each other.
+                    if (!TryResolveCueDistances(out _, out _, out string distanceProblem))
+                        GameLog.Warn("Events", $"{SubjectId}: {distanceProblem} — falling back to the prefab's own rolloff settings.");
+                    else if (distanceProblem != null)
+                        GameLog.Warn("Events", $"{SubjectId}: {distanceProblem}");
                 }
             }
+        }
+
+        /// <summary>True if this definition authors any cue at all — the loop bed or a per-phase accent.</summary>
+        private bool HasAnyCue()
+        {
+            if (definition.loopCue != null) return true;
+            foreach (EventPhase p in (EventPhase[])Enum.GetValues(typeof(EventPhase)))
+                if (definition.GetPhase(p).cue != null) return true;
+            return false;
+        }
+
+        /// <summary>Warns (Awake-only) about a stereo cue clip — Unity spatialises MONO clips only.</summary>
+        private void WarnIfNotMono(AudioClip clip)
+        {
+            if (clip != null && clip.channels > 1)
+                GameLog.Warn("Events", $"{SubjectId}: cue clip '{clip.name}' has {clip.channels} channels — Unity only spatialises MONO clips, so this cue will be audible but not locatable.");
+        }
+
+        /// <summary>
+        /// Resolves the authored cue distances into a pair the audio rig can actually use, so that Begin() and
+        /// the Awake validation agree on what "usable" means.
+        ///
+        /// Returns false when the authoring is broken beyond rescue (radius ≤ 0 — and NaN too, since NaN fails
+        /// every comparison, so the <c>&gt;</c> tests catch it for free). Returns true with a non-null
+        /// <paramref name="problem"/> when the values were usable only after clamping: silently rewriting a
+        /// designer's number is exactly the "fail-soft means invisible" trap the rest of this class avoids.
+        /// </summary>
+        private bool TryResolveCueDistances(out float falloffStart, out float radius, out string problem)
+        {
+            falloffStart = definition.cueFalloffStart;
+            radius = definition.cueRadius;
+            problem = null;
+
+            if (!(radius > 0f))
+            {
+                problem = $"cueRadius is {radius}, which cannot describe an audible range";
+                return false;
+            }
+
+            // The curve needs its flat region strictly inside the radius. Both bounds below rewrite authored
+            // data, which is why they hand back a problem string rather than clamping quietly.
+            float minStart = radius * 0.001f;
+            float maxStart = radius * 0.5f;
+            if (!(falloffStart > 0f) || falloffStart < minStart)
+            {
+                problem = $"cueFalloffStart {falloffStart} is too small for cueRadius {radius} — using {minStart}";
+                falloffStart = minStart;
+            }
+            else if (falloffStart > maxStart)
+            {
+                problem = $"cueFalloffStart {falloffStart} is more than half of cueRadius {radius} — using {maxStart}";
+                falloffStart = maxStart;
+            }
+            return true;
         }
 
         /// <summary>
@@ -239,22 +309,28 @@ namespace CameraGame.Events
                 // re-Get()s this actor while an old bed is still sounding.
                 _cueSource.Stop();
 
-                if (definition.loopCue != null)
+                // Rolloff is configured for ANY cue, not just a loop bed — note this sits OUTSIDE the loopCue
+                // branch below, deliberately. Per-phase accents play through this same AudioSource
+                // (EnterPhase → PlayOneShot), so an accent-only event that skipped this block would fall back
+                // to the prefab's Logarithmic mode, whose attenuation plateaus and never reaches silence. That
+                // is the exact "audible across the whole town" bug this story fixed for the bed; leaving the
+                // accent path on the old mode would reintroduce it one field over.
+                if (TryResolveCueDistances(out float falloffStart, out float radius, out _))
                 {
-                    _cueSource.clip = definition.loopCue;
-                    _cueSource.loop = true;                          // a one-shot bed would go quiet mid-lifecycle
-
-                    // Rolloff distances come from the DEFINITION, in world units, not from the prefab. This
-                    // world is ~4× metric (see EventDefinition.cueRadius), so the design's "~25 m" is ~100
-                    // units here — and when the open world-scale question is finally settled, retuning every
-                    // event is one data edit each instead of a hunt through prefabs.
-                    _cueSource.minDistance = definition.cueFalloffStart;
-                    _cueSource.maxDistance = definition.cueRadius;
+                    // Distances come from the DEFINITION, in world units, not from the prefab. This world is
+                    // ~4× metric (see EventDefinition.cueRadius), so the design's "~25 m" is ~100 units here —
+                    // and when the open world-scale question is finally settled, retuning every event is one
+                    // data edit each instead of a hunt through prefabs.
+                    //
+                    // minDistance is written for the Inspector's benefit only: under Custom rolloff the engine
+                    // takes attenuation from the curve alone and ignores it (see GetRolloffCurve).
+                    _cueSource.minDistance = falloffStart;
+                    _cueSource.maxDistance = radius;
 
                     // CUSTOM rolloff, not Logarithmic. Unity defines maxDistance as "the distance where the
                     // sound STOPS attenuating" — not where it becomes silent. Under Logarithmic the volume
                     // therefore flattens out at minDistance/maxDistance (8/100 = 0.08, about -22 dB) and holds
-                    // that level to infinity, so the drunk stayed faintly audible from anywhere in the town
+                    // that level to infinity, so the actor stayed faintly audible from anywhere in the town
                     // (confirmed by ear, 2026-07-25). Worse, the plateau is a RATIO: shrinking cueRadius
                     // *raises* it (8/60 = 0.13), so this cannot be tuned away with distance — only the curve
                     // shape fixes it. The curve below keeps the natural inverse-distance falloff near the
@@ -262,14 +338,21 @@ namespace CameraGame.Events
                     // zero at cueRadius, satisfying AC1's "inaudible well beyond the radius".
                     _cueSource.rolloffMode = AudioRolloffMode.Custom;
                     _cueSource.SetCustomCurve(AudioSourceCurveType.CustomRolloff,
-                                              GetRolloffCurve(definition.cueFalloffStart, definition.cueRadius));
+                                              GetRolloffCurve(falloffStart, radius));
+                }
+                // else: distances are un-authorable-bad. Awake already warned once; leave the prefab's own
+                // settings in place so the cue is at least audible rather than silently dropped.
 
+                if (definition.loopCue != null)
+                {
+                    _cueSource.clip = definition.loopCue;
+                    _cueSource.loop = true;                          // a one-shot bed would go quiet mid-lifecycle
                     _cueSource.Play();
                 }
                 else
                 {
                     // A cue-less event is valid (same principle as a route-less one), so drop the clip and stay
-                    // silent rather than leaving a previous event type's bed loaded on a shared pooled actor.
+                    // silent rather than leaving a previous definition's bed loaded on a pooled actor.
                     _cueSource.clip = null;
                 }
             }
@@ -336,7 +419,7 @@ namespace CameraGame.Events
                     // manager to pool us, and SetActive(false) would silence the source anyway — but only if
                     // the manager pools us immediately. Any subscriber that defers the return (a second
                     // listener, or a future fade-out/animated despawn) would otherwise leave a disembodied
-                    // mumble looping at the despawn point with nobody there.
+                    // cue looping at the despawn point with nobody there.
                     if (_cueSource != null)
                         _cueSource.Stop();
 
@@ -403,8 +486,10 @@ namespace CameraGame.Events
         /// </summary>
         private AnimationCurve GetRolloffCurve(float falloffStart, float radius)
         {
-            // Rebuild only when the tunables actually change, so tweaking them mid-session to tune by ear
-            // still works while a steady configuration allocates nothing per spawn.
+            // Rebuild only when the tunables actually change, so a steady configuration allocates nothing per
+            // spawn. NOTE this does NOT make the values live-editable: the curve and the distances are pushed
+            // to the AudioSource only from Begin(), so an Inspector edit during Play is picked up at the NEXT
+            // spawn — a full lifecycle plus EventManager's respawn delay later, not immediately.
             if (_rolloffCurve != null
                 && Mathf.Approximately(_curveFalloffStart, falloffStart)
                 && Mathf.Approximately(_curveRadius, radius))
@@ -427,13 +512,31 @@ namespace CameraGame.Events
             }
 
             var curve = new AnimationCurve(keys);
-            for (int i = 0; i < curve.length; i++)
-                curve.SmoothTangents(i, 0f);          // default flat tangents would make the curve ripple
+
+            // Smooth from key 2 onward ONLY. keys[0] and keys[1] both sit at value 1 — they are the flat
+            // full-volume plateau — and SmoothTangents would give key 1 a tangent averaged from its
+            // neighbours (steeply negative) while key 0 kept zero. Hermite between two equal-valued keys with
+            // mismatched tangents BULGES: ≈1.018 at the shipped 8/100 values, and ≈11% if cueFalloffStart ever
+            // widens toward half the radius. A rolloff curve that amplifies is not what "full volume" means.
+            for (int i = 2; i < curve.length; i++)
+                curve.SmoothTangents(i, 0f);          // default flat tangents would make the rest ripple
+            FlattenTangents(curve, 0);
+            FlattenTangents(curve, 1);
 
             _rolloffCurve = curve;
             _curveFalloffStart = falloffStart;
             _curveRadius = radius;
             return curve;
+        }
+
+        /// <summary>Forces one keyframe's tangents flat. AnimationCurve keys are structs, so the key has to be
+        /// copied out, edited and moved back — mutating <c>curve[i].inTangent</c> directly changes a copy.</summary>
+        private static void FlattenTangents(AnimationCurve curve, int index)
+        {
+            Keyframe k = curve[index];
+            k.inTangent = 0f;
+            k.outTangent = 0f;
+            curve.MoveKey(index, k);
         }
 
         /// <summary>Points the agent at the current waypoint. Gated by NavUsable/HasWaypoints at every call
