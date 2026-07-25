@@ -38,15 +38,10 @@ procedure. Look at the feature, decide what would actually convince you it works
   right?" into "is the box on him?", which you can actually answer.
 - Prefer an editor `[MenuItem]` so a run is one `execute_menu_item` call and repeatable.
 
-**Put the project back exactly as you found it — every time, automatically.** A test world is
-scaffolding, not a destination. Anything the rig swaps out or mutates must be restored when the run
-ends, without Alexv having to ask: the open scene, project settings, layers, time scale, physics or
-quality settings, a config asset's values. Record the previous state *before* you change it and restore
-it on the way out — the photo-shoot rig stores the scene path in `SessionState` (which survives the
-domain reloads that entering and leaving play mode cause) and reopens it when play mode ends. **Never
-leave the editor sitting in the test world or on test settings:** the next story would be developed
-inside it, against values nobody chose, and the damage would not be obvious until much later. Write
-test output to `Temp/` (Unity-generated and git-ignored) so nothing lands in `Assets/` either.
+**Read the working example before building your own:** `Tools > Grading > Photo Shoot (Play)` —
+`Assets/Scripts/Editor/PhotoShootRig.cs` builds an isolated world and enters play mode;
+`Assets/Scripts/PhotoMode/PhotoShootRunner.cs` walks the camera to scripted positions, pulls the real
+shutter, and saves each frame with the grader's own box drawn on it.
 
 **Drive the real path, never a re-implementation.** Call the same method the player's input calls. A
 bench that re-creates the logic tests your copy of it, not the game. Play mode over edit mode wherever
@@ -56,6 +51,20 @@ bind pose measures nothing like the animated one.
 **Do not encode expected results.** Assertions bake in what you already believed and go green while
 the feature is wrong. Produce evidence, then judge it. Ask: is this what a player would see? Is this
 what the story asked for? If the answer is no, change the code and run it again.
+
+**Suspect the rig before the code.** A bench fails in ways that look exactly like findings. Every case
+failing identically, every case passing, a suspiciously round number, an empty or blank capture — treat
+all of these as "the rig is broken" until proven otherwise. Real examples from one evening: ten
+screenshots of a UI overlay on blank white (the camera never rendered); every scenario reporting "no
+config" from a config whose values printed perfectly (its native half had been unloaded); a bench
+measuring a T-pose because Animators do not run in edit mode, which made every number roughly double
+the truth and produced a confident, wrong design conclusion.
+
+**When something genuinely needs a human, stop and say so.** Whether audio is locatable, whether
+movement *feels* right, whether a shot reads as a good photograph — these need ears and eyes. Do not
+quietly mark them verified and do not bury the gap in a paragraph. Name the exact thing you need Alexv
+to do, keep the story open until he has done it, and state which ACs remain unproven. Twice now the
+perceptual check has found what every structural check missed.
 
 **This applies to code review too — reviewing is not only reading.** When reviewing a change, build a
 world that exercises it and see what actually happens. Reading finds what a change *says* it does;
@@ -71,12 +80,19 @@ running finds what it does. Use the freedom above to design the scenarios the ch
   that turn out to be wrong. Running the scenario settles it in seconds and stops confident,
   well-argued fiction from reaching Alexv as fact.
 
+**Put the project back exactly as you found it — every time, automatically.** A test world is
+scaffolding, not a destination. Anything the rig swaps out or mutates must be restored when the run
+ends, without Alexv having to ask: the open scene, project settings, layers, time scale, physics or
+quality settings, a config asset's values. Record the previous state *before* you change it and restore
+it on the way out — the photo-shoot rig stores the scene path in `SessionState` (which survives the
+domain reloads that entering and leaving play mode cause) and reopens it when play mode ends. **Never
+leave the editor sitting in the test world or on test settings:** the next story would be developed
+inside it, against values nobody chose, and the damage would not be obvious until much later. Write
+test output to `Temp/` (Unity-generated and git-ignored) so nothing lands in `Assets/` either.
+
 **Alexv is the second opinion, not the first.** Do not hand him a list of things to go and try. Bring
 him a conclusion and the evidence behind it. Say plainly which parts you verified and which you could
 not — never present a structural check as though it were a played one.
-
-Working example: `Tools > Grading > Photo Shoot (Play)` — `Assets/Scripts/Editor/PhotoShootRig.cs`
-builds the world, `Assets/Scripts/PhotoMode/PhotoShootRunner.cs` drives the shutter.
 
 **Traps already paid for — do not rediscover these:**
 - A MonoBehaviour in an **Editor-only assembly** cannot be resolved on a scene object when entering
@@ -88,6 +104,9 @@ builds the world, `Assets/Scripts/PhotoMode/PhotoShootRunner.cs` drives the shut
   fields still read fine from managed memory while `== null` is simultaneously true.
 - Editing `ProjectSettings/*.asset` on disk does not take effect while the editor is running — use the
   editor API.
+- A debug readout that outlives the instant it describes will be read against a later frame. Bound its
+  lifetime and label it a snapshot — a 4-second overlay produced a confident, wrong bug diagnosis from a
+  screenshot taken two seconds after the shot.
 - A rig that logs its own errors trains you to ignore errors — keep its console clean too.
 
 ## Jira Sync (BMad epics & stories) — REQUIRED
