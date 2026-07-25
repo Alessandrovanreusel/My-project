@@ -31,7 +31,7 @@ namespace CameraGame.Events
         // Cached components (cached in Awake, never GetComponent in Update — consistency rule).
         private Animator _animator;
         private NavMeshAgent _agent;             // cached for Story 1.7's NavMesh routing (fail-soft; unused in 1.6)
-        private AudioSource _cueSource;          // optional — a 3D directional rig is Story 1.8
+        private AudioSource _cueSource;          // optional — carries BOTH the looping cue bed and the per-phase accents
         private Renderer[] _renderers;           // all child renderers (incl. inactive), for whole-subject bounds
 
         // Fail-soft readiness flags resolved once in Awake.
@@ -141,6 +141,27 @@ namespace CameraGame.Events
                         GameLog.Warn("Events", $"{SubjectId}: phase {p} names animator state '{cfg.animStateName}', which does not exist on layer 0 of '{_animator.runtimeAnimatorController.name}'.");
                 }
             }
+
+            // Same rule as the animation check above: fail-soft must not mean invisible. An ABSENT cue is a
+            // perfectly valid silent event and says nothing; but a cue that was authored and then cannot
+            // possibly work is an authoring mistake, and it fails in the worst way — the cue is audible, so
+            // everything sounds fine until someone notices they can't tell which direction it is coming from.
+            // Awake-only, so this costs nothing per frame.
+            if (definition.loopCue != null)
+            {
+                if (_cueSource == null)
+                {
+                    GameLog.Warn("Events", $"{SubjectId}: a loop cue is assigned but this prefab has no AudioSource — the event will be silent.");
+                }
+                else
+                {
+                    if (definition.loopCue.channels > 1)
+                        GameLog.Warn("Events", $"{SubjectId}: cue clip '{definition.loopCue.name}' has {definition.loopCue.channels} channels — Unity only spatialises MONO clips, so this cue will be audible but not locatable.");
+
+                    if (_cueSource.spatialBlend < 1f)
+                        GameLog.Warn("Events", $"{SubjectId}: cue AudioSource spatialBlend is {_cueSource.spatialBlend:0.##}; it must be 1.0 (fully 3D) for the cue to be directional.");
+                }
+            }
         }
 
         /// <summary>
@@ -196,6 +217,44 @@ namespace CameraGame.Events
             // Warn + continue (architecture §Error Handling), never an exception in Update.
             if (_route != null && _route.HasWaypoints && !NavUsable)
                 GameLog.Warn("Events", $"{SubjectId}: spawn point is off the NavMesh — drunk will run its lifecycle in place.");
+
+            // Diegetic cue (Story 1.8). The looping bed starts HERE, not in OnEnable, for exactly the reason the
+            // FSM does: a prewarmed or pooled instance parked at the manager's y=20 anchor must stay silent
+            // until it has been placed at a real spawn point. (playOnAwake is false on the prefab for the same
+            // reason — do not turn it on.)
+            //
+            // Every field is re-applied on EVERY Begin(), deliberately. A pooled actor returns from
+            // SetActive(false) with its AudioSource stopped but its clip/loop/distances still set, which makes
+            // "it's already configured, it'll just play again" look true — and that exact assumption about
+            // surviving pool state is what cost Story 1.7 a Critical bug on the NavMeshAgent. Assume nothing
+            // came back from the pool; state it all again.
+            if (_cueSource != null)
+            {
+                // Silence first, unconditionally. Covers both a cue-less event and the case where the manager
+                // re-Get()s this actor while an old bed is still sounding.
+                _cueSource.Stop();
+
+                if (definition.loopCue != null)
+                {
+                    _cueSource.clip = definition.loopCue;
+                    _cueSource.loop = true;                          // a one-shot bed would go quiet mid-lifecycle
+
+                    // Rolloff distances come from the DEFINITION, in world units, not from the prefab. This
+                    // world is ~4× metric (see EventDefinition.cueRadius), so the design's "~25 m" is ~100
+                    // units here — and when the open world-scale question is finally settled, retuning every
+                    // event is one data edit each instead of a hunt through prefabs.
+                    _cueSource.minDistance = definition.cueFalloffStart;
+                    _cueSource.maxDistance = definition.cueRadius;
+
+                    _cueSource.Play();
+                }
+                else
+                {
+                    // A cue-less event is valid (same principle as a route-less one), so drop the clip and stay
+                    // silent rather than leaving a previous event type's bed loaded on a shared pooled actor.
+                    _cueSource.clip = null;
+                }
+            }
 
             _running = true;
 
@@ -254,6 +313,14 @@ namespace CameraGame.Events
                     // Update re-entering this case if anything delays the manager's SetActive(false)
                     // (e.g. a second Despawned subscriber, or a future deferred/animated return).
                     _running = false;
+
+                    // Stop the cue BEFORE signalling Despawned (Story 1.8). Despawned is what causes the
+                    // manager to pool us, and SetActive(false) would silence the source anyway — but only if
+                    // the manager pools us immediately. Any subscriber that defers the return (a second
+                    // listener, or a future fade-out/animated despawn) would otherwise leave a disembodied
+                    // mumble looping at the despawn point with nobody there.
+                    if (_cueSource != null)
+                        _cueSource.Stop();
 
                     // NOTE (2026-07-25): re-disabling the agent here — to restore the prefab's "ships
                     // disabled" invariant across pooling — was tried and REVERTED. It wedged the lifecycle:

@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: TownDrunk
   m_EditorClassIdentifier: CameraGame::CameraGame.Events.EventDefinition
   Id: TownDrunk
-  cueRadius: 25
+  loopCue: {fileID: 8300000, guid: e986ee57edee4992a243ee94cea986b3, type: 3}
+  cueRadius: 100
+  cueFalloffStart: 8
   spawn:
     duration: 3
     animStateName: DrunkIdle
@@ -27,7 +29,7 @@ MonoBehaviour:
   peak:
     duration: 1.5
     animStateName: DrunkStagger
-    cue: {fileID: 0}
+    cue: {fileID: 8300000, guid: 8afed3ae8d19425d8c7d627eee33e110, type: 3}
     advanceAlongRoute: 0
   windDown:
     duration: 6

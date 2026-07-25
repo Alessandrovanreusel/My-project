@@ -23,7 +23,8 @@ namespace CameraGame.Events
             [Tooltip("Animator state to CrossFade into on entering this phase. Leave empty for no animation change this phase.")]
             public string animStateName = "";
 
-            [Tooltip("Optional audio cue played once on entering this phase. Leave empty for none.")]
+            [Tooltip("Optional accent played ONCE on entering this phase (e.g. a hiccup at the Peak). Layers on " +
+                     "top of the event-level loopCue on the same AudioSource — it does not replace the bed.")]
             public AudioClip cue;
 
             [Tooltip("If true, the actor walks toward the next route waypoint during this phase; if false it stands still.")]
@@ -57,8 +58,21 @@ namespace CameraGame.Events
         [Tooltip("The SubjectId the spawned actor reports to grading (e.g. \"TownDrunk\"). Must be non-empty.")]
         public string Id;
 
-        [Min(0f), Tooltip("Radius (metres) within which this event's diegetic cue is audible. Used by Story 1.8.")]
-        public float cueRadius = 25f;
+        [Tooltip("Optional looping cue played for the WHOLE lifecycle (spawn → despawn) so the event can be " +
+                 "found by ear. Leave empty for a silent event — that is a valid configuration. Must be a MONO " +
+                 "clip: Unity cannot spatialise stereo, so a stereo cue is audible but not locatable.")]
+        public AudioClip loopCue;
+
+        [Min(0f), Tooltip("Distance (WORLD UNITS) at which the cue has faded to inaudible. NOT metres: this " +
+                          "world is modelled at roughly 4× metric scale, so the design's \"~25 m cue radius\" is " +
+                          "about 100 world units here. The actor writes this into AudioSource.maxDistance at " +
+                          "Begin(), so a future world rescale is one data edit per event, not a prefab hunt.")]
+        public float cueRadius = 100f;
+
+        [Min(0.01f), Tooltip("Distance (WORLD UNITS) within which the cue plays at full volume; beyond it the " +
+                             "logarithmic rolloff toward cueRadius begins. Roughly one body-height keeps the cue " +
+                             "from being deafening when the player walks up to the actor.")]
+        public float cueFalloffStart = 8f;
 
         [Tooltip("Spawn phase — the actor appears.")]            public PhaseConfig spawn = new();
         [Tooltip("Build phase — tension/anticipation rises toward the peak.")] public PhaseConfig build = new();
