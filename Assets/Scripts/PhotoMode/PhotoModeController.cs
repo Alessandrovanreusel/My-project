@@ -322,11 +322,16 @@ namespace CameraGame.PhotoMode
         // cue (1.8) and the walk (1.7) could be. This draws what the grader actually saw — the projected
         // box and the verdict — so "the number looks wrong" becomes "the box is wrong". Editor/dev only;
         // it compiles out of a release build entirely.
+        //
+        // ⚠️ It is a SNAPSHOT, not a live readout: the box is in screen space as of the instant the shutter
+        // fired, while the world carries on moving behind it. Linger too long and it reads as a box floating
+        // over empty scenery — which already caused one wrong bug diagnosis from a screenshot taken a couple
+        // of seconds after the shot. Hence the short hold and the explicit "at capture" label below.
         private GradeDetail _debugDetail;
         private ShotGrade _debugGrade;
         private float _debugUntil;
 
-        private const float DebugHoldSeconds = 4f;
+        private const float DebugHoldSeconds = 1.5f;
 
         private void OnGUI()
         {
@@ -346,14 +351,17 @@ namespace CameraGame.PhotoMode
             }
 
             GUI.color = Color.white;
-            var label = new Rect(12f, 12f, 640f, 76f);
+            var label = new Rect(12f, 12f, 640f, 98f);
             GUI.Box(label, GUIContent.none);
             GUI.Label(new Rect(20f, 16f, 620f, 24f),
                 hit ? $"SHOT: {_debugGrade}" : $"SHOT FAILED: {_debugDetail.Miss}");
             GUI.Label(new Rect(20f, 38f, 620f, 24f),
                 $"coverage {_debugDetail.Coverage01:P2}  (gate {(gradingConfig != null ? gradingConfig.minCoverage : 0f):P2})");
             GUI.Label(new Rect(20f, 60f, 620f, 24f),
-                $"line-of-sight {_debugDetail.VisibleFraction:P0}  ·  box {r.width:F0}x{r.height:F0}px");
+                $"line-of-sight {_debugDetail.VisibleText}  ·  box {r.width:F0}x{r.height:F0}px");
+
+            // Says out loud that the box is frozen at the shutter while the world moves on.
+            GUI.Label(new Rect(20f, 82f, 620f, 24f), "▣ snapshot at capture — not a live view");
             GUI.color = prev;
         }
 #endif

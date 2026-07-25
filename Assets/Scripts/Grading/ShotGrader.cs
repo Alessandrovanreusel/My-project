@@ -22,10 +22,21 @@ namespace CameraGame.Grading
     /// so logging and the debug overlay cost nothing extra.</summary>
     public readonly struct GradeDetail
     {
+        /// <summary>Sentinel for <see cref="VisibleFraction"/> when the occlusion test never ran. Grading
+        /// early-outs at the first failed gate, so a shot rejected on frustum or coverage has NO
+        /// line-of-sight measurement — reporting that as 0% would read as "completely hidden" when the
+        /// subject was simply never checked.</summary>
+        public const float NotEvaluated = -1f;
+
         public readonly GradeMiss Miss;
         public readonly Rect ScreenRect;        // pixel-space, clamped to the camera viewport
         public readonly float Coverage01;       // fraction of the camera's pixel area the subject fills
-        public readonly float VisibleFraction;  // fraction of occlusion samples with clear line of sight
+        public readonly float VisibleFraction;  // clear-line-of-sight samples, or NotEvaluated
+
+        public bool OcclusionTested => VisibleFraction >= 0f;
+
+        /// <summary>Line-of-sight for display: a percentage, or "n/a" when the test never ran.</summary>
+        public string VisibleText => OcclusionTested ? VisibleFraction.ToString("P0") : "n/a";
 
         public GradeDetail(GradeMiss miss, Rect screenRect, float coverage01, float visibleFraction)
         {
@@ -37,8 +48,8 @@ namespace CameraGame.Grading
 
         public override string ToString() =>
             Miss == GradeMiss.None
-                ? $"hit (coverage {Coverage01:P1}, visible {VisibleFraction:P0})"
-                : $"miss:{Miss} (coverage {Coverage01:P1}, visible {VisibleFraction:P0})";
+                ? $"hit (coverage {Coverage01:P1}, visible {VisibleText})"
+                : $"miss:{Miss} (coverage {Coverage01:P1}, visible {VisibleText})";
     }
 
     /// <summary>
@@ -113,7 +124,8 @@ namespace CameraGame.Grading
 
             if (coverage < cfg.minCoverage)
             {
-                detail = new GradeDetail(GradeMiss.TooSmall, rect, coverage, 0f);
+                // NotEvaluated, not 0: we early-out here, so line of sight was never measured.
+                detail = new GradeDetail(GradeMiss.TooSmall, rect, coverage, GradeDetail.NotEvaluated);
                 return ShotGrade.Miss;
             }
 
@@ -133,7 +145,9 @@ namespace CameraGame.Grading
             return ShotGrade.FromPercent(coverage);
         }
 
-        private static GradeDetail Fail(GradeMiss miss) => new GradeDetail(miss, default, 0f, 0f);
+        // Every early-out above the occlusion gate reports NotEvaluated rather than 0 line-of-sight.
+        private static GradeDetail Fail(GradeMiss miss) =>
+            new GradeDetail(miss, default, 0f, GradeDetail.NotEvaluated);
 
         /// <summary>
         /// Projects a world AABB to a pixel-space <see cref="Rect"/>, clamped to the camera's viewport.
