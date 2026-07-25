@@ -47,6 +47,20 @@ bind pose measures nothing like the animated one.
 the feature is wrong. Produce evidence, then judge it. Ask: is this what a player would see? Is this
 what the story asked for? If the answer is no, change the code and run it again.
 
+**This applies to code review too — reviewing is not only reading.** When reviewing a change, build a
+world that exercises it and see what actually happens. Reading finds what a change *says* it does;
+running finds what it does. Use the freedom above to design the scenarios the change deserves:
+- **Stress it.** Many actors at once instead of one, long runs instead of a single cycle, rapid or
+  repeated input, pooled objects reused several times over. Bugs in this project have hidden almost
+  exclusively in reuse and in the second cycle onward, never in the first.
+- **Push the boundaries.** Zero, negative, huge and absent values for every tunable a change touches;
+  a missing reference; a config nobody has authored yet; the path no existing asset exercises.
+- **Reproduce before reporting.** A finding you can trigger and capture is worth ten you reasoned your
+  way to. If you cannot reproduce it, say so and label it a hypothesis rather than a defect.
+- **Use it to disprove, not just to confirm.** Reviewers — human or model — generate plausible findings
+  that turn out to be wrong. Running the scenario settles it in seconds and stops confident,
+  well-argued fiction from reaching Alexv as fact.
+
 **Alexv is the second opinion, not the first.** Do not hand him a list of things to go and try. Bring
 him a conclusion and the evidence behind it. Say plainly which parts you verified and which you could
 not — never present a structural check as though it were a played one.
