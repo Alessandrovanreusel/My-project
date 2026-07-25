@@ -128,6 +128,19 @@ namespace CameraGame.Events
             // The agent is RequireComponent-guaranteed, but it may be disabled or off-mesh — those are
             // checked at the use site via NavUsable, not here. _navReady just records the component exists.
             _navReady = _agent != null;
+
+            // Fail-soft also means silent, so validate the animation data ONCE here instead of discovering it
+            // in play: CrossFade on a hash that names no state is a no-op, which surfaces as a drunk sliding
+            // along the route in bind pose with a completely clean console. Awake-only ⇒ no per-frame cost.
+            if (_animReady)
+            {
+                foreach (EventPhase p in (EventPhase[])Enum.GetValues(typeof(EventPhase)))
+                {
+                    EventDefinition.PhaseConfig cfg = definition.GetPhase(p);
+                    if (cfg.AnimStateHash != 0 && !_animator.HasState(0, cfg.AnimStateHash))
+                        GameLog.Warn("Events", $"{SubjectId}: phase {p} names animator state '{cfg.animStateName}', which does not exist on layer 0 of '{_animator.runtimeAnimatorController.name}'.");
+                }
+            }
         }
 
         /// <summary>
@@ -147,18 +160,38 @@ namespace CameraGame.Events
 
             // The agent ships DISABLED on the prefab so a prewarmed/pooled instance that is momentarily off
             // the NavMesh (e.g. parked at the manager's y=20 anchor) never logs Unity's "Failed to create
-            // agent". The manager has already positioned us at the (on-mesh) spawn point, so enabling here
-            // places the agent cleanly on the mesh — the 1.6 stub used the same agent-disabled trick.
+            // agent". Note this only bites on the FIRST spawn: nothing re-disables the agent on despawn, so a
+            // pooled instance comes back with it already enabled. That is fine — the Warp below is what
+            // actually makes reuse correct, and it runs either way.
             if (_navReady && !_agent.enabled)
                 _agent.enabled = true;
 
-            // Belt-and-braces: moving a NavMeshAgent by its transform doesn't reliably re-sync it (matters on
-            // a pooled reuse where the agent was already enabled), so Warp snaps it onto the mesh at the spawn.
-            if (_navReady && _agent.enabled && !_agent.isOnNavMesh)
+            // Re-sync the agent to the spawn point. This is NOT belt-and-braces. Enabling an agent — or
+            // re-activating a pooled GameObject — registers it at whatever position it currently occupies, and
+            // from that moment the agent is AUTHORITATIVE: it writes its internal position into the transform
+            // every frame. The manager has already moved our transform to the spawn point, so without an
+            // unconditional Warp the agent simply drags the body back to where it despawned.
+            //
+            // This guard used to read `&& !_agent.isOnNavMesh`, which skipped the Warp in exactly the
+            // pooled-reuse case it existed for: the previous despawn point is ON the mesh, so the condition
+            // read false and every event after the first replayed at the alley (confirmed by runtime polling,
+            // 2026-07-25). Warp is idempotent and cheap — just always do it.
+            if (_navReady && _agent.enabled)
+            {
                 _agent.Warp(transform.position);
 
+                // A pooled agent also carries the previous cycle's path and isStopped flag. Clear both so the
+                // fresh lifecycle starts from waypoint 0 instead of resuming the last cycle's destination.
+                if (_agent.isOnNavMesh)
+                {
+                    _agent.ResetPath();
+                    _agent.isStopped = false;
+                }
+            }
+
             // AC3 — the owed isOnNavMesh guard (deferred from Story 1.6). If we were given a real route but
-            // the agent can't use the NavMesh (disabled or the spawn point is off-mesh), warn ONCE and carry
+            // the agent can't use the NavMesh (disabled or the spawn point is off-mesh), warn once PER SPAWN
+            // (there is no latch — a permanently misconfigured spawn point will log every respawn) and carry
             // on: the timed FSM still runs to completion, the drunk just performs it in place. Recoverable ⇒
             // Warn + continue (architecture §Error Handling), never an exception in Update.
             if (_route != null && _route.HasWaypoints && !NavUsable)
@@ -181,6 +214,12 @@ namespace CameraGame.Events
             if (!_running) return;
 
             // AC3: never throw from Update. The only state touched here is timers + the data-driven FSM.
+            // NOTE (2026-07-25): clamping this step (Mathf.Min(Time.deltaTime, 0.1f)) to stop a frame hitch
+            // collapsing the 1.5 s Peak was tried and REVERTED. Clamping decouples the FSM clock from
+            // wall-clock: any frame slower than the clamp stretches the lifecycle instead of keeping time, and
+            // in a low-fps editor the 24.5 s event ran well past a minute. The single-frame-Peak risk is real
+            // but hypothetical; silently slowing every event under load is not. If this is revisited, fix it
+            // in EnterPhase's overshoot carry (clamp how much negative _timer is carried), not on the input.
             _timer -= Time.deltaTime;
             TimeToPeak -= Time.deltaTime;   // continuous — keeps counting through and past the peak
 
@@ -215,6 +254,13 @@ namespace CameraGame.Events
                     // Update re-entering this case if anything delays the manager's SetActive(false)
                     // (e.g. a second Despawned subscriber, or a future deferred/animated return).
                     _running = false;
+
+                    // NOTE (2026-07-25): re-disabling the agent here — to restore the prefab's "ships
+                    // disabled" invariant across pooling — was tried and REVERTED. It wedged the lifecycle:
+                    // the actor stayed active post-despawn with its agent disabled and never cycled again.
+                    // The pooled-reuse position bug is fully fixed by Begin()'s unconditional Warp, which does
+                    // not care whether the agent survived the pool enabled. Do not re-add this without a
+                    // Play-mode test across at least two spawn cycles.
                     Despawned?.Invoke(this);
                     break;
             }
@@ -229,8 +275,12 @@ namespace CameraGame.Events
                                             // doesn't drift later than wall-clock across many transitions.
 
             // Animation fail-soft: only CrossFade when a controller exists and this phase names a state.
+            // CrossFadeInFixedTime, NOT CrossFade: the plain overload's duration is NORMALIZED — a fraction of
+            // the target clip's length, not seconds. With 0.2f that meant ~0.79 s of blend on the 3.97 s
+            // DrunkStagger, i.e. over half of the 1.5 s Peak was a transition rather than the money shot
+            // (2026-07-25 review). In fixed time it is a flat 0.2 s whatever the clip length.
             if (_animReady && phase.AnimStateHash != 0)
-                _animator.CrossFade(phase.AnimStateHash, 0.2f);
+                _animator.CrossFadeInFixedTime(phase.AnimStateHash, 0.2f);
 
             // Cue fail-soft: only when both a clip and an AudioSource are present.
             if (phase.cue != null && _cueSource != null)
@@ -258,7 +308,12 @@ namespace CameraGame.Events
         /// site, so SetDestination is never invoked off-mesh (where it would warn and return false).</summary>
         private void SetDestinationToCurrentWaypoint()
         {
-            _agent.SetDestination(_route.GetWaypoint(_waypointIndex));
+            // SetDestination returns false when the target cannot be mapped onto the NavMesh. Swallowing that
+            // made an unreachable waypoint indistinguishable from a healthy route: remainingDistance stays at
+            // Infinity, the arrival test in Update never fires again, and the actor plays its walk animation
+            // standing still for the rest of its lifecycle with nothing in the console (2026-07-25 review).
+            if (!_agent.SetDestination(_route.GetWaypoint(_waypointIndex)))
+                GameLog.Warn("Events", $"{SubjectId}: waypoint {_waypointIndex} could not be mapped onto the NavMesh — the route will not advance past it.");
         }
     }
 }
