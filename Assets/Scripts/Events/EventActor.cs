@@ -43,6 +43,11 @@ namespace CameraGame.Events
         private EventRoute _route;
         private int _waypointIndex;
 
+        // Cached cue rolloff curve + the tunables it was built from (see GetRolloffCurve).
+        private AnimationCurve _rolloffCurve;
+        private float _curveFalloffStart;
+        private float _curveRadius;
+
         private EventPhase _phase;
         private float _timer;
         private bool _running;                   // true from Begin() until despawn; gates Update and latches the single Despawn signal
@@ -246,6 +251,19 @@ namespace CameraGame.Events
                     _cueSource.minDistance = definition.cueFalloffStart;
                     _cueSource.maxDistance = definition.cueRadius;
 
+                    // CUSTOM rolloff, not Logarithmic. Unity defines maxDistance as "the distance where the
+                    // sound STOPS attenuating" — not where it becomes silent. Under Logarithmic the volume
+                    // therefore flattens out at minDistance/maxDistance (8/100 = 0.08, about -22 dB) and holds
+                    // that level to infinity, so the drunk stayed faintly audible from anywhere in the town
+                    // (confirmed by ear, 2026-07-25). Worse, the plateau is a RATIO: shrinking cueRadius
+                    // *raises* it (8/60 = 0.13), so this cannot be tuned away with distance — only the curve
+                    // shape fixes it. The curve below keeps the natural inverse-distance falloff near the
+                    // source (which is what makes "walk toward the louder side" work) and genuinely reaches
+                    // zero at cueRadius, satisfying AC1's "inaudible well beyond the radius".
+                    _cueSource.rolloffMode = AudioRolloffMode.Custom;
+                    _cueSource.SetCustomCurve(AudioSourceCurveType.CustomRolloff,
+                                              GetRolloffCurve(definition.cueFalloffStart, definition.cueRadius));
+
                     _cueSource.Play();
                 }
                 else
@@ -369,6 +387,53 @@ namespace CameraGame.Events
 
             PhaseChanged?.Invoke(next);
             GameLog.Info("Events", $"{SubjectId} → {next}");
+        }
+
+        /// <summary>
+        /// Builds the cue's distance-attenuation curve, cached so respawning doesn't re-allocate.
+        ///
+        /// Shape: <c>volume(x) = (x0/x) · (1-x)/(1-x0)</c> where x is distance/cueRadius and x0 is
+        /// cueFalloffStart/cueRadius. The first term is plain inverse-distance — the natural falloff a real
+        /// sound has, and the reason the volume gradient reads as "getting warmer" when you walk toward it.
+        /// The second term fades that to exactly zero at cueRadius, which is the part Unity's built-in
+        /// Logarithmic mode will not do. Full volume is held from 0 out to cueFalloffStart.
+        ///
+        /// (Note that with Custom rolloff the curve alone defines attenuation — minDistance is ignored by
+        /// the engine, so cueFalloffStart is baked in here as the flat region rather than read from it.)
+        /// </summary>
+        private AnimationCurve GetRolloffCurve(float falloffStart, float radius)
+        {
+            // Rebuild only when the tunables actually change, so tweaking them mid-session to tune by ear
+            // still works while a steady configuration allocates nothing per spawn.
+            if (_rolloffCurve != null
+                && Mathf.Approximately(_curveFalloffStart, falloffStart)
+                && Mathf.Approximately(_curveRadius, radius))
+                return _rolloffCurve;
+
+            // Guard the degenerate authoring cases (radius 0, or a falloff start past the radius) so we can
+            // never divide by zero or emit a curve that rises — fail-soft, as everywhere else in this class.
+            float x0 = radius > 0f ? Mathf.Clamp(falloffStart / radius, 0.001f, 0.5f) : 0.5f;
+
+            const int samples = 10;
+            var keys = new Keyframe[samples + 1];
+            keys[0] = new Keyframe(0f, 1f);          // full volume from the listener's nose out to x0
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t = i / (float)(samples - 1);
+                float x = Mathf.Lerp(x0, 1f, t * t);  // t² clusters samples near the source, where it bends most
+                float y = x >= 1f ? 0f : (x0 / x) * (1f - x) / (1f - x0);
+                keys[i + 1] = new Keyframe(x, y);
+            }
+
+            var curve = new AnimationCurve(keys);
+            for (int i = 0; i < curve.length; i++)
+                curve.SmoothTangents(i, 0f);          // default flat tangents would make the curve ripple
+
+            _rolloffCurve = curve;
+            _curveFalloffStart = falloffStart;
+            _curveRadius = radius;
+            return curve;
         }
 
         /// <summary>Points the agent at the current waypoint. Gated by NavUsable/HasWaypoints at every call
