@@ -17,6 +17,13 @@ namespace CameraGame.Core
 
         // Layers / tags — fill in as systems need them (kept here to kill magic strings).
         public static class Tags { /* e.g. public const string Subject = "Subject"; */ }
-        public static class Layers { /* e.g. public const string Occluder = "Occluder"; */ }
+
+        public static class Layers
+        {
+            /// <summary>Layer 8. Photographable event actors live here so grading's occlusion linecasts can
+            /// exclude the subject from its own line-of-sight test (Story 1.9) — everything else in the
+            /// project sits on Default, which is what the occluder mask targets.</summary>
+            public const string Subject = "Subject";
+        }
     }
 }

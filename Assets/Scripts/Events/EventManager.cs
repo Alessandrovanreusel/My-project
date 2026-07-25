@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using CameraGame.Core;
 
@@ -30,8 +31,23 @@ namespace CameraGame.Events
         private EventRoute route;
 
         private ObjectPool<EventActor> _pool;
-        private int _activeCount;
         private float _respawnTimer;   // counts down; spawn when it reaches 0 and capacity is free
+
+        // The actors currently running a lifecycle. This replaced a plain int counter in Story 1.9: grading
+        // needs the actual subjects, not just how many there are, and keeping both would have been two
+        // sources of truth for the same fact. Kept exactly as symmetric as the Despawned subscribe/unsubscribe
+        // below — added in Spawn(), removed in HandleDespawned(), never anywhere else.
+        private readonly List<EventActor> _active = new List<EventActor>();
+
+        /// <summary>
+        /// The actors currently alive, for systems that need to look at the live world — grading reads this
+        /// on capture (Story 1.9). Read-only to callers so nobody can desync the manager's own bookkeeping.
+        ///
+        /// ⚠️ Actors are POOLED: an entry here is only valid for as long as it is in this list. Read it live
+        /// at the moment you need it and never cache an element across frames, or you will be holding a
+        /// recycled instance describing a different event (see ISubject's liveness contract).
+        /// </summary>
+        public IReadOnlyList<EventActor> ActiveActors => _active;
 
         private void Awake()
         {
@@ -49,7 +65,7 @@ namespace CameraGame.Events
         private void Update()
         {
             // At capacity — nothing to do.
-            if (_activeCount >= maxConcurrent) return;
+            if (_active.Count >= maxConcurrent) return;
 
             _respawnTimer -= Time.deltaTime;
             if (_respawnTimer > 0f) return;
@@ -84,14 +100,19 @@ namespace CameraGame.Events
             // not at the prefab's authored pose (the actor no longer self-starts from OnEnable). The scene
             // route (if any) is handed in here so the actor walks pub→alley (Story 1.7).
             actor.Begin(route);
-            _activeCount++;
+            _active.Add(actor);
         }
 
         private void HandleDespawned(EventActor actor)
         {
             actor.Despawned -= HandleDespawned;
             _pool.Return(actor);
-            _activeCount = Mathf.Max(0, _activeCount - 1);
+
+            // Remove rather than decrement. The old counter needed a Mathf.Max(0, ...) floor to survive a
+            // double-despawn; List.Remove is naturally idempotent (it returns false for an absent entry), so
+            // the guard is now structural instead of arithmetic.
+            _active.Remove(actor);
+
             _respawnTimer = respawnDelay;   // pace the next spawn
         }
 
@@ -99,6 +120,10 @@ namespace CameraGame.Events
         {
             // Destroy idle instances so the pool doesn't leak across scene loads (NFR3).
             _pool?.Clear();
+
+            // Drop the live references too: after a scene unload these point at destroyed objects, and a
+            // late reader (a queued capture, a lingering coroutine) would otherwise walk a list of corpses.
+            _active.Clear();
         }
     }
 }

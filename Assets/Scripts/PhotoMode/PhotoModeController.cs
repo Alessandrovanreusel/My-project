@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -61,6 +62,18 @@ namespace CameraGame.PhotoMode
                  "If unassigned, the flash is skipped (fail-soft).")]
         [SerializeField] private CanvasGroup captureFlash;
 
+        [Header("Grading (Photo Mode)")]
+
+        [Tooltip("Designer-facing grading thresholds — the frame-coverage gate and the occlusion settings " +
+                 "(Story 1.9). If unassigned, capture falls back to the placeholder grade rather than " +
+                 "going silent.")]
+        [SerializeField] private GradingConfig gradingConfig;
+
+        [Tooltip("The EventManager whose live actors are the photographable subjects. Grading asks it for " +
+                 "the current subjects at the moment of capture — subjects are pooled, so they are read " +
+                 "live and never cached. If unassigned, capture falls back to the placeholder grade.")]
+        [SerializeField] private EventManager eventManager;
+
         /// <summary>Current camera mode. Read-only to the outside world.</summary>
         public CameraMode Mode { get; private set; } = CameraMode.Walk;
 
@@ -90,6 +103,11 @@ namespace CameraGame.PhotoMode
         private bool _shutterReady;
         private bool _flashReady;
 
+        // Grading readiness, resolved independently of the three above (Story 1.9). A missing GradingConfig
+        // must not disable the flash, and a missing flash must not disable grading — the same independence
+        // the 1.4 and 1.5 reviews called out. When false, capture keeps raising the placeholder grade.
+        private bool _gradingReady;
+
         // Flash decay timer: set to 1 on capture, eased to 0 over captureConfig.flashDuration in Update,
         // so the flash onset is immediate but its fade is frame-rate-eased rather than a one-frame pop.
         private float _flashT;
@@ -114,6 +132,22 @@ namespace CameraGame.PhotoMode
             if (!_captureReady)
                 GameLog.Error("PhotoMode",
                     "ShotCapturedChannel unassigned — capture will fire feedback but raise no event.", this);
+
+            // Grading needs a config, a source of subjects, and the camera it grades through. Resolved after
+            // the camera fallback above so photoCamera is already settled.
+            _gradingReady = gradingConfig != null && eventManager != null && photoCamera != null;
+            if (!_gradingReady)
+            {
+                GameLog.Error("Grading",
+                    "GradingConfig, EventManager or Camera unassigned — captures will keep returning the " +
+                    "placeholder grade (feedback and the event still fire).", this);
+            }
+            else if (gradingConfig.TryGetConfigProblem(out string gradingProblem))
+            {
+                // Fail-soft must not mean invisible: these are values that let grading run while producing
+                // meaningless verdicts, which is far harder to notice than an outright failure.
+                GameLog.Warn("Grading", $"GradingConfig: {gradingProblem}");
+            }
 
             _shutterReady = captureAudioSource != null && shutterClip != null && captureConfig != null;
             if (!_shutterReady)
@@ -257,12 +291,105 @@ namespace CameraGame.PhotoMode
                 captureFlash.alpha = 1f;
             }
 
-            // Raise the event with a PLACEHOLDER grade — real grading is Stories 1.9–1.10.
-            if (_captureReady)
-                shotCapturedChannel.Raise(ShotGrade.Placeholder);
+            // Grade AFTER firing the feedback: the flash and shutter are what make the camera feel instant,
+            // and they must not wait on anything. Grading itself is a few dozen floating-point operations
+            // plus a handful of linecasts, comfortably inside the 0.2 s budget (NFR2).
+            ShotGrade grade = ShotGrade.Placeholder;
+            GradeDetail detail = default;
+            if (_gradingReady)
+                grade = GradeBestSubject(out detail);
 
-            // Milestone log — capture is user-driven/infrequent, so this is not console spam.
-            GameLog.Info("PhotoMode", "Shot captured (placeholder grade).");
+            if (_captureReady)
+                shotCapturedChannel.Raise(grade);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            _debugGrade = grade;
+            _debugDetail = detail;
+            _debugUntil = Time.unscaledTime + DebugHoldSeconds;
+#endif
+
+            // Milestone log — capture is user-driven/infrequent, so this is not console spam. It reports the
+            // REASON as well as the score: a bare 0% gives a designer nothing to act on.
+            if (_gradingReady)
+                GameLog.Info("Grading", $"Shot captured — {grade}, {detail}.");
+            else
+                GameLog.Info("PhotoMode", "Shot captured (placeholder grade — grading not configured).");
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        // --- Grading debug overlay (Story 1.9, Task 6) ----------------------------------------------
+        // Grading has no sound and no animation, so there is nothing to check by eye or ear the way the
+        // cue (1.8) and the walk (1.7) could be. This draws what the grader actually saw — the projected
+        // box and the verdict — so "the number looks wrong" becomes "the box is wrong". Editor/dev only;
+        // it compiles out of a release build entirely.
+        private GradeDetail _debugDetail;
+        private ShotGrade _debugGrade;
+        private float _debugUntil;
+
+        private const float DebugHoldSeconds = 4f;
+
+        private void OnGUI()
+        {
+            if (Time.unscaledTime > _debugUntil) return;
+
+            Rect r = _debugDetail.ScreenRect;
+            bool hit = _debugDetail.Miss == GradeMiss.None;
+
+            // GUI space has y growing DOWNWARD; screen-space rects from the grader grow upward.
+            var boxed = new Rect(r.x, Screen.height - r.y - r.height, r.width, r.height);
+
+            Color prev = GUI.color;
+            GUI.color = hit ? Color.green : Color.red;
+            if (r.width > 0f && r.height > 0f)
+            {
+                GUI.Box(boxed, GUIContent.none);
+            }
+
+            GUI.color = Color.white;
+            var label = new Rect(12f, 12f, 640f, 76f);
+            GUI.Box(label, GUIContent.none);
+            GUI.Label(new Rect(20f, 16f, 620f, 24f),
+                hit ? $"SHOT: {_debugGrade}" : $"SHOT FAILED: {_debugDetail.Miss}");
+            GUI.Label(new Rect(20f, 38f, 620f, 24f),
+                $"coverage {_debugDetail.Coverage01:P2}  (gate {(gradingConfig != null ? gradingConfig.minCoverage : 0f):P2})");
+            GUI.Label(new Rect(20f, 60f, 620f, 24f),
+                $"line-of-sight {_debugDetail.VisibleFraction:P0}  ·  box {r.width:F0}x{r.height:F0}px");
+            GUI.color = prev;
+        }
+#endif
+
+        /// <summary>
+        /// Grades every live subject and keeps the best result — the player photographed whichever one they
+        /// framed best. <c>maxConcurrent</c> is 1 for the MVP slice, so today this loop runs once; written as
+        /// a loop anyway so Epic 2's busier town cannot silently grade the wrong actor.
+        ///
+        /// Subjects are read LIVE from the manager here and never stored: they are pooled, so a cached
+        /// reference does not go null when its event ends — it quietly becomes a different event
+        /// (ISubject's liveness contract).
+        /// </summary>
+        private ShotGrade GradeBestSubject(out GradeDetail bestDetail)
+        {
+            ShotGrade best = ShotGrade.Miss;
+            bestDetail = default;
+
+            IReadOnlyList<EventActor> actors = eventManager.ActiveActors;
+            for (int i = 0; i < actors.Count; i++)
+            {
+                EventActor actor = actors[i];
+                if (actor == null) continue;   // destroyed between spawn and capture — skip, not throw
+
+                ShotGrade g = ShotGrader.Grade(photoCamera, actor, gradingConfig, out GradeDetail d);
+
+                // Strictly greater, so the FIRST subject's detail survives when everything misses at 0% —
+                // otherwise a miss would report the last actor's reason rather than the most relevant one.
+                if (i == 0 || g.Percent01 > best.Percent01)
+                {
+                    best = g;
+                    bestDetail = d;
+                }
+            }
+
+            return best;
         }
 
         private void SetMode(CameraMode mode)

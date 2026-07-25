@@ -327368,6 +327368,8 @@ MonoBehaviour:
   captureAudioSource: {fileID: 1871784537}
   shutterClip: {fileID: 8300000, guid: 5ed0197886ea7d54cabf8b1ea4e7dc28, type: 3}
   captureFlash: {fileID: 2137280112}
+  gradingConfig: {fileID: 11400000, guid: ff7e69b78a3599949b64f3aba4e8f922, type: 2}
+  eventManager: {fileID: 661196451}
 --- !u!82 &1871784537
 AudioSource:
   m_ObjectHideFlags: 0
