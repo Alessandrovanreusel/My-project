@@ -249,7 +249,14 @@ namespace CameraGame.PhotoMode
         // delivers both edges, so value.isPressed correctly flips false on release.
         public void OnRaiseCamera(InputValue value)
         {
-            SetMode(value.isPressed ? CameraMode.Photo : CameraMode.Walk);
+            SetPhotoMode(value.isPressed);
+        }
+
+        /// <summary>Raises or lowers the camera. The input handler above is a thin adapter over this, so
+        /// anything that needs to drive the camera without synthesising an InputValue can call it.</summary>
+        public void SetPhotoMode(bool raised)
+        {
+            SetMode(raised ? CameraMode.Photo : CameraMode.Walk);
         }
 
         // Method name "OnZoom" derives from the action name GameConstants.InputActions.Zoom ("Zoom").
@@ -268,12 +275,33 @@ namespace CameraGame.PhotoMode
             _zoomT = Mathf.Clamp01(_zoomT + Mathf.Sign(y) * cameraConfig.zoomStepPerNotch);
         }
 
+        /// <summary>
+        /// Sets zoom directly (0 = wide, 1 = full telephoto). Update still eases the FOV toward it, exactly
+        /// as it does for scroll input — so callers must let a few frames pass before the framing settles.
+        /// Setting <c>Camera.fieldOfView</c> from outside does NOT work: Update drives it from this value
+        /// every frame and would immediately undo it.
+        /// </summary>
+        public void SetZoom(float normalized)
+        {
+            _zoomT = Mathf.Clamp01(normalized);
+        }
+
         // Method name "OnCapture" derives from the action name GameConstants.InputActions.Capture
         // ("Capture"). Unlike RaiseCamera/Zoom, Capture is a *Button* action on purpose: a discrete
         // one-shot tap. Under PlayerInput Send Messages a Button delivers exactly ONE call per press —
         // exactly one shot. (A Value action would fire on press AND release, double-capturing, unless
         // guarded with `if (!value.isPressed) return;`.) See story guardrail #1.
         public void OnCapture(InputValue value)
+        {
+            Capture();
+        }
+
+        /// <summary>
+        /// Takes the photo: feedback, grade, event. <see cref="OnCapture"/> is a thin input adapter over
+        /// this, so the shutter can also be pulled by something other than a key press — which is what lets
+        /// the real capture path be driven and photographed rather than approximated.
+        /// </summary>
+        public void Capture()
         {
             if (!IsPhotoMode) return; // AC2: capture is a no-op in Walk (camera lowered).
 
@@ -333,6 +361,13 @@ namespace CameraGame.PhotoMode
 
         private const float DebugHoldSeconds = 1.5f;
 
+        /// <summary>The grade from the most recent capture. Editor-only, for tooling that photographs the
+        /// real capture path and needs the verdict that went with the frame.</summary>
+        public ShotGrade LastGrade => _debugGrade;
+
+        /// <summary>Diagnostic detail from the most recent capture (reason, screen rect, coverage).</summary>
+        public GradeDetail LastDetail => _debugDetail;
+
         private void OnGUI()
         {
             if (Time.unscaledTime > _debugUntil) return;
@@ -378,7 +413,12 @@ namespace CameraGame.PhotoMode
         private ShotGrade GradeBestSubject(out GradeDetail bestDetail)
         {
             ShotGrade best = ShotGrade.Miss;
-            bestDetail = default;
+
+            // Explicit, not `default`. An untouched GradeDetail reports no miss reason at all, which reads
+            // as a pass — so a shutter press in an empty world was being reported as a counted shot even
+            // though the grade itself was correctly 0%. Photographing nobody is a miss, and it should say
+            // which kind. (GradeMiss.Unevaluated now guards the same mistake structurally.)
+            bestDetail = new GradeDetail(GradeMiss.NoSubject, default, 0f, GradeDetail.NotEvaluated);
 
             IReadOnlyList<EventActor> actors = eventManager.ActiveActors;
             for (int i = 0; i < actors.Count; i++)

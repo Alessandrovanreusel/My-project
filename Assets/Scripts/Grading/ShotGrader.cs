@@ -7,7 +7,16 @@ namespace CameraGame.Grading
     /// is the most confusing thing you can hand a designer, so every miss says which gate rejected it.</summary>
     public enum GradeMiss
     {
-        None = 0,
+        /// <summary>No grade was ever computed. **Deliberately the zero value** so that a
+        /// <c>default(GradeDetail)</c> can never masquerade as a successful shot. It did: with
+        /// <c>None = 0</c>, pressing the shutter in an empty world returned an untouched detail struct
+        /// that every reader — the overlay, the logs — reported as "counted", while the grade itself was
+        /// correctly 0%. Photographing nothing scored as a hit.</summary>
+        Unevaluated = 0,
+
+        /// <summary>The shot passed every gate.</summary>
+        None,
+
         NoCamera,
         NoSubject,
         NoConfig,
