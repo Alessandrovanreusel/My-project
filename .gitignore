@@ -74,9 +74,10 @@ Desktop.ini
 # BMad Method framework + generated planning/implementation artifacts (GDD, epics, stories, sprint status)
 /_bmad/
 /_bmad-output/
-# Claude Code: config, skills, and project guidance
+# Claude Code: config and skills stay local; CLAUDE.md is versioned on purpose —
+# it holds project knowledge (Jira sync contract, verification expectations, Unity
+# traps already paid for), not personal preferences, so it belongs with the code.
 /.claude/
-/CLAUDE.md
 # Agent definitions (BMad/GDS agents authored under .github/agents — not GitHub Actions CI)
 /.agents/
 /.github/agents/

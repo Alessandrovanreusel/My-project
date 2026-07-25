@@ -27,6 +27,32 @@ namespace CameraGame.EditorTools
     {
         public const string OutputDir = "Temp/PhotoShoot";
 
+        // Survives the domain reloads that entering and leaving play mode cause, so the rig can put the
+        // developer back in the scene they were working in instead of stranding them in the test world.
+        private const string ReturnSceneKey = "PhotoShoot.ReturnScene";
+
+        [InitializeOnLoadMethod]
+        private static void HookPlayModeExit()
+        {
+            EditorApplication.playModeStateChanged -= OnPlayModeChanged;
+            EditorApplication.playModeStateChanged += OnPlayModeChanged;
+        }
+
+        private static void OnPlayModeChanged(PlayModeStateChange state)
+        {
+            if (state != PlayModeStateChange.EnteredEditMode) return;
+
+            string previous = SessionState.GetString(ReturnSceneKey, string.Empty);
+            if (string.IsNullOrEmpty(previous)) return;
+
+            SessionState.EraseString(ReturnSceneKey);
+            if (File.Exists(previous))
+            {
+                EditorSceneManager.OpenScene(previous, OpenSceneMode.Single);
+                Debug.Log($"[PhotoShoot] Shoot finished — reopened {previous}.");
+            }
+        }
+
         private const string ConfigPath = "Assets/Data/Grading/GradingConfig.asset";
         private const string ChannelPath = "Assets/Data/Channels/ShotCapturedChannel.asset";
         private const string CaptureCfgPath = "Assets/Data/Camera/CaptureConfig.asset";
@@ -51,6 +77,10 @@ namespace CameraGame.EditorTools
 
             if (Directory.Exists(OutputDir)) Directory.Delete(OutputDir, true);
             Directory.CreateDirectory(OutputDir);
+
+            // Remember where we came from so leaving play mode returns there. Without this the rig strands
+            // you in an untitled test world and you have to find your way back by hand.
+            SessionState.SetString(ReturnSceneKey, SceneManager.GetActiveScene().path);
 
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
