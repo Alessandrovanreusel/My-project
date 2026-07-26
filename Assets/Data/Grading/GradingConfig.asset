@@ -12,9 +12,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cdc5f98c3976591418522dfec4d0062d, type: 3}
   m_Name: GradingConfig
   m_EditorClassIdentifier: CameraGame::CameraGame.Grading.GradingConfig
-  minCoverage: 0.08
+  minSubjectHeight: 0.2
   occluderMask:
     serializedVersion: 2
     m_Bits: 1
   occlusionSamples: 5
   minVisibleSamples: 0.2
+  prominenceIdealMin: 0.45
+  prominenceIdealMax: 0.78
+  prominenceFalloffBelow: 0.15
+  prominenceFalloffAbove: 1.15
+  thirdsWeight: 0.35
+  cutoffWeight: 0.6
+  timingFullSeconds: 0.5
+  timingZeroSeconds: 2

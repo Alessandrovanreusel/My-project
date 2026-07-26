@@ -250,6 +250,7 @@ namespace CameraGame.EditorTools
             runner.manager = manager;
             runner.cam = cam;
             runner.cameraConfig = cameraCfg;
+            runner.gradingConfig = grading;
             runner.outputDir = OutputDir;
 
             Debug.Log("[PhotoShoot] World built. Entering play mode — shots will land in " + OutputDir);

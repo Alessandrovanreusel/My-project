@@ -88,6 +88,32 @@ namespace CameraGame.Events
         /// the timing grader (1.10) can use Mathf.Abs for a symmetric window — do NOT stop at the peak.</summary>
         public float TimeToPeak { get; private set; }
 
+        /// <summary>
+        /// Distance from the peak WINDOW rather than from its start — see <see cref="ISubject.PeakOffset"/>
+        /// for why the difference decides whether the money shot scores full marks.
+        ///
+        /// Derived rather than stored: <see cref="TimeToPeak"/> already carries the clock and
+        /// <see cref="_phase"/> already says where we are, so there is no second piece of state to drift
+        /// (Story 1.9's review: two sources of truth is this project's recurring failure mode). Branching on
+        /// the PHASE, not on the sign of TimeToPeak, so an actor that has not been <see cref="Begin"/>-run
+        /// yet — TimeToPeak 0, phase Spawn — reports "before the peak" rather than "1.5 s after it".
+        /// </summary>
+        public float PeakOffset
+        {
+            get
+            {
+                if (_phase == EventPhase.Peak) return 0f;                 // anywhere in the money shot
+                if (_phase < EventPhase.Peak) return Mathf.Max(0f, TimeToPeak);
+
+                // After the peak. TimeToPeak is already −peakDuration at the window's end, so adding the
+                // duration back re-bases the countdown onto the window's END: 0 the instant the peak
+                // finishes, growing negative from there. Min(0) so a mis-authored zero-length peak or a
+                // frame overshoot can never report a POSITIVE offset from the far side.
+                float peakDuration = definition != null ? definition.GetPhase(EventPhase.Peak).duration : 0f;
+                return Mathf.Min(0f, TimeToPeak + peakDuration);
+            }
+        }
+
         public string SubjectId => definition != null ? definition.Id : name;
 
         // --- Local (intra-system) signals -----------------------------------------------------------

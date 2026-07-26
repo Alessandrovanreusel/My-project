@@ -64,9 +64,9 @@ namespace CameraGame.PhotoMode
 
         [Header("Grading (Photo Mode)")]
 
-        [Tooltip("Designer-facing grading thresholds — the frame-coverage gate and the occlusion settings " +
-                 "(Story 1.9). If unassigned, capture falls back to the placeholder grade rather than " +
-                 "going silent.")]
+        [Tooltip("Designer-facing grading tunables — the subject-size and occlusion gates (Story 1.9) plus " +
+                 "the composition sweet spot and peak-timing window (Story 1.10). If unassigned, capture " +
+                 "falls back to the placeholder grade rather than going silent.")]
         [SerializeField] private GradingConfig gradingConfig;
 
         [Tooltip("The EventManager whose live actors are the photographable subjects. Grading asks it for " +
@@ -342,7 +342,9 @@ namespace CameraGame.PhotoMode
 #endif
 
             // Milestone log — capture is user-driven/infrequent, so this is not console spam. It reports the
-            // REASON as well as the score: a bare 0% gives a designer nothing to act on.
+            // per-axis BREAKDOWN as well as the total and the reason: a bare "62%" tells a designer nothing
+            // about which axis cost them the shot, which is the only actionable part. (ShotGrade.ToString
+            // carries composition × timing; GradeDetail carries the measurements behind them.)
             if (_gradingReady)
                 GameLog.Info("Grading", $"Shot captured — {grade}, {detail}.");
             else
@@ -398,19 +400,56 @@ namespace CameraGame.PhotoMode
                 GUI.Box(boxed, GUIContent.none);
             }
 
+            // The thirds grid the composition score is measured against. Drawn only for a counted shot —
+            // on a rejected one it is noise over the reason the shot failed. Faint, so it reads as a
+            // guide rather than as part of the grader's verdict (the box is that).
+            if (hit)
+            {
+                GUI.color = new Color(1f, 1f, 1f, 0.25f);
+                DrawThirdsGrid();
+            }
+
             GUI.color = Color.white;
-            var label = new Rect(12f, 12f, 640f, 98f);
+            var label = new Rect(12f, 12f, 640f, 120f);
             GUI.Box(label, GUIContent.none);
             GUI.Label(new Rect(20f, 16f, 620f, 24f),
-                hit ? $"SHOT: {_debugGrade}" : $"SHOT FAILED: {_debugDetail.Miss}");
+                hit ? $"SHOT: {_debugGrade.Percent01:P0}  {_debugGrade.Stars}★" : $"SHOT FAILED: {_debugDetail.Miss}");
+
+            // The three axes, which is what makes a disappointing score actionable: "62%" says nothing,
+            // "composition 92% x timing 67%" says you were late, not badly framed.
             GUI.Label(new Rect(20f, 38f, 620f, 24f),
-                $"coverage {_debugDetail.Coverage01:P2}  (gate {(gradingConfig != null ? gradingConfig.minCoverage : 0f):P2})");
+                $"composition {_debugGrade.Composition01:P0}  ×  timing {_debugGrade.Timing01:P0}" +
+                $"   ·   subject seen {_debugGrade.Subject01:P0}");
             GUI.Label(new Rect(20f, 60f, 620f, 24f),
-                $"line-of-sight {_debugDetail.VisibleText}  ·  box {r.width:F0}x{r.height:F0}px");
+                $"height {_debugDetail.HeightFraction:P1}  (gate {(gradingConfig != null ? gradingConfig.SafeMinSubjectHeight : 0f):P1})" +
+                $"   ·   framed {_debugDetail.FramedFraction:P0}  ·  area {_debugDetail.Coverage01:P1}");
+            GUI.Label(new Rect(20f, 82f, 620f, 24f),
+                $"peak offset {_debugDetail.PeakOffsetText}  ·  line-of-sight {_debugDetail.VisibleText}" +
+                $"  ·  box {r.width:F0}x{r.height:F0}px");
 
             // Says out loud that the box is frozen at the shutter while the world moves on.
-            GUI.Label(new Rect(20f, 82f, 620f, 24f), "▣ snapshot at capture — not a live view");
+            GUI.Label(new Rect(20f, 104f, 620f, 24f), "▣ snapshot at capture — not a live view");
             GUI.color = prev;
+        }
+
+        /// <summary>Draws the rule-of-thirds grid across the camera's viewport in GUI space. Uses
+        /// <c>photoCamera.pixelRect</c> rather than the whole window, so the lines land where the grader
+        /// actually measured them even when the camera renders to a sub-rect of the screen.</summary>
+        private void DrawThirdsGrid()
+        {
+            Rect v = photoCamera != null ? photoCamera.pixelRect : new Rect(0f, 0f, Screen.width, Screen.height);
+            const float thickness = 1f;
+
+            for (int i = 1; i <= 2; i++)
+            {
+                float x = v.xMin + v.width * (i / 3f);
+                GUI.DrawTexture(new Rect(x, Screen.height - v.yMax, thickness, v.height), Texture2D.whiteTexture);
+
+                // GUI space grows DOWNWARD while the viewport grows upward, hence the flip through
+                // Screen.height — the same conversion the grader's box above goes through.
+                float y = Screen.height - (v.yMin + v.height * (i / 3f));
+                GUI.DrawTexture(new Rect(v.xMin, y, v.width, thickness), Texture2D.whiteTexture);
+            }
         }
 #endif
 
@@ -425,7 +464,10 @@ namespace CameraGame.PhotoMode
         /// </summary>
         private ShotGrade GradeBestSubject(out GradeDetail bestDetail)
         {
-            ShotGrade best = ShotGrade.Miss;
+            // Seeded with the SAME reason as bestDetail below, not a bare 0% miss. The two are printed side
+            // by side in the capture log, and seeding them from different places is how they come to
+            // disagree — the grade saying "never evaluated" while the detail says "no subject".
+            ShotGrade best = ShotGrade.Missed(GradeMiss.NoSubject);
 
             // Explicit, not `default`. An untouched GradeDetail reports no miss reason at all, which reads
             // as a pass — so a shutter press in an empty world was being reported as a counted shot even
