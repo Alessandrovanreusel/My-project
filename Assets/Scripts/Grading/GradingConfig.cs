@@ -1,4 +1,5 @@
 using UnityEngine;
+using CameraGame.Core;
 
 namespace CameraGame.Grading
 {
@@ -33,19 +34,43 @@ namespace CameraGame.Grading
         public LayerMask occluderMask;
 
         [Tooltip("How many points across the subject are line-of-sight tested. 1 tests only the centre, " +
-                 "which fails a 95%-visible subject standing behind a lamppost. 5 is a good default.")]
-        [Range(1, 16)] public int occlusionSamples = 5;
+                 "which fails a 95%-visible subject standing behind a lamppost. 5 is a good default and " +
+                 "already spans both sides of all three axes. The ceiling is 15 because that is how many " +
+                 "DISTINCT sample points exist (centre + 8 box corners + 6 face centres) — asking for more " +
+                 "would just re-test points already covered.")]
+        [Range(1, ShotGrader.MaxOcclusionSamples)] public int occlusionSamples = 5;
 
         [Tooltip("Fraction of those sample points that must be unblocked for the subject to count as " +
                  "visible. 0.2 = 'at least a fifth of him is showing'. 1.0 demands a completely " +
                  "unobstructed view, which is harsher than it sounds once fences and railings exist.")]
         [Range(0f, 1f)] public float minVisibleSamples = 0.2f;
 
-        /// <summary>Occlusion samples, guaranteed usable regardless of what is serialized in the asset.</summary>
-        public int SafeOcclusionSamples => Mathf.Clamp(occlusionSamples, 1, 16);
+        /// <summary>Occlusion samples, guaranteed usable regardless of what is serialized in the asset, and
+        /// capped at the number of distinct sample points that actually exist.</summary>
+        public int SafeOcclusionSamples =>
+            Mathf.Clamp(occlusionSamples, 1, ShotGrader.MaxOcclusionSamples);
 
-        /// <summary>Visible-fraction threshold, guaranteed in [0,1].</summary>
-        public float SafeMinVisibleSamples => Mathf.Clamp01(minVisibleSamples);
+        /// <summary>Visible-fraction threshold, guaranteed in [0,1] and never NaN.</summary>
+        public float SafeMinVisibleSamples => Clamp01Finite(minVisibleSamples, 0f);
+
+        /// <summary>
+        /// Coverage threshold, guaranteed in [0,1] and never NaN — this was the one tunable the grader read
+        /// raw. It matters because <c>[Range]</c> and <see cref="OnValidate"/> are BOTH editor-only, and this
+        /// project authors ScriptableObject assets as hand-written YAML (Unity MCP cannot create custom SO
+        /// assets), which passes through neither. A NaN threshold makes <c>coverage &lt; minCoverage</c> false
+        /// forever, disabling the coverage gate with a completely clean console.
+        /// Falls back to the GDD's design value rather than 0, so a corrupt asset fails CLOSED (gate active)
+        /// instead of open (everything counts).
+        /// </summary>
+        public float SafeMinCoverage => Clamp01Finite(minCoverage, DefaultMinCoverage);
+
+        /// <summary>The GDD's design value for the coverage gate (line 199) — the fallback for a bad asset.</summary>
+        private const float DefaultMinCoverage = 0.08f;
+
+        /// <summary>Clamps to [0,1], substituting <paramref name="fallback"/> for NaN/Infinity. Mathf.Clamp01
+        /// alone is not enough: it returns NaN for NaN, so the bad value survives every guard downstream.</summary>
+        private static float Clamp01Finite(float value, float fallback) =>
+            float.IsNaN(value) || float.IsInfinity(value) ? fallback : Mathf.Clamp01(value);
 
         /// <summary>
         /// Reports authoring mistakes that would silently break grading rather than loudly fail it — the
@@ -55,10 +80,47 @@ namespace CameraGame.Grading
         /// </summary>
         public bool TryGetConfigProblem(out string problem)
         {
+            // Non-finite first: NaN fails every comparison below, so without this check a NaN threshold
+            // reports "everything is fine" and then disables its gate at runtime.
+            if (float.IsNaN(minCoverage) || float.IsInfinity(minCoverage))
+            {
+                problem = $"minCoverage is {minCoverage}, which is not a usable number — the coverage gate " +
+                          $"would never reject anything. Falling back to {DefaultMinCoverage:P0}.";
+                return true;
+            }
+
+            if (float.IsNaN(minVisibleSamples) || float.IsInfinity(minVisibleSamples))
+            {
+                problem = $"minVisibleSamples is {minVisibleSamples}, which is not a usable number — the " +
+                          "occlusion gate would never reject anything. Falling back to 0.";
+                return true;
+            }
+
             if (occluderMask.value == 0)
             {
                 problem = "occluderMask is empty (Nothing) — no geometry can ever block the view, so the " +
                           "occlusion half of the subject gate will pass every shot.";
+                return true;
+            }
+
+            // The one mistake the occluderMask tooltip warns about IN CAPITALS was the one nothing checked.
+            // If the subject's own layer is in the mask, every linecast hits the subject itself, the visible
+            // fraction is 0, and EVERY shot fails Occluded regardless of framing — with a clean console.
+            // (Latent today only because the drunk prefab carries no colliders at all; the moment anyone adds
+            // one for stealth or interaction, this becomes total and invisible.)
+            int subjectLayer = LayerMask.NameToLayer(GameConstants.Layers.Subject);
+            if (subjectLayer < 0)
+            {
+                problem = $"there is no '{GameConstants.Layers.Subject}' layer in this project — event actors " +
+                          "cannot be excluded from their own line-of-sight test. Add it in Project Settings > Tags and Layers.";
+                return true;
+            }
+
+            if ((occluderMask.value & (1 << subjectLayer)) != 0)
+            {
+                problem = $"occluderMask includes the '{GameConstants.Layers.Subject}' layer, so the subject " +
+                          "blocks the line of sight to itself — every shot will fail as Occluded no matter " +
+                          "how well framed it is. Remove that layer from the mask.";
                 return true;
             }
 
@@ -76,13 +138,25 @@ namespace CameraGame.Grading
                 return true;
             }
 
+            // Symmetry with the two minCoverage checks above: `visible < 0f` is false even when EVERY sample
+            // is blocked, so a zero threshold turns the occlusion gate off entirely. This was the only one of
+            // the four boundaries that went unwarned, which made the omission read as deliberate.
+            if (minVisibleSamples <= 0f)
+            {
+                problem = "minVisibleSamples is 0 — the occlusion gate is disabled, so a subject completely " +
+                          "hidden behind a wall still counts as captured.";
+                return true;
+            }
+
             problem = null;
             return false;
         }
 
         private void OnValidate()
         {
-            minCoverage = Mathf.Clamp01(minCoverage);
+            // Through the Safe* accessors so a NaN typed into the Inspector is repaired rather than clamped
+            // to another NaN (Mathf.Clamp01(NaN) is NaN).
+            minCoverage = SafeMinCoverage;
             occlusionSamples = SafeOcclusionSamples;
             minVisibleSamples = SafeMinVisibleSamples;
         }

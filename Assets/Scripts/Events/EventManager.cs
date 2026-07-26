@@ -46,6 +46,13 @@ namespace CameraGame.Events
         /// ⚠️ Actors are POOLED: an entry here is only valid for as long as it is in this list. Read it live
         /// at the moment you need it and never cache an element across frames, or you will be holding a
         /// recycled instance describing a different event (see ISubject's liveness contract).
+        ///
+        /// ⚠️ This tracks the LIFECYCLE, not the GameObject's activation. Deactivating this manager
+        /// deactivates the pooled actors parented to it: their Update stops, so they never reach Despawn,
+        /// Despawned never fires, and they stay listed indefinitely. The list is deliberately NOT cleared in
+        /// OnDisable — merely disabling the component leaves the actors alive and legitimately gradeable, so
+        /// clearing would be wrong. Readers that care whether a subject is actually in the world must check
+        /// <c>isActiveAndEnabled</c> themselves (grading does).
         /// </summary>
         public IReadOnlyList<EventActor> ActiveActors => _active;
 

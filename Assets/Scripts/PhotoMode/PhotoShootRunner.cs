@@ -2,6 +2,7 @@
 using System.Collections;
 using System.IO;
 using System.Text;
+using UnityEditor;
 using UnityEngine;
 using CameraGame.Events;
 using CameraGame.Grading;
@@ -69,18 +70,61 @@ namespace CameraGame.PhotoMode
             new Pose("g_looking_away", 2f,   "Close, but facing the opposite way.", yaw: 180f),
             new Pose("h_off_to_side",  2f,   "Close, but he is off past the edge of the frame.", yaw: 55f),
             new Pose("i_from_behind",  2f,   "Photographing him from behind.", fromBehind: true),
+
+            // Added by the 2026-07-26 code review. Nothing here previously came closer than 1.2 subject
+            // heights (~11 units against a ~2.2-unit box half-depth), so NO pose ever put an AABB corner
+            // behind the near plane — the near-plane clipping branch and the BehindCamera early-out had no
+            // coverage at all in this rig once the T-pose bench was deleted.
+            new Pose("k_straddling",   0.12f, "Nose-to-nose — his box straddles the lens."),
+            // The bug the review found: an AABB that ENCLOSES the camera is outside no frustum plane, so a
+            // photo taken facing away used to score 100% and five stars. Must now read BehindCamera.
+            new Pose("l_inside_away",  0.05f, "Standing inside him, facing the other way.", yaw: 180f),
         };
 
         private readonly StringBuilder _log = new StringBuilder();
         private GameObject _wall;
 
+        // Bound for the whole run so cam.pixelWidth/Height match the saved image exactly — see Save().
+        private RenderTexture _rt;
+        private bool _prevRunInBackground;
+        private RenderTexture _prevTarget;
+
         private IEnumerator Start()
         {
+            // Record before mutating: a rig must put back everything it changes, even a play-session value.
+            _prevRunInBackground = Application.runInBackground;
             Application.runInBackground = true;
+
+            try
+            {
+                yield return RunShoot();
+            }
+            finally
+            {
+                Restore();
+                Finish();
+            }
+        }
+
+        private IEnumerator RunShoot()
+        {
             Directory.CreateDirectory(outputDir);
+
+            // Bind the render target BEFORE anything is graded. ShotGrader measures coverage against
+            // cam.pixelWidth/Height; if the target is bound only inside Save(), the grader measures the Game
+            // View while the picture is a fixed 960x540, so the two are different projections with different
+            // horizontal FOV (vertical FOV is what Unity preserves). The old code tried to paper over that by
+            // rescaling the rect by 960/Screen.width, which is wrong by the aspect ratio and drifts further
+            // from centre — putting the drawn box off the subject in the one artefact whose entire job is to
+            // answer "is the box on him?". Binding it up front makes the graded frame and the saved image the
+            // same pixel space, and the rect needs no scaling at all.
+            _prevTarget = cam.targetTexture;
+            _rt = new RenderTexture(ShotWidth, ShotHeight, 24, RenderTextureFormat.ARGB32);
+            cam.targetTexture = _rt;
 
             _log.AppendLine("PHOTO SHOOT — real shutter, real grader, real actor.");
             _log.AppendLine("No expected values: these are photographs to be looked at.");
+            _log.AppendLine($"Graded and saved at {ShotWidth}x{ShotHeight} (one pixel space, no rescaling).");
             _log.AppendLine();
 
             _wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -99,13 +143,26 @@ namespace CameraGame.PhotoMode
             if (manager.ActiveActors.Count == 0)
             {
                 _log.AppendLine("No actor ever spawned — nothing else to photograph.");
-                Finish();
                 yield break;
             }
 
             foreach (Pose p in Poses) yield return Shoot(p);
+        }
 
-            Finish();
+        /// <summary>Puts back everything the rig changed. Runs from Start's finally, so a throw mid-shoot
+        /// cannot leave the camera rendering into a dead target or the editor on borrowed settings.</summary>
+        private void Restore()
+        {
+            if (cam != null) cam.targetTexture = _prevTarget;
+
+            if (_rt != null)
+            {
+                _rt.Release();
+                Destroy(_rt);
+                _rt = null;
+            }
+
+            Application.runInBackground = _prevRunInBackground;
         }
 
         private IEnumerator ShootEmptyWorld()
@@ -184,7 +241,21 @@ namespace CameraGame.PhotoMode
                 yield return null;
             }
 
-            // Re-read his bounds: he is walking, and the pose was computed a few frames ago.
+            // Re-read the actor from the manager, not from the local variable captured before the yields
+            // above. Actors are POOLED, and ActiveActors says so explicitly: a reference held across frames
+            // does not go null when its event ends — it quietly becomes a different event, or an inactive
+            // instance parked at its despawn point. The zoom-settle loop can wait up to 4 s and the inter-pose
+            // hold is 1.8 s, which is ample for a lifecycle to end. Without this the rig aimed at a stale
+            // pose, graded an empty world, and wrote "rejected — NoSubject" against a caption reading
+            // "standing right in front of him" — a well-formed log line that looks exactly like a real bug.
+            if (manager.ActiveActors.Count == 0)
+            {
+                _log.AppendLine($"{p.Name}  —  SKIPPED: he despawned mid-pose (pooled reuse), nothing to shoot.");
+                _log.AppendLine();
+                yield break;
+            }
+
+            actor = manager.ActiveActors[0];
             b = actor.Bounds;
             cam.transform.rotation = Quaternion.LookRotation(b.center - cam.transform.position, Vector3.up)
                                      * Quaternion.Euler(0f, p.YawOffset, 0f);
@@ -216,28 +287,20 @@ namespace CameraGame.PhotoMode
         /// </summary>
         private void Save(string path, GradeDetail detail)
         {
-            var rt = new RenderTexture(ShotWidth, ShotHeight, 24, RenderTextureFormat.ARGB32);
             var tex = new Texture2D(ShotWidth, ShotHeight, TextureFormat.RGB24, false);
             RenderTexture prevActive = RenderTexture.active;
-            RenderTexture prevTarget = cam.targetTexture;
 
             try
             {
-                cam.targetTexture = rt;
+                // _rt is already bound to the camera (since RunShoot), so this renders the SAME projection
+                // the grader measured — no rescaling, and the drawn box is in the image's own pixel space.
                 cam.Render();
-                RenderTexture.active = rt;
+                RenderTexture.active = _rt;
                 tex.ReadPixels(new Rect(0, 0, ShotWidth, ShotHeight), 0, 0);
 
-                // The grader measured against cam.pixelWidth/Height — the Game View, since no target
-                // texture was bound at capture time — so scale its rect into this image's pixel space.
                 Rect r = detail.ScreenRect;
                 if (r.width > 0f && r.height > 0f)
-                {
-                    float sx = ShotWidth / (float)Mathf.Max(1, Screen.width);
-                    float sy = ShotHeight / (float)Mathf.Max(1, Screen.height);
-                    DrawRect(tex, new Rect(r.x * sx, r.y * sy, r.width * sx, r.height * sy),
-                             detail.Miss == GradeMiss.None ? Color.green : Color.red, 3);
-                }
+                    DrawRect(tex, r, detail.Miss == GradeMiss.None ? Color.green : Color.red, 3);
 
                 DrawCross(tex, ShotWidth / 2, ShotHeight / 2, 12, Color.white);
                 tex.Apply();
@@ -245,10 +308,7 @@ namespace CameraGame.PhotoMode
             }
             finally
             {
-                cam.targetTexture = prevTarget;
                 RenderTexture.active = prevActive;
-                rt.Release();
-                Destroy(rt);
                 Destroy(tex);
             }
         }
@@ -277,11 +337,31 @@ namespace CameraGame.PhotoMode
             if (x >= 0 && x < tex.width && y >= 0 && y < tex.height) tex.SetPixel(x, y, c);
         }
 
+        /// <summary>
+        /// Writes the log and leaves play mode. Called from Start's <c>finally</c>, so it runs even when a
+        /// pose throws — previously an IOException or a destroyed reference lost shots.txt entirely, left
+        /// partial PNGs behind, and kept play mode running indefinitely in the test world.
+        ///
+        /// ExitPlaymode is what triggers PhotoShootRig's scene restore, so without it the editor sat in the
+        /// test world until a human pressed Stop — which for an unattended run means forever, and is exactly
+        /// the "never leave the editor sitting in the test world" rule in CLAUDE.md.
+        /// </summary>
         private void Finish()
         {
             _log.AppendLine("Shoot complete.");
-            File.WriteAllText(Path.Combine(outputDir, "shots.txt"), _log.ToString());
+
+            try
+            {
+                File.WriteAllText(Path.Combine(outputDir, "shots.txt"), _log.ToString());
+            }
+            catch (IOException e)
+            {
+                Debug.LogError($"[PhotoShoot] Could not write shots.txt: {e.Message}");
+            }
+
             Debug.Log("[PhotoShoot] DONE\n" + _log);
+
+            if (EditorApplication.isPlaying) EditorApplication.ExitPlaymode();
         }
     }
 }

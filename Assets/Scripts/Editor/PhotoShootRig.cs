@@ -68,22 +68,99 @@ namespace CameraGame.EditorTools
                 return;
             }
 
-            if (SceneManager.GetActiveScene().isDirty)
+            // EVERY loaded scene, not just the active one: NewScene(..., Single) below discards them all, and
+            // checking only GetActiveScene() meant unsaved work in an additively-loaded scene vanished with
+            // no prompt.
+            for (int i = 0; i < SceneManager.sceneCount; i++)
             {
+                Scene s = SceneManager.GetSceneAt(i);
+                if (!s.isDirty) continue;
+
                 EditorUtility.DisplayDialog("Photo Shoot",
-                    "The open scene has unsaved changes. Save it first — this swaps scenes.", "OK");
+                    $"Scene '{s.name}' has unsaved changes. Save it first — this swaps scenes.", "OK");
                 return;
             }
 
-            if (Directory.Exists(OutputDir)) Directory.Delete(OutputDir, true);
-            Directory.CreateDirectory(OutputDir);
+            // A never-saved scene has an empty path, which would be written as the return key and then
+            // short-circuit the restore — stranding you in the test world with no message.
+            string previousScene = SceneManager.GetActiveScene().path;
+            if (string.IsNullOrEmpty(previousScene))
+            {
+                EditorUtility.DisplayDialog("Photo Shoot",
+                    "Save the current scene to disk first — the rig needs a path to return you to.", "OK");
+                return;
+            }
+
+            // Validate the required assets BEFORE touching the scene. Checked by GUID rather than by loading
+            // them: an asset loaded before NewScene(..., Single) has its native half unloaded, which is the
+            // very trap documented below. Getting this order wrong is what let the guard below fire while the
+            // developer's scene was already gone.
+            foreach (string required in new[] { ConfigPath, ChannelPath, DrunkPrefabPath })
+            {
+                if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(required))) continue;
+
+                Debug.LogError($"[PhotoShoot] Required asset missing: {required}. Nothing was changed.");
+                return;
+            }
+
+            ResetOutputDir();
 
             // Remember where we came from so leaving play mode returns there. Without this the rig strands
             // you in an untitled test world and you have to find your way back by hand.
-            SessionState.SetString(ReturnSceneKey, SceneManager.GetActiveScene().path);
+            SessionState.SetString(ReturnSceneKey, previousScene);
 
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
+            // From here on the developer's scene is CLOSED, so every failure path must put it back. Anything
+            // that throws — or any early return — would otherwise leave them in an untitled test world with
+            // the return key still armed, which then force-reopens a scene on their next unrelated play-mode
+            // exit and discards whatever they had unsaved at that point.
+            try
+            {
+                BuildWorldAndPlay();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[PhotoShoot] Build failed — restoring your scene.\n{e}");
+                Abort(previousScene);
+            }
+        }
+
+        /// <summary>Puts the developer back where they started and disarms the play-mode-exit restore.</summary>
+        private static void Abort(string previousScene)
+        {
+            SessionState.EraseString(ReturnSceneKey);
+
+            if (!string.IsNullOrEmpty(previousScene) && File.Exists(previousScene))
+                EditorSceneManager.OpenScene(previousScene, OpenSceneMode.Single);
+            else
+                EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+        }
+
+        /// <summary>Clears the output folder. Delete-then-create immediately is the classic Windows lazy
+        /// deletion race (the directory handle lingers), so fall back to emptying it file by file.</summary>
+        private static void ResetOutputDir()
+        {
+            try
+            {
+                if (Directory.Exists(OutputDir)) Directory.Delete(OutputDir, true);
+            }
+            catch (IOException)
+            {
+                if (Directory.Exists(OutputDir))
+                {
+                    foreach (string f in Directory.GetFiles(OutputDir))
+                    {
+                        try { File.Delete(f); } catch (IOException) { /* held open — will be overwritten */ }
+                    }
+                }
+            }
+
+            Directory.CreateDirectory(OutputDir);
+        }
+
+        private static void BuildWorldAndPlay()
+        {
             // Load AFTER the scene swap. Opening a scene in Single mode unloads unused assets, destroying
             // the native half of anything loaded beforehand — a ScriptableObject in that state still reads
             // its public fields from managed memory while `== null` is simultaneously true.
@@ -93,11 +170,18 @@ namespace CameraGame.EditorTools
             var cameraCfg = AssetDatabase.LoadAssetAtPath<CameraConfig>(CameraCfgPath);
             var drunk = AssetDatabase.LoadAssetAtPath<GameObject>(DrunkPrefabPath);
 
+            // Existence was checked by GUID before the swap; this catches a load that failed for another
+            // reason (a corrupt asset, a broken script reference on the prefab).
             if (grading == null || channel == null || drunk == null)
-            {
-                Debug.LogError("[PhotoShoot] Missing GradingConfig / ShotCapturedChannel / drunk prefab.");
-                return;
-            }
+                throw new System.InvalidOperationException(
+                    "GradingConfig / ShotCapturedChannel / drunk prefab failed to load after the scene swap.");
+
+            // The manager needs the COMPONENT, not just the prefab GameObject — validated here rather than
+            // discovered as a misleading "Unsupported type" from SetPrivate.
+            var drunkActor = drunk.GetComponent<EventActor>();
+            if (drunkActor == null)
+                throw new System.InvalidOperationException(
+                    $"{DrunkPrefabPath} has no EventActor component on its root.");
 
             var light = new GameObject("KeyLight").AddComponent<Light>();
             light.type = LightType.Directional;
@@ -142,7 +226,7 @@ namespace CameraGame.EditorTools
 
             var managerGo = new GameObject("EventManager");
             var manager = managerGo.AddComponent<EventManager>();
-            SetPrivate(manager, "actorPrefab", drunk.GetComponent<EventActor>());
+            SetPrivate(manager, "actorPrefab", drunkActor);
             SetPrivate(manager, "maxConcurrent", 1);
             SetPrivate(manager, "respawnDelay", 0.5f);
 
@@ -189,7 +273,15 @@ namespace CameraGame.EditorTools
                 case int i: p.intValue = i; break;
                 case float f: p.floatValue = f; break;
                 case Object o: p.objectReferenceValue = o; break;
-                default: Debug.LogError($"[PhotoShoot] Unsupported type for '{field}'."); return;
+
+                // C# type patterns do NOT match null, so a missing optional asset (CameraConfig,
+                // CaptureConfig) used to fall through to `default:` and report "Unsupported type" — naming
+                // the switch instead of the absent asset, on a path the rig deliberately tolerates.
+                case null: p.objectReferenceValue = null; break;
+
+                default:
+                    Debug.LogError($"[PhotoShoot] Unsupported type '{value.GetType().Name}' for '{field}'.");
+                    return;
             }
             so.ApplyModifiedPropertiesWithoutUndo();
         }

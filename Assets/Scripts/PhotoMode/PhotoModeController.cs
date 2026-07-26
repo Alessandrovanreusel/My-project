@@ -323,7 +323,12 @@ namespace CameraGame.PhotoMode
             // and they must not wait on anything. Grading itself is a few dozen floating-point operations
             // plus a handful of linecasts, comfortably inside the 0.2 s budget (NFR2).
             ShotGrade grade = ShotGrade.Placeholder;
-            GradeDetail detail = default;
+
+            // Explicitly Unevaluated, not `default`: a default-constructed GradeDetail leaves
+            // VisibleFraction at 0, so OcclusionTested reads true and the overlay prints "line-of-sight 0%"
+            // — "completely hidden" — for a shot that was never graded at all. Same mistake GradeMiss
+            // .Unevaluated fixed, one field over.
+            GradeDetail detail = GradeDetail.Unevaluated;
             if (_gradingReady)
                 grade = GradeBestSubject(out detail);
 
@@ -357,7 +362,10 @@ namespace CameraGame.PhotoMode
         // of seconds after the shot. Hence the short hold and the explicit "at capture" label below.
         private GradeDetail _debugDetail;
         private ShotGrade _debugGrade;
-        private float _debugUntil;
+
+        // -1, not 0: at Time.unscaledTime == 0 on the very first frame, `0 > 0` is false, so a zero default
+        // let the overlay draw its "SHOT FAILED: Unevaluated" panel before any shutter had been pulled.
+        private float _debugUntil = -1f;
 
         private const float DebugHoldSeconds = 1.5f;
 
@@ -376,6 +384,11 @@ namespace CameraGame.PhotoMode
             bool hit = _debugDetail.Miss == GradeMiss.None;
 
             // GUI space has y growing DOWNWARD; screen-space rects from the grader grow upward.
+            // Screen.height is correct here: WorldToScreenPoint returns WINDOW-space pixels (so does
+            // cam.pixelRect), and GUI space spans the whole window — this stays right even for a camera with
+            // a viewport rect. It would only be wrong if a targetTexture were bound at capture time, which
+            // puts the rect in render-target space; that happens solely under the offline photo-shoot rig,
+            // which draws its own box into the image and never reads this overlay.
             var boxed = new Rect(r.x, Screen.height - r.y - r.height, r.width, r.height);
 
             Color prev = GUI.color;
@@ -421,19 +434,32 @@ namespace CameraGame.PhotoMode
             bestDetail = new GradeDetail(GradeMiss.NoSubject, default, 0f, GradeDetail.NotEvaluated);
 
             IReadOnlyList<EventActor> actors = eventManager.ActiveActors;
+            bool graded = false;
+
             for (int i = 0; i < actors.Count; i++)
             {
                 EventActor actor = actors[i];
                 if (actor == null) continue;   // destroyed between spawn and capture — skip, not throw
 
+                // ActiveActors tracks the LIFECYCLE, not the GameObject's activation. Deactivating the
+                // manager deactivates the pooled actors parented to it, so their Update stops, they never
+                // reach Despawn, Despawned never fires and they sit in the list indefinitely — while an
+                // inactive SkinnedMeshRenderer still reports perfectly plausible bounds. Without this check
+                // the player photographs a visibly empty street and gets a graded hit.
+                if (!actor.isActiveAndEnabled) continue;
+
                 ShotGrade g = ShotGrader.Grade(photoCamera, actor, gradingConfig, out GradeDetail d);
 
-                // Strictly greater, so the FIRST subject's detail survives when everything misses at 0% —
-                // otherwise a miss would report the last actor's reason rather than the most relevant one.
-                if (i == 0 || g.Percent01 > best.Percent01)
+                // Keyed on "have we graded anything yet", NOT on the loop index. With `i == 0` a null or
+                // inactive entry at index 0 meant the seeding branch never ran, and since every miss shares
+                // ShotGrade.Miss (0%) the `>` test also failed — so a real Occluded/TooSmall rejection was
+                // reported to the player as "NoSubject". Strictly greater thereafter, so the FIRST graded
+                // subject's reason survives when everything misses at 0%.
+                if (!graded || g.Percent01 > best.Percent01)
                 {
                     best = g;
                     bestDetail = d;
+                    graded = true;
                 }
             }
 
