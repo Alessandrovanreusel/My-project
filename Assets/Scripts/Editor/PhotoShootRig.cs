@@ -26,6 +26,11 @@ namespace CameraGame.EditorTools
     public static class PhotoShootRig
     {
         public const string OutputDir = "Temp/PhotoShoot";
+        public const string StudyOutputDir = "Temp/PhotoShootTown";
+
+        /// <summary>The real town. Photographed by the placement study so composition can be judged
+        /// against actual scenery rather than the private world's empty plane.</summary>
+        private const string TownScenePath = "Assets/Scenes/SampleScene.unity";
 
         // Survives the domain reloads that entering and leaving play mode cause, so the rig can put the
         // developer back in the scene they were working in instead of stranding them in the test world.
@@ -103,7 +108,7 @@ namespace CameraGame.EditorTools
                 return;
             }
 
-            ResetOutputDir();
+            ResetDir(OutputDir);
 
             // Remember where we came from so leaving play mode returns there. Without this the rig strands
             // you in an untitled test world and you have to find your way back by hand.
@@ -126,6 +131,113 @@ namespace CameraGame.EditorTools
             }
         }
 
+        /// <summary>
+        /// Photographs matched centred-vs-thirds pairs in the REAL TOWN (Story 1.10 review).
+        ///
+        /// The main shoot's private world is a featureless grey plane, so its thirds pose put the drunk in
+        /// the corner of an empty frame — and the rule of thirds is precisely the rule that needs the rest
+        /// of the frame to contain something. This runs the same grader and the same shutter against the
+        /// actual town, using the scene's OWN PhotoModeController, EventManager and route rather than
+        /// rebuilt stand-ins, so what is being judged is the real game.
+        ///
+        /// ⚠️ The town scene is opened and then MUTATED (a runner is added; the walk-camera scripts are
+        /// switched off so the rig can own the camera). It is never SAVED, and the play-mode-exit hook
+        /// reopens it from disk, which discards every one of those changes. Do not add a save here.
+        /// </summary>
+        [MenuItem("Tools/Grading/Photo Shoot — Placement Study (Town)")]
+        public static void BuildPlacementStudy()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogWarning("[PhotoShoot] Already in play mode — stop first.");
+                return;
+            }
+
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                Scene s = SceneManager.GetSceneAt(i);
+                if (!s.isDirty) continue;
+
+                EditorUtility.DisplayDialog("Photo Shoot",
+                    $"Scene '{s.name}' has unsaved changes. Save it first — this reloads the scene.", "OK");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(TownScenePath)))
+            {
+                Debug.LogError($"[PhotoShoot] Town scene missing: {TownScenePath}. Nothing was changed.");
+                return;
+            }
+
+            // Return the developer to whatever they had open. If that IS the town scene, reopening it from
+            // disk is exactly what throws away the mutations below.
+            string previousScene = SceneManager.GetActiveScene().path;
+            if (string.IsNullOrEmpty(previousScene)) previousScene = TownScenePath;
+
+            ResetDir(StudyOutputDir);
+            SessionState.SetString(ReturnSceneKey, previousScene);
+
+            try
+            {
+                if (SceneManager.GetActiveScene().path != TownScenePath)
+                    EditorSceneManager.OpenScene(TownScenePath, OpenSceneMode.Single);
+
+                WireTownStudyAndPlay();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[PhotoShoot] Placement study failed — restoring your scene.\n{e}");
+                Abort(previousScene);
+            }
+        }
+
+        private static void WireTownStudyAndPlay()
+        {
+            var photo = Object.FindFirstObjectByType<PhotoModeController>(FindObjectsInactive.Include);
+            var manager = Object.FindFirstObjectByType<EventManager>(FindObjectsInactive.Include);
+
+            if (photo == null || manager == null)
+                throw new System.InvalidOperationException(
+                    "The town scene has no PhotoModeController and/or no EventManager — nothing to drive.");
+
+            // The camera the CONTROLLER grades through, not whatever Camera.main happens to be: grading and
+            // the saved image have to be the same projection, and the controller is the authority on which
+            // camera that is. Falls back to Camera.main only if the field was left unassigned (in which case
+            // the controller itself falls back to exactly the same thing at Awake).
+            var so = new SerializedObject(photo);
+            var cam = so.FindProperty("photoCamera")?.objectReferenceValue as Camera;
+            if (cam == null) cam = Camera.main;
+            if (cam == null)
+                throw new System.InvalidOperationException("No camera to shoot with in the town scene.");
+
+            // Switch off everything that drives the camera or the player, or the rig and the game will
+            // fight over the transform every frame and the shots will land wherever the race lands. These
+            // are runtime-only edits to a scene that is never saved.
+            foreach (var chase in Object.FindObjectsByType<ThirdPersonCamera>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None))
+                chase.enabled = false;
+
+            foreach (var walk in Object.FindObjectsByType<ThirdPersonController>(
+                         FindObjectsInactive.Include, FindObjectsSortMode.None))
+                walk.enabled = false;
+
+            var grading = AssetDatabase.LoadAssetAtPath<GradingConfig>(ConfigPath);
+
+            var runnerGo = new GameObject("PhotoShootRunner");
+            var runner = runnerGo.AddComponent<PhotoShootRunner>();
+            runner.photo = photo;
+            runner.manager = manager;
+            runner.cam = cam;
+            runner.cameraConfig = AssetDatabase.LoadAssetAtPath<CameraConfig>(CameraCfgPath);
+            runner.gradingConfig = grading;
+            runner.outputDir = StudyOutputDir;
+            runner.placementStudy = true;
+
+            Debug.Log("[PhotoShoot] Town placement study wired. Entering play mode — shots land in "
+                      + StudyOutputDir);
+            EditorApplication.EnterPlaymode();
+        }
+
         /// <summary>Puts the developer back where they started and disarms the play-mode-exit restore.</summary>
         private static void Abort(string previousScene)
         {
@@ -139,24 +251,24 @@ namespace CameraGame.EditorTools
 
         /// <summary>Clears the output folder. Delete-then-create immediately is the classic Windows lazy
         /// deletion race (the directory handle lingers), so fall back to emptying it file by file.</summary>
-        private static void ResetOutputDir()
+        private static void ResetDir(string dir)
         {
             try
             {
-                if (Directory.Exists(OutputDir)) Directory.Delete(OutputDir, true);
+                if (Directory.Exists(dir)) Directory.Delete(dir, true);
             }
             catch (IOException)
             {
-                if (Directory.Exists(OutputDir))
+                if (Directory.Exists(dir))
                 {
-                    foreach (string f in Directory.GetFiles(OutputDir))
+                    foreach (string f in Directory.GetFiles(dir))
                     {
                         try { File.Delete(f); } catch (IOException) { /* held open — will be overwritten */ }
                     }
                 }
             }
 
-            Directory.CreateDirectory(OutputDir);
+            Directory.CreateDirectory(dir);
         }
 
         private static void BuildWorldAndPlay()

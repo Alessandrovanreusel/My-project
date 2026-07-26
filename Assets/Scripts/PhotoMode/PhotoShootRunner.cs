@@ -56,6 +56,27 @@ namespace CameraGame.PhotoMode
             /// This is the pose that settles Story 1.10's gating question: under the old
             /// <c>Mathf.Abs(TimeToPeak)</c> reading it would score like a shot 1.2–1.5 s EARLY.</summary>
             LateInPeak,
+
+            /// <summary>
+            /// TWO captures from one camera position on CONSECUTIVE frames, inside the peak window: the
+            /// same subject in the same world, framed dead centre and then on a thirds intersection.
+            ///
+            /// Consecutive frames is the whole point. Every other pose waits 1.8 s between shots, during
+            /// which the drunk walks several units and the background behind him changes completely — so a
+            /// "centred vs thirds" comparison assembled from two ordinary poses is really a comparison of
+            /// two different photographs, and any judgement of it is worthless. Shooting during the peak
+            /// also means he is standing still (Peak has advanceAlongRoute off), so the pair is as close to
+            /// a controlled A/B as this game can produce.
+            /// </summary>
+            PeakPair,
+
+            /// <summary>
+            /// The same matched pair, but fired as soon as the camera settles instead of waiting for the
+            /// peak. The pair is still two consecutive frames, which is the only property that matters for
+            /// comparing PLACEMENT — timing is not under study here, and waiting for a peak costs a full
+            /// 24.5 s lifecycle per vantage point, which is what made a twelve-direction sweep impractical.
+            /// </summary>
+            PairNow,
         }
 
         /// <summary>One vantage point. Note there is no "expected" field — the photograph is the result.</summary>
@@ -64,7 +85,13 @@ namespace CameraGame.PhotoMode
             public readonly string Name;
             public readonly float Distance;    // in subject heights
             public readonly float YawOffset;   // degrees off the line to the subject; 180 = looking away
-            public readonly bool FromBehind;
+
+            /// <summary>Which SIDE of the subject the camera stands on, as a world yaw: 0 = in front
+            /// (+Z), 180 = behind him, 90/270 = either flank. Generalises the old FromBehind flag, which
+            /// could only ever put the camera on one of two sides — not enough to find a vantage point
+            /// with actual town behind him.</summary>
+            public readonly float ViewYaw;
+
             public readonly bool Zoom;
             public readonly bool Wall;
             public readonly float WallAt;      // 0..1 along camera→subject; 0 = no wall
@@ -78,13 +105,13 @@ namespace CameraGame.PhotoMode
             public readonly float TargetOffset;   // seconds of PeakOffset, for Shutter.AtPeakOffset
 
             public Pose(string name, float distance, string intent, float yaw = 0f,
-                        bool zoom = false, bool wall = false, bool fromBehind = false,
+                        bool zoom = false, bool wall = false, float viewYaw = 0f,
                         float targetX = 0.5f, float targetY = 0.5f,
                         Shutter trigger = Shutter.OnSettle, float targetOffset = 0f,
                         float wallAt = 0.45f)
             {
                 Name = name; Distance = distance; Intent = intent;
-                YawOffset = yaw; Zoom = zoom; Wall = wall; FromBehind = fromBehind;
+                YawOffset = yaw; Zoom = zoom; Wall = wall; ViewYaw = viewYaw;
                 TargetX = targetX; TargetY = targetY;
                 Trigger = trigger; TargetOffset = targetOffset; WallAt = wallAt;
             }
@@ -102,7 +129,7 @@ namespace CameraGame.PhotoMode
             new Pose("f_behind_wall",  1.2f, "A wall dropped between the camera and him.", wall: true),
             new Pose("g_looking_away", 2f,   "Close, but facing the opposite way.", yaw: 180f),
             new Pose("h_off_to_side",  2f,   "Close, but he is off past the edge of the frame.", yaw: 55f),
-            new Pose("i_from_behind",  2f,   "Photographing him from behind.", fromBehind: true),
+            new Pose("i_from_behind",  2f,   "Photographing him from behind.", viewYaw: 180f),
 
             // Added by the 2026-07-26 code review. Nothing here previously came closer than 1.2 subject
             // heights (~11 units against a ~2.2-unit box half-depth), so NO pose ever put an AABB corner
@@ -190,6 +217,49 @@ namespace CameraGame.PhotoMode
                      trigger: Shutter.AtPeakOffset, targetOffset: -1.2f),
         };
 
+        /// <summary>
+        /// The placement study (Story 1.10 review, 2026-07-26). Four matched centred-vs-thirds pairs, one
+        /// per side of the subject, shot in the REAL TOWN rather than the rig's private world.
+        ///
+        /// ⚠️ WHY THIS EXISTS. The main shoot's world is a featureless grey plane, so its thirds pose put
+        /// the drunk in the corner of an entirely EMPTY frame — and Alexv, looking at that photograph,
+        /// preferred the centred one. That is a completely reasonable reaction to that picture, but the
+        /// rule of thirds earns its keep by giving the subject somewhere to look or walk INTO, and an empty
+        /// plane has nothing to offer. The photograph was honest; the world it was taken in was not
+        /// representative. Suspect the rig — including when the rig has produced a perceptual result.
+        ///
+        /// Four sides because the town is not uniform: some vantage points have a building behind him and
+        /// some have open sky, and which is which cannot be predicted from here. Produce all four, then
+        /// look at them and judge which pairs are worth comparing.
+        /// </summary>
+        /// ⚠️ TWELVE directions, not four. The first attempt used the four compass points and TWO of them
+        /// came back with the drunk entirely hidden behind a pine tree — the grader dutifully drew its box
+        /// over the tree and scored the shot 98 % / 5★. The route runs through woodland, so whether a
+        /// vantage point can see him at all is a matter of luck, and the rig cannot find out by asking
+        /// physics (see the occlusion note in the story: this scene's trees carry no colliders on the
+        /// occluder mask, so a linecast through one reports a clear view). Sweeping wide and then LOOKING
+        /// at the results is the honest way to find the usable ones.
+        private static readonly Pose[] PlacementPoses = BuildPlacementSweep();
+
+        private static Pose[] BuildPlacementSweep()
+        {
+            const int Directions = 12;
+            var poses = new Pose[Directions];
+
+            for (int i = 0; i < Directions; i++)
+            {
+                float yaw = i * (360f / Directions);
+                poses[i] = new Pose($"dir{i * 30:D3}", 2f,
+                                    $"Camera on the {yaw:F0}° side of him, two subject heights back.",
+                                    viewYaw: yaw, trigger: Shutter.PairNow);
+            }
+            return poses;
+        }
+
+        /// <summary>When true, run <see cref="PlacementPoses"/> in whatever scene is already loaded
+        /// instead of the full battery in the rig's private world.</summary>
+        [HideInInspector] public bool placementStudy;
+
         private readonly StringBuilder _log = new StringBuilder();
         private GameObject _wall;
 
@@ -243,24 +313,29 @@ namespace CameraGame.PhotoMode
             _wall.name = "Wall";
             _wall.SetActive(false);
 
-            // The empty-world shot goes FIRST, while the manager is held off. Waiting for an empty world
-            // later never works: the manager respawns half a second after each despawn, so the wait just
-            // burns a minute watching him walk.
-            yield return ShootEmptyWorld();
-
-            manager.enabled = true;
+            if (!placementStudy)
+            {
+                // The empty-world shot goes FIRST, while the manager is held off. Waiting for an empty
+                // world later never works: the manager respawns half a second after each despawn, so the
+                // wait just burns a minute watching him walk.
+                yield return ShootEmptyWorld();
+                manager.enabled = true;
+            }
 
             float t = 0f;
-            while (manager.ActiveActors.Count == 0 && t < 15f) { t += Time.deltaTime; yield return null; }
+            while (manager.ActiveActors.Count == 0 && t < 30f) { t += Time.deltaTime; yield return null; }
             if (manager.ActiveActors.Count == 0)
             {
                 _log.AppendLine("No actor ever spawned — nothing else to photograph.");
                 yield break;
             }
 
-            foreach (Pose p in Poses)
+            foreach (Pose p in placementStudy ? PlacementPoses : Poses)
             {
-                yield return p.Trigger == Shutter.OnSettle ? Shoot(p) : ShootTimed(p);
+                if (p.Trigger == Shutter.OnSettle) yield return Shoot(p);
+                else if (p.Trigger == Shutter.PeakPair) yield return ShootPair(p, waitForPeak: true);
+                else if (p.Trigger == Shutter.PairNow) yield return ShootPair(p, waitForPeak: false);
+                else yield return ShootTimed(p);
             }
         }
 
@@ -496,6 +571,97 @@ namespace CameraGame.PhotoMode
             _log.AppendLine();
         }
 
+        /// <summary>
+        /// Two captures from ONE camera position on consecutive frames, inside the peak window: dead centre,
+        /// then on a thirds intersection. The pair is the artefact — either photograph alone says nothing
+        /// about placement, because the only honest comparison is one where everything else is identical.
+        /// </summary>
+        private IEnumerator ShootPair(Pose p, bool waitForPeak)
+        {
+            photo.SetPhotoMode(true);
+            photo.SetZoom(0f);
+
+            if (waitForPeak)
+            {
+                // --- Arm: wait for a lifecycle that has not reached the peak yet -----------------------
+                float waited = 0f;
+                bool armed = false;
+                while (waited < 90f)
+                {
+                    if (TryGetActor(out EventActor a))
+                    {
+                        if (a.PeakOffset > 0f) { armed = true; break; }
+                        PlaceCamera(p, a.Bounds);
+                    }
+                    waited += Time.deltaTime;
+                    yield return null;
+                }
+
+                if (!armed)
+                {
+                    _log.AppendLine($"{p.Name}  —  SKIPPED: no lifecycle reached the arming point within 90 s.");
+                    _log.AppendLine();
+                    yield break;
+                }
+            }
+
+            // --- Track him until he is ready to be shot ------------------------------------------------
+            float tracked = 0f;
+            int settleFrames = 0;
+            while (tracked < 90f)
+            {
+                if (!TryGetActor(out EventActor a))
+                {
+                    // Wait for the next one rather than bailing: without a peak to wait for, an unlucky
+                    // arrival during the respawn gap would otherwise drop a whole vantage point.
+                    tracked += Time.deltaTime;
+                    yield return null;
+                    continue;
+                }
+
+                PlaceCamera(p, a.Bounds);
+
+                // Two settled frames so the camera transform and the animation have both been applied
+                // before the shutter, exactly as the framing poses do.
+                if (waitForPeak ? a.IsAtPeak : ++settleFrames >= 2) break;
+
+                tracked += Time.deltaTime;
+                yield return null;
+            }
+
+            if (!TryGetActor(out EventActor actor))
+            {
+                _log.AppendLine($"{p.Name}  —  SKIPPED: he vanished before the pair could be taken.");
+                _log.AppendLine();
+                yield break;
+            }
+
+            // Freeze the camera POSITION here and only re-aim from now on, so the two frames differ in
+            // exactly one thing. Re-placing between the shots would move the camera as he sways, and the
+            // backgrounds would no longer match.
+            PlaceCamera(p, actor.Bounds);
+            Vector3 frozen = cam.transform.position;
+
+            // Shot 1 — dead centre.
+            PlaceCamera(p, actor.Bounds, aimOnly: true, targetX: 0.5f, targetY: 0.5f);
+            yield return FireAndRecord(p, actor, p.Name + "_centred",
+                                       p.Intent + "  [CENTRED half of the pair]");
+
+            // Shot 2 — thirds intersection, next frame, same spot. Re-read the actor (pooled) but do not
+            // let the camera move.
+            if (!TryGetActor(out actor))
+            {
+                _log.AppendLine($"{p.Name}  —  thirds half SKIPPED: he despawned between the two frames.");
+                _log.AppendLine();
+                yield break;
+            }
+
+            cam.transform.position = frozen;
+            PlaceCamera(p, actor.Bounds, aimOnly: true, targetX: 1f / 3f, targetY: 2f / 3f);
+            yield return FireAndRecord(p, actor, p.Name + "_thirds",
+                                       p.Intent + "  [THIRDS half of the pair]");
+        }
+
         // =====================================================================
         // SHARED
         // =====================================================================
@@ -522,13 +688,19 @@ namespace CameraGame.PhotoMode
         /// The aim puts the subject's centre at the pose's normalized screen target, which is what makes a
         /// "on the thirds line" pose and a "dead centre" pose differ in EXACTLY one thing.
         /// </summary>
-        private void PlaceCamera(Pose p, Bounds b, bool aimOnly = false)
+        private void PlaceCamera(Pose p, Bounds b, bool aimOnly = false,
+                                 float targetX = float.NaN, float targetY = float.NaN)
         {
+            // NaN means "use the pose's own aim". A nullable would say the same thing without the sentinel,
+            // but this runs every frame of a tracking loop and a float pair costs nothing.
+            if (float.IsNaN(targetX)) targetX = p.TargetX;
+            if (float.IsNaN(targetY)) targetY = p.TargetY;
+
             float height = Mathf.Max(0.01f, b.size.y);
 
             if (!aimOnly)
             {
-                Vector3 dir = p.FromBehind ? Vector3.back : Vector3.forward;
+                Vector3 dir = Quaternion.Euler(0f, p.ViewYaw, 0f) * Vector3.forward;
                 cam.transform.position = b.center + dir * (p.Distance * height);
             }
 
@@ -543,8 +715,8 @@ namespace CameraGame.PhotoMode
             float tanV = Mathf.Tan(vHalf);
             float tanH = tanV * cam.aspect;
 
-            float fx = (p.TargetX - 0.5f) * 2f;    // -1 = left edge, +1 = right edge
-            float fy = (p.TargetY - 0.5f) * 2f;
+            float fx = (targetX - 0.5f) * 2f;      // -1 = left edge, +1 = right edge
+            float fy = (targetY - 0.5f) * 2f;
 
             // Yawing the camera RIGHT slides the subject LEFT in the frame, hence the negation. Pitching
             // DOWN (positive X euler) slides him UP.
@@ -573,8 +745,11 @@ namespace CameraGame.PhotoMode
         /// reads about -1.2 while the second reads 0. Reading them one line apart, in the same frame the
         /// shutter fired, is what turns that from an argument into evidence.
         /// </summary>
-        private IEnumerator FireAndRecord(Pose p, EventActor actor)
+        private IEnumerator FireAndRecord(Pose p, EventActor actor, string nameOverride = null,
+                                          string intentOverride = null)
         {
+            string shotName = nameOverride ?? p.Name;
+            string intent = intentOverride ?? p.Intent;
             Bounds b = actor.Bounds;
             float timeToPeak = actor.TimeToPeak;
             bool atPeak = actor.IsAtPeak;
@@ -585,7 +760,7 @@ namespace CameraGame.PhotoMode
 
             ShotGrade grade = photo.LastGrade;
             GradeDetail detail = photo.LastDetail;
-            Save(Path.Combine(outputDir, p.Name + ".png"), detail);
+            Save(Path.Combine(outputDir, shotName + ".png"), detail);
 
             // Where the grader's box actually landed, normalized — so an aim that silently went to the wrong
             // place shows up as a number as well as in the picture. (A rig whose aim is subtly wrong looks
@@ -594,7 +769,7 @@ namespace CameraGame.PhotoMode
             float boxX = r.width > 0f ? r.center.x / ShotWidth : float.NaN;
             float boxY = r.height > 0f ? r.center.y / ShotHeight : float.NaN;
 
-            _log.AppendLine($"{p.Name}  —  {p.Intent}");
+            _log.AppendLine($"{shotName}  —  {intent}");
             _log.AppendLine($"    VERDICT: {(detail.Miss == GradeMiss.None ? $"counted — {grade.Percent01:P0}  {grade.Stars}★" : $"rejected — {detail.Miss}")}");
 
             if (detail.Miss == GradeMiss.None)
