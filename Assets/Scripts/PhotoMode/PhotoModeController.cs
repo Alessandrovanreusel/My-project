@@ -400,13 +400,18 @@ namespace CameraGame.PhotoMode
                 GUI.Box(boxed, GUIContent.none);
             }
 
-            // The thirds grid the composition score is measured against. Drawn only for a counted shot —
-            // on a rejected one it is noise over the reason the shot failed. Faint, so it reads as a
-            // guide rather than as part of the grader's verdict (the box is that).
+            // The FRAME CENTRE, which is what the placement term is measured against. Drawn only for a
+            // counted shot — on a rejected one it is noise over the reason the shot failed. Faint, so it
+            // reads as a guide rather than as part of the grader's verdict (the box is that).
+            //
+            // ⚠️ This used to draw a rule-of-thirds grid. It stopped doing so when the placement term was
+            // reversed to reward centring: a guide that no longer marks what the score is computed from is
+            // worse than no guide at all — it is an invitation to diagnose a "wrong" score against lines
+            // nothing measures.
             if (hit)
             {
                 GUI.color = new Color(1f, 1f, 1f, 0.25f);
-                DrawThirdsGrid();
+                DrawCentreGuide();
             }
 
             GUI.color = Color.white;
@@ -432,24 +437,23 @@ namespace CameraGame.PhotoMode
             GUI.color = prev;
         }
 
-        /// <summary>Draws the rule-of-thirds grid across the camera's viewport in GUI space. Uses
-        /// <c>photoCamera.pixelRect</c> rather than the whole window, so the lines land where the grader
-        /// actually measured them even when the camera renders to a sub-rect of the screen.</summary>
-        private void DrawThirdsGrid()
+        /// <summary>Draws the frame's centre cross — the point the placement term measures distance from.
+        /// Uses <c>photoCamera.pixelRect</c> rather than the whole window, so it lands where the grader
+        /// actually measured even when the camera renders to a sub-rect of the screen.</summary>
+        private void DrawCentreGuide()
         {
             Rect v = photoCamera != null ? photoCamera.pixelRect : new Rect(0f, 0f, Screen.width, Screen.height);
             const float thickness = 1f;
+            const float arm = 24f;
 
-            for (int i = 1; i <= 2; i++)
-            {
-                float x = v.xMin + v.width * (i / 3f);
-                GUI.DrawTexture(new Rect(x, Screen.height - v.yMax, thickness, v.height), Texture2D.whiteTexture);
+            float cx = v.xMin + v.width * 0.5f;
 
-                // GUI space grows DOWNWARD while the viewport grows upward, hence the flip through
-                // Screen.height — the same conversion the grader's box above goes through.
-                float y = Screen.height - (v.yMin + v.height * (i / 3f));
-                GUI.DrawTexture(new Rect(v.xMin, y, v.width, thickness), Texture2D.whiteTexture);
-            }
+            // GUI space grows DOWNWARD while the viewport grows upward, hence the flip through
+            // Screen.height — the same conversion the grader's box above goes through.
+            float cy = Screen.height - (v.yMin + v.height * 0.5f);
+
+            GUI.DrawTexture(new Rect(cx - thickness * 0.5f, cy - arm, thickness, arm * 2f), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(cx - arm, cy - thickness * 0.5f, arm * 2f, thickness), Texture2D.whiteTexture);
         }
 #endif
 

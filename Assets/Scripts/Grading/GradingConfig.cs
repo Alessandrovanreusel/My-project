@@ -11,7 +11,7 @@ namespace CameraGame.Grading
     /// numbers live in code.
     ///
     /// Story 1.9 covered only the GATE (is the subject really in this photo). Story 1.10 adds the SCORE:
-    /// the prominence sweet spot, rule-of-thirds placement, the cut-off penalty and the peak-timing window.
+    /// the prominence sweet spot, centred placement, the cut-off penalty and the peak-timing window.
     /// This asset is deliberately the one place that grows.
     ///
     /// ⚠️ PLAIN NUMBERS, NOT <c>AnimationCurve</c>. The architecture sketch shows
@@ -71,7 +71,7 @@ namespace CameraGame.Grading
         [Tooltip("Bottom of the sweet spot: subject height fraction at which composition first hits FULL " +
                  "marks. The GDD's '~25-50% of the frame' was written about a photograph, not about a " +
                  "measurement, so this was settled by looking at the shoot instead: below about 0.45 he " +
-                 "reads as a small figure in a lot of empty frame (Temp/PhotoShoot/b_mid.png at 0.39).")]
+                 "reads as a small figure in a lot of empty frame (photo-shoot/b_mid.png at 0.39).")]
         [Range(0f, 1f)] public float prominenceIdealMin = 0.45f;
 
         [Tooltip("Top of the sweet spot: the tallest the subject can be while still scoring full marks. " +
@@ -99,13 +99,19 @@ namespace CameraGame.Grading
 
         [Header("Composition — placement & framing")]
 
-        [Tooltip("How much rule-of-thirds placement can pull the composition score down. 0 = placement is " +
-                 "ignored; 1 = a subject in the very corner scores zero on composition.\n\n" +
-                 "⚠️ Keep this modest. A big subject dead-centre is a perfectly good photograph — the GDD's " +
-                 "bad case is 'dead-centre TINY', small AND centred. At 0.35 a centred subject keeps 82% of " +
-                 "its placement score, and the penalty fades out entirely as he grows to fill the frame " +
-                 "(there is nowhere else to put a subject that fills the frame).")]
-        [Range(0f, 1f)] public float thirdsWeight = 0.35f;
+        [Tooltip("How much placement can pull the composition score down, measured as distance from the " +
+                 "CENTRE of the frame. 0 = placement is ignored; 1 = a subject jammed into a corner scores " +
+                 "zero on composition.\n\n" +
+                 "⚠️ CENTRED, NOT RULE-OF-THIRDS. The GDD originally asked for the opposite — a bonus for " +
+                 "sitting near a thirds line — and it was built that way and then disproven by looking at " +
+                 "the photographs. Alexv judged the centred shot the better picture in matched pairs " +
+                 "(identical subject, identical instant, identical camera position, differing only in " +
+                 "where in the frame he sits), in the empty test world AND again in the real town once the " +
+                 "'the thirds shot only looks lopsided because the rest of the frame is empty' confound " +
+                 "was removed. GDD FR6 was rewritten to match; see the story's Dev Agent Record.\n\n" +
+                 "Keep it modest anyway: this should punish a subject shoved into a corner, not micro-" +
+                 "manage a shot that is merely a little off-centre.")]
+        [Range(0f, 1f)] public float centreWeight = 0.35f;
 
         [Tooltip("How much of the composition score the FRAME EDGE can take when it clips the subject. " +
                  "Measured as the fraction of his projected box that actually landed inside the frame, so " +
@@ -163,8 +169,8 @@ namespace CameraGame.Grading
         /// <summary>Large-side zero point, finite. Allowed above 1 — see the field's tooltip.</summary>
         public float SafeProminenceFalloffAbove => ClampFinite(prominenceFalloffAbove, 0f, 4f, 1.15f);
 
-        /// <summary>Rule-of-thirds penalty weight, finite and in [0,1].</summary>
-        public float SafeThirdsWeight => Clamp01Finite(thirdsWeight, 0.35f);
+        /// <summary>Off-centre placement penalty weight, finite and in [0,1].</summary>
+        public float SafeCentreWeight => Clamp01Finite(centreWeight, 0.35f);
 
         /// <summary>Cut-off penalty weight, finite and in [0,1].</summary>
         public float SafeCutoffWeight => Clamp01Finite(cutoffWeight, 0.6f);
@@ -276,8 +282,8 @@ namespace CameraGame.Grading
                     CompositionNaN, SafeProminenceFalloffAbove, out problem))
                 return true;
 
-            if (TryReportNonFinite(nameof(thirdsWeight), thirdsWeight,
-                    CompositionNaN, SafeThirdsWeight, out problem))
+            if (TryReportNonFinite(nameof(centreWeight), centreWeight,
+                    CompositionNaN, SafeCentreWeight, out problem))
                 return true;
 
             if (TryReportNonFinite(nameof(cutoffWeight), cutoffWeight,
@@ -436,7 +442,7 @@ namespace CameraGame.Grading
             prominenceIdealMax = SafeProminenceIdealMax;
             prominenceFalloffBelow = SafeProminenceFalloffBelow;
             prominenceFalloffAbove = SafeProminenceFalloffAbove;
-            thirdsWeight = SafeThirdsWeight;
+            centreWeight = SafeCentreWeight;
             cutoffWeight = SafeCutoffWeight;
             timingFullSeconds = SafeTimingFullSeconds;
             timingZeroSeconds = SafeTimingZeroSeconds;

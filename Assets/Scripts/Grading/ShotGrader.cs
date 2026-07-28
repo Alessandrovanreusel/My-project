@@ -145,17 +145,12 @@ namespace CameraGame.Grading
         // threshold, which is why it lives here rather than in GradingConfig.
         private const float SampleInset = 0.5f;
 
-        // The rule-of-thirds grid, in normalized viewport coordinates. Invariants of the composition rule
-        // itself, not designer thresholds — "thirds" at 0.3 would not be thirds — so they live here rather
-        // than in GradingConfig, the same distinction SampleInset above is drawn on.
-        private const float OneThird = 1f / 3f;
-        private const float TwoThirds = 2f / 3f;
-
-        /// <summary>Distance from a viewport CORNER to its nearest thirds intersection — the largest the
-        /// nearest-thirds distance can ever be, so dividing by it normalizes the placement penalty to
-        /// [0,1]. (A corner is 1/3 away in each axis: sqrt(2)/3.) For reference, dead centre sits exactly
-        /// half this far out, so a centred subject scores 0.5 on placement before weighting.</summary>
-        private const float MaxThirdsDistance = 0.47140452f;
+        /// <summary>Distance from the centre of the viewport to a corner, in normalized coordinates
+        /// (sqrt(0.5² + 0.5²)) — the largest the off-centre distance can ever be, so dividing by it
+        /// normalizes the placement penalty to [0,1]. An invariant of the geometry, not a designer
+        /// threshold, which is why it lives here rather than in GradingConfig — the same distinction
+        /// <see cref="SampleInset"/> above is drawn on.</summary>
+        private const float MaxCentreDistance = 0.70710678f;
 
         /// <summary>
         /// Occlusion sample offsets in units of (extents × <see cref="SampleInset"/>), in order of use.
@@ -351,7 +346,16 @@ namespace CameraGame.Grading
             else
                 prominenceTerm = 1f;
 
-            // --- Placement term (rule of thirds) ------------------------------------------------------
+            // --- Placement term (distance from the centre of the frame) --------------------------------
+            //
+            // ⚠️ CENTRED SCORES HIGHEST. This was built the other way first — a bonus for sitting near a
+            // rule-of-thirds line, as GDD FR6 originally specified — and the photographs disproved it.
+            // Shown matched pairs (same subject, same instant, same camera position, differing ONLY in
+            // where in the frame he sits), Alexv judged the centred shot the better photograph every time:
+            // first in the rig's empty world, then again in the real town after that result was re-tested
+            // to rule out "the thirds shot only looks lopsided because the rest of the frame is empty".
+            // FR6 was rewritten to match the game rather than the code to match FR6.
+            //
             // Normalized against cam.pixelRect, NEVER Screen.width/height: an OFFSET viewport (split screen,
             // a picture-in-picture viewfinder) has a pixelRect that does not start at zero, and Story 1.9's
             // review reproduced a subject dead-centre in such a viewport measuring 0% from exactly that
@@ -359,18 +363,15 @@ namespace CameraGame.Grading
             float cx = (rect.center.x - view.xMin) / view.width;
             float cy = (rect.center.y - view.yMin) / view.height;
 
-            // Nearest of the FOUR thirds intersections. Minimising each axis independently gives the nearest
-            // point of the 2x2 grid, because Euclidean distance separates across axes.
-            float dx = Mathf.Min(Mathf.Abs(cx - OneThird), Mathf.Abs(cx - TwoThirds));
-            float dy = Mathf.Min(Mathf.Abs(cy - OneThird), Mathf.Abs(cy - TwoThirds));
-            float thirdsScore = 1f - Mathf.Clamp01(Mathf.Sqrt(dx * dx + dy * dy) / MaxThirdsDistance);
+            float dx = cx - 0.5f;
+            float dy = cy - 0.5f;
+            float centreScore = 1f - Mathf.Clamp01(Mathf.Sqrt(dx * dx + dy * dy) / MaxCentreDistance);
 
-            // ⚠️ Placement must NOT dominate. A big subject dead-centre is a fine photograph — the GDD's bad
-            // case is "dead-centre TINY", small AND centred. Two things keep it in its place: thirdsWeight
-            // caps how much it can ever shave off, and the penalty fades right out as the subject grows to
-            // fill the frame, because at that point there is nowhere else to put him.
-            float centringRelief = Mathf.InverseLerp(idealMax, 1f, prominence);
-            float placementTerm = 1f - cfg.SafeThirdsWeight * (1f - centringRelief) * (1f - thirdsScore);
+            // Weighted so it can only ever shave a fraction off: this is here to punish a subject shoved
+            // into a corner, not to micro-manage a shot that is slightly off-centre. Note there is no
+            // "relief as the subject grows" term any more — it existed to stop a frame-filling subject
+            // being punished for being centred, and centred is now the thing being rewarded.
+            float placementTerm = 1f - cfg.SafeCentreWeight * (1f - centreScore);
 
             // --- Cut-off term -------------------------------------------------------------------------
             // The frame edge slicing through the subject costs composition. This is also what stops a

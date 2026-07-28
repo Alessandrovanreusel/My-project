@@ -87,8 +87,14 @@ quality settings, a config asset's values. Record the previous state *before* yo
 it on the way out — the photo-shoot rig stores the scene path in `SessionState` (which survives the
 domain reloads that entering and leaving play mode cause) and reopens it when play mode ends. **Never
 leave the editor sitting in the test world or on test settings:** the next story would be developed
-inside it, against values nobody chose, and the damage would not be obvious until much later. Write
-test output to `Temp/` (Unity-generated and git-ignored) so nothing lands in `Assets/` either.
+inside it, against values nobody chose, and the damage would not be obvious until much later.
+
+**Write test output to `_bmad-output/verification/` — NOT to `Temp/`.** It must stay out of `Assets/`
+(or Unity imports it as game content) and out of git (it is evidence, not source), and `_bmad-output/`
+is both. **`Temp/` is not, despite being the obvious choice: Unity DELETES the entire folder when the
+editor shuts down.** That cost a real handover on 2026-07-27 — a set of photographs Alexv had been asked
+to review was simply gone by the time he opened the folder, and the run had to be repeated. Anything a
+human is asked to look at must outlive the editor session that produced it.
 
 **Alexv is the second opinion, not the first.** Do not hand him a list of things to go and try. Bring
 him a conclusion and the evidence behind it. Say plainly which parts you verified and which you could

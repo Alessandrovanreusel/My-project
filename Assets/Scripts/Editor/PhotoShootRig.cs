@@ -20,13 +20,29 @@ namespace CameraGame.EditorTools
     /// of the game running, which are then looked at and judged. Encoding expectations would only prove
     /// the code agrees with whatever was assumed while writing them; a photograph shows what it did.
     ///
-    /// Tools > Grading > Photo Shoot (Play). Output: Temp/PhotoShoot/ (git-ignored) — one PNG per vantage
-    /// point plus shots.txt pairing each picture with the verdict the game gave it.
+    /// Tools > Grading > Photo Shoot (Play). Output: _bmad-output/verification/photo-shoot/ (git-ignored,
+    /// outside Assets/, and NOT wiped when Unity closes) — one PNG per vantage point plus shots.txt
+    /// pairing each picture with the verdict the game gave it.
     /// </summary>
     public static class PhotoShootRig
     {
-        public const string OutputDir = "Temp/PhotoShoot";
-        public const string StudyOutputDir = "Temp/PhotoShootTown";
+        /// <summary>
+        /// Where the photographs land.
+        ///
+        /// ⚠️ NOT <c>Temp/</c>, which is where this rig wrote until 2026-07-27. Unity DELETES the whole
+        /// <c>Temp/</c> folder when the editor shuts down, so every photograph produced by a run evaporated
+        /// the next time Unity was closed — including the ones Alexv had been asked to look at, which were
+        /// simply gone by the time he opened the folder. Evidence that a human is asked to review has to
+        /// outlive the editor session that produced it.
+        ///
+        /// <c>_bmad-output/</c> satisfies the original reason for choosing Temp/ (it is outside
+        /// <c>Assets/</c>, so Unity never imports these PNGs as assets, and it is git-ignored, so they
+        /// never reach the repo) without the disappearing act.
+        /// </summary>
+        private const string VerificationRoot = "_bmad-output/verification";
+
+        public const string OutputDir = VerificationRoot + "/photo-shoot";
+        public const string StudyOutputDir = VerificationRoot + "/photo-shoot-town";
 
         /// <summary>The real town. Photographed by the placement study so composition can be judged
         /// against actual scenery rather than the private world's empty plane.</summary>
@@ -253,6 +269,16 @@ namespace CameraGame.EditorTools
         /// deletion race (the directory handle lingers), so fall back to emptying it file by file.</summary>
         private static void ResetDir(string dir)
         {
+            // ⚠️ This does a RECURSIVE DELETE, and since 2026-07-27 it points inside _bmad-output/, which
+            // also holds every story file and planning artifact. A typo or a future caller passing the
+            // wrong string would destroy work that is git-ignored and therefore unrecoverable. Refuse
+            // anything that is not a subfolder of the verification root — cheap insurance against the one
+            // mistake in this file that could not be undone.
+            string normalized = dir.Replace('\\', '/');
+            if (!normalized.StartsWith(VerificationRoot + "/", System.StringComparison.Ordinal))
+                throw new System.ArgumentException(
+                    $"Refusing to clear '{dir}': rig output must live under '{VerificationRoot}/'.", nameof(dir));
+
             try
             {
                 if (Directory.Exists(dir)) Directory.Delete(dir, true);

@@ -42,7 +42,7 @@ namespace CameraGame.Grading
         /// was good came back weak.</summary>
         public readonly float Subject01;
 
-        /// <summary>Composition axis in [0,1]: the prominence sweet spot, rule-of-thirds placement and the
+        /// <summary>Composition axis in [0,1]: the prominence sweet spot, centred placement and the
         /// frame-edge cut-off penalty, combined (FR6).</summary>
         public readonly float Composition01;
 

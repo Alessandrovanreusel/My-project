@@ -141,12 +141,29 @@ namespace CameraGame.PhotoMode
             new Pose("l_inside_away",  0.05f, "Standing inside him, facing the other way.", yaw: 180f),
 
             // --- Story 1.10: composition (AC1) ---------------------------------------------------------
-            // The pair that isolates PLACEMENT: identical distance and identical subject, differing only in
-            // where in the frame he sits. Any score difference between these two is the thirds term and
-            // nothing else.
-            new Pose("m_thirds",   2.5f, "Aimed at the upper-left thirds intersection, 2.5 heights back.",
-                     targetX: 1f / 3f, targetY: 2f / 3f),
-            new Pose("n_centred",  2.5f, "Aimed dead centre, 2.5 heights back — m_thirds' control."),
+            // The pair that isolates PLACEMENT — and it has to be a MATCHED pair (two consecutive frames
+            // from one frozen camera position) to isolate anything at all.
+            //
+            // ⚠️ This was two ordinary poses, `m_thirds` then `n_centred`, 1.8 s apart. That is long enough
+            // for the drunk to walk, so the two shots differed in HEIGHT as well as placement — 43.4% vs
+            // 39.2% on the run that exposed it — and prominence swamped the term the pair existed to
+            // measure, reporting the off-centre shot as the better composition immediately after the
+            // placement rule had been reversed to say the opposite. A "controlled" comparison that is not
+            // actually controlled produces confident, well-formed, wrong evidence.
+            //
+            // ⚠️ AND THE MATCHED PAIR STILL WAS NOT ENOUGH AT 2.5 HEIGHTS. Placement and prominence are not
+            // independent: a rectilinear projection stretches toward the frame edges, so re-aiming the same
+            // subject from centre to a thirds point genuinely makes him project LARGER — 40.4% of the frame
+            // height became 45.8% across two consecutive frames from a frozen camera. At 2.5 heights that
+            // straddles the sweet spot's floor (0.45), so the off-centre half cleared it while the centred
+            // half did not, and PROMINENCE decided a comparison that exists to measure PLACEMENT.
+            //
+            // Shot at 2 heights instead, where both halves land comfortably inside the sweet spot and
+            // prominence is 1.0 for each — leaving placement as the only term that can differ. The coupling
+            // is real and not a defect (an off-centre subject IS bigger on screen); it just has to be kept
+            // out of the one measurement that cannot tolerate it.
+            new Pose("m_placement", 2f, "Placement pair at 2 heights: centred, then off-centre.",
+                     trigger: Shutter.PairNow),
 
             // The anti-regression for the thirds weighting: a centred CLOSE-UP is a good photograph and the
             // GDD's bad case is "dead-centre TINY", not "dead-centre". If this comes back 2 stars, the
@@ -201,19 +218,22 @@ namespace CameraGame.PhotoMode
 
             // --- Story 1.10: both axes at once (AC3) ---------------------------------------------------
             // THE MONEY SHOT — the photograph this whole event exists to produce, and the only pose that
-            // asks for everything at the same time: well-sized, on a thirds line, and inside the peak
-            // window. Added after the second shoot, where the highest grade in twenty-seven photographs was
-            // four stars: the timing ladder ran dead-centre at 2.5 heights and the best-composed shot fired
-            // seven seconds early, so nothing ever had both axes high AT ONCE. Five stars being reachable
-            // was true by arithmetic and unphotographed, which is precisely the kind of "proof" this rig
-            // exists to refuse.
-            new Pose("z3_money_shot",  2f, "Two heights back, on the thirds line, inside the peak window.",
-                     targetX: 1f / 3f, targetY: 2f / 3f, trigger: Shutter.LateInPeak),
+            // asks for everything at the same time: well-sized, well-placed, and inside the peak window.
+            // Added after the second shoot, where the highest grade in twenty-seven photographs was four
+            // stars: the timing ladder ran at 2.5 heights and the best-composed shot fired seven seconds
+            // early, so nothing ever had both axes high AT ONCE. Five stars being reachable was true by
+            // arithmetic and unphotographed, which is precisely the kind of "proof" this rig exists to
+            // refuse.
+            //
+            // Aimed DEAD CENTRE since the placement term was reversed. It was on a thirds intersection
+            // before, which is what "best possible placement" meant while the code followed the GDD's
+            // original FR6 — the pose has to move with the definition or it stops being the money shot.
+            new Pose("z3_money_shot",  2f, "Two heights back, dead centre, inside the peak window.",
+                     trigger: Shutter.LateInPeak),
 
             // The same framing on the middle of the timing ramp, so the star ladder shows what being LATE
             // costs when nothing else is wrong with the photograph.
             new Pose("z4_money_late_12s", 2f, "Same framing, shutter pulled 1.2 s after the peak window.",
-                     targetX: 1f / 3f, targetY: 2f / 3f,
                      trigger: Shutter.AtPeakOffset, targetOffset: -1.2f),
         };
 
@@ -304,8 +324,8 @@ namespace CameraGame.PhotoMode
             _log.AppendLine("PHOTO SHOOT — real shutter, real grader, real actor.");
             _log.AppendLine("No expected values: these are photographs to be looked at.");
             _log.AppendLine($"Graded and saved at {ShotWidth}x{ShotHeight} (one pixel space, no rescaling).");
-            _log.AppendLine("Green box = counted, red = rejected. Faint grey = the rule-of-thirds grid the");
-            _log.AppendLine("composition score is measured against. White cross = frame centre.");
+            _log.AppendLine("Green box = counted, red = rejected. Faint grey dashes = the frame CENTRE, which");
+            _log.AppendLine("the placement half of the composition score measures distance from.");
             _log.AppendLine();
             LogConfig();
 
@@ -368,7 +388,7 @@ namespace CameraGame.PhotoMode
                             $"over {gradingConfig.SafeOcclusionSamples} samples");
             _log.AppendLine($"    prominence: 0 below {below:0.###} → full marks {idealMin:0.###}..{idealMax:0.###} " +
                             $"→ 0 above {above:0.###}");
-            _log.AppendLine($"    placement:  thirdsWeight {gradingConfig.SafeThirdsWeight:0.###}  " +
+            _log.AppendLine($"    placement:  centreWeight {gradingConfig.SafeCentreWeight:0.###}  " +
                             $"cutoffWeight {gradingConfig.SafeCutoffWeight:0.###}");
             _log.AppendLine($"    timing:     full marks within ±{full:0.###}s of the peak WINDOW, zero at ±{zero:0.###}s");
 
@@ -779,7 +799,7 @@ namespace CameraGame.PhotoMode
             _log.AppendLine($"    size: height {detail.HeightFraction:P1}  framed {detail.FramedFraction:P0}  " +
                             $"area {detail.Coverage01:P1}  box {r.width:F0}x{r.height:F0}px");
             _log.AppendLine($"    placement: box centre ({boxX:F3}, {boxY:F3})  " +
-                            $"[thirds lines at 0.333 / 0.667; dead centre 0.500]");
+                            $"[dead centre = 0.500, 0.500 — closer is better]");
             _log.AppendLine($"    timing: PeakOffset {detail.PeakOffsetText}  TimeToPeak {timeToPeak:+0.00;-0.00;0.00}s  " +
                             $"IsAtPeak {atPeak}");
             _log.AppendLine($"    camera: {distance:F1} units ({p.Distance:F1} heights)  fov {cam.fieldOfView:F0}°  " +
@@ -808,10 +828,13 @@ namespace CameraGame.PhotoMode
                 RenderTexture.active = _rt;
                 tex.ReadPixels(new Rect(0, 0, ShotWidth, ShotHeight), 0, 0);
 
-                // The thirds grid goes down FIRST so the grader's box draws over it, not under it. Drawing
+                // The centre guide goes down FIRST so the grader's box draws over it, not under it. Drawing
                 // the invisible thing the score is computed from is the same move that made 1.9's box
-                // overlay decisive: it turns "does 62% look right?" into "is he on the line?".
-                DrawThirds(tex, new Color(0.75f, 0.75f, 0.78f));
+                // overlay decisive: it turns "does 62% look right?" into "how far off centre is he?".
+                //
+                // ⚠️ This drew a rule-of-thirds grid until the placement term was reversed to reward
+                // centring. A guide marking lines that nothing scores against is worse than none.
+                DrawCentreGuide(tex, new Color(0.75f, 0.75f, 0.78f));
 
                 Rect r = detail.ScreenRect;
                 if (r.width > 0f && r.height > 0f)
@@ -828,19 +851,18 @@ namespace CameraGame.PhotoMode
             }
         }
 
-        /// <summary>Dashed thirds lines — dashed so they cannot be mistaken for the grader's solid box.</summary>
-        private static void DrawThirds(Texture2D tex, Color c)
+        /// <summary>Dashed lines through the frame's centre — the point the placement term measures
+        /// distance from. Dashed so they cannot be mistaken for the grader's solid box.</summary>
+        private static void DrawCentreGuide(Texture2D tex, Color c)
         {
-            for (int i = 1; i <= 2; i++)
-            {
-                int x = Mathf.RoundToInt(tex.width * (i / 3f));
-                for (int y = 0; y < tex.height; y++)
-                    if ((y / 6) % 2 == 0) Px(tex, x, y, c);
+            int cx = tex.width / 2;
+            int cy = tex.height / 2;
 
-                int yy = Mathf.RoundToInt(tex.height * (i / 3f));
-                for (int x2 = 0; x2 < tex.width; x2++)
-                    if ((x2 / 6) % 2 == 0) Px(tex, x2, yy, c);
-            }
+            for (int y = 0; y < tex.height; y++)
+                if ((y / 6) % 2 == 0) Px(tex, cx, y, c);
+
+            for (int x = 0; x < tex.width; x++)
+                if ((x / 6) % 2 == 0) Px(tex, x, cy, c);
         }
 
         private static void DrawRect(Texture2D tex, Rect r, Color c, int thickness)

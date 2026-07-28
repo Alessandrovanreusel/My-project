@@ -22,7 +22,7 @@ MonoBehaviour:
   prominenceIdealMax: 0.78
   prominenceFalloffBelow: 0.15
   prominenceFalloffAbove: 1.15
-  thirdsWeight: 0.35
+  centreWeight: 0.35
   cutoffWeight: 0.6
   timingFullSeconds: 0.5
   timingZeroSeconds: 2
