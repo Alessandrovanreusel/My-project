@@ -796,8 +796,11 @@ namespace CameraGame.PhotoMode
                 _log.AppendLine($"    axes: composition {grade.Composition01:P0} x timing {grade.Timing01:P0}" +
                                 $"   (subject seen {grade.Subject01:P0})");
 
-            _log.AppendLine($"    size: height {detail.HeightFraction:P1}  framed {detail.FramedFraction:P0}  " +
-                            $"area {detail.Coverage01:P1}  box {r.width:F0}x{r.height:F0}px");
+            // Through the *Text accessors: a shot rejected before it was projected has no size measurement,
+            // and since the review made the sentinel explicit (NotEvaluated = -1) printing the raw field
+            // would read "height -100.0%". "n/a" is what those gates actually know.
+            _log.AppendLine($"    size: height {detail.HeightText}  framed {detail.FramedText}  " +
+                            $"area {detail.CoverageText}  box {r.width:F0}x{r.height:F0}px");
             _log.AppendLine($"    placement: box centre ({boxX:F3}, {boxY:F3})  " +
                             $"[dead centre = 0.500, 0.500 — closer is better]");
             _log.AppendLine($"    timing: PeakOffset {detail.PeakOffsetText}  TimeToPeak {timeToPeak:+0.00;-0.00;0.00}s  " +

@@ -36,7 +36,7 @@ namespace CameraGame.Grading
                  "39% of the frame height, which is both stable across the walk cycle and close to how a " +
                  "photographer actually judges 'he fills the frame'. Tune it against the photo shoot, not " +
                  "by arithmetic.")]
-        [Range(0f, 1f)] public float minSubjectHeight = 0.20f;
+        [Range(0f, 1f)] public float minSubjectHeight = DefaultMinSubjectHeight;
 
         [Header("Occlusion")]
 
@@ -56,7 +56,7 @@ namespace CameraGame.Grading
         [Tooltip("Fraction of those sample points that must be unblocked for the subject to count as " +
                  "visible. 0.2 = 'at least a fifth of him is showing'. 1.0 demands a completely " +
                  "unobstructed view, which is harsher than it sounds once fences and railings exist.")]
-        [Range(0f, 1f)] public float minVisibleSamples = 0.2f;
+        [Range(0f, 1f)] public float minVisibleSamples = DefaultMinVisibleSamples;
 
         [Header("Composition — prominence sweet spot")]
 
@@ -72,30 +72,33 @@ namespace CameraGame.Grading
                  "marks. The GDD's '~25-50% of the frame' was written about a photograph, not about a " +
                  "measurement, so this was settled by looking at the shoot instead: below about 0.45 he " +
                  "reads as a small figure in a lot of empty frame (photo-shoot/b_mid.png at 0.39).")]
-        [Range(0f, 1f)] public float prominenceIdealMin = 0.45f;
+        [Range(0f, 1f)] public float prominenceIdealMin = DefaultProminenceIdealMin;
 
         [Tooltip("Top of the sweet spot: the tallest the subject can be while still scoring full marks. " +
                  "Above this he starts running out of frame and the score eases off. Set from the shoot: " +
                  "a_close.png at 0.82 is cramped — head near the top edge, feet near the bottom — while " +
-                 "e_far_zoomed.png at 0.55 and o_centred_closeup.png at 0.66 are the best-proportioned " +
+                 "e_far_zoomed.png at 0.55 and o_centred_closeup.png at 0.68 are the best-proportioned " +
                  "photographs in the set.\n\n" +
                  "⚠️ A first pass used 0.35..0.85 and it was too WIDE to be worth anything: every framing " +
                  "from 0.39 to 0.82 scored an identical 83%, so prominence did no work at all and the star " +
                  "rating could not tell a cramped shot from a well-proportioned one.")]
-        [Range(0f, 1f)] public float prominenceIdealMax = 0.78f;
+        [Range(0f, 1f)] public float prominenceIdealMax = DefaultProminenceIdealMax;
 
         [Tooltip("Height fraction at which prominence reaches ZERO on the small side. A subject smaller " +
                  "than this is a street scene, not a portrait of him. Keep it BELOW the gate " +
                  "(minSubjectHeight) or some shots that pass the gate score a flat 0 and read to the " +
                  "player as though the shutter had missed entirely.")]
-        [Range(0f, 1f)] public float prominenceFalloffBelow = 0.15f;
+        [Range(0f, 1f)] public float prominenceFalloffBelow = DefaultFalloffBelow;
 
         [Tooltip("Height fraction at which prominence reaches ZERO on the large side. Values above 1 are " +
                  "deliberate and normal: the measured box is CLAMPED to the frame, so it can never read " +
-                 "more than 1.0, and a value of 1.15 means 'a subject filling the whole frame still keeps " +
-                 "half of his prominence' — the cut-off penalty below is what actually punishes a subject " +
-                 "spilling past the edges.")]
-        [Min(0f)] public float prominenceFalloffAbove = 1.15f;
+                 "more than 1.0. At the shipped 1.15 (with the sweet spot topping out at 0.78) a subject " +
+                 "filling the whole frame keeps about 40% of his prominence — InverseLerp(1.15, 0.78, 1.0). " +
+                 "The cut-off penalty below is what actually punishes a subject spilling past the edges.\n\n" +
+                 "Note this figure moves with prominenceIdealMax, so recompute it if you retune the sweet " +
+                 "spot. Values above 4 are clamped (GradingConfig.MaxFalloffAbove) and warned about at " +
+                 "Awake — beyond that the curve is so flat that prominence stops discriminating.")]
+        [Min(0f)] public float prominenceFalloffAbove = DefaultFalloffAbove;
 
         [Header("Composition — placement & framing")]
 
@@ -111,14 +114,14 @@ namespace CameraGame.Grading
                  "was removed. GDD FR6 was rewritten to match; see the story's Dev Agent Record.\n\n" +
                  "Keep it modest anyway: this should punish a subject shoved into a corner, not micro-" +
                  "manage a shot that is merely a little off-centre.")]
-        [Range(0f, 1f)] public float centreWeight = 0.35f;
+        [Range(0f, 1f)] public float centreWeight = DefaultCentreWeight;
 
         [Tooltip("How much of the composition score the FRAME EDGE can take when it clips the subject. " +
                  "Measured as the fraction of his projected box that actually landed inside the frame, so " +
                  "0.6 means a subject cut exactly in half keeps 70% of his composition score. This is the " +
                  "term that stops a nose-to-nose shot — where the box fills the frame because most of him " +
                  "is outside it — from reading as a perfectly prominent subject.")]
-        [Range(0f, 1f)] public float cutoffWeight = 0.6f;
+        [Range(0f, 1f)] public float cutoffWeight = DefaultCutoffWeight;
 
         [Header("Timing")]
 
@@ -127,13 +130,18 @@ namespace CameraGame.Grading
                  "⚠️ Either side of the WINDOW, not of an instant. The peak is an interval (1.5 s for the " +
                  "Town Drunk) and every frame of it scores 1.0 — see ISubject.PeakOffset for why measuring " +
                  "from the window's start instead would score the last frame of the money shot as 1.5 s " +
-                 "early.")]
-        [Min(0f)] public float timingFullSeconds = 0.5f;
+                 "early.\n\n" +
+                 "Must be greater than 0: at 0 the GDD's full-marks band disappears entirely and only a " +
+                 "shutter pulled inside the peak window itself scores full timing. Warned about at Awake. " +
+                 "Values above 60 s are clamped (GradingConfig.MaxTimingSeconds) and also warned about.")]
+        [Min(0f)] public float timingFullSeconds = DefaultTimingFullSeconds;
 
         [Tooltip("Seconds either side of the peak window at which timing reaches ZERO (the GDD's ±2 s). " +
                  "Must be greater than timingFullSeconds, or the timing curve becomes a cliff — warned " +
-                 "about at Awake.")]
-        [Min(0f)] public float timingZeroSeconds = 2f;
+                 "about at Awake. Values above 60 s are clamped (GradingConfig.MaxTimingSeconds) and " +
+                 "warned about: a hand-authored 70/90 pair used to pass validation and then silently " +
+                 "resolve to 60/60.001, which is exactly the cliff the ordering check exists to prevent.")]
+        [Min(0f)] public float timingZeroSeconds = DefaultTimingZeroSeconds;
 
         // --- Safe accessors ---------------------------------------------------------------------------
         //
@@ -143,13 +151,43 @@ namespace CameraGame.Grading
         // one: it fails every comparison, so `x < NaN` is false forever and the check it guards silently
         // stops existing. (Note Mathf.Clamp01(NaN) is NaN, which is why plain clamping is not enough.)
 
+        // --- Design defaults and clamp bounds ---------------------------------------------------------
+        //
+        // Named rather than repeated as literals inside each Safe* accessor. Story 1.10 shipped eight
+        // accessors whose fallback duplicated the field initializer as a bare number in a second place, so
+        // retuning a field left the corrupt-asset fallback silently restoring the OLD value (review
+        // 2026-07-28). One constant, referenced by both the initializer and the accessor, cannot drift.
+        //
+        // The MAX bounds are the ones a hand-authored asset can trip without noticing, so they are also
+        // named here and quoted in the tooltips and the "was clamped" warning below.
+
+        private const float DefaultMinSubjectHeight   = 0.20f;
+        private const float DefaultMinVisibleSamples  = 0.20f;
+        private const float DefaultProminenceIdealMin = 0.45f;
+        private const float DefaultProminenceIdealMax = 0.78f;
+        private const float DefaultFalloffBelow       = 0.15f;
+        private const float DefaultFalloffAbove       = 1.15f;
+        private const float DefaultCentreWeight       = 0.35f;
+        private const float DefaultCutoffWeight       = 0.60f;
+        private const float DefaultTimingFullSeconds  = 0.5f;
+        private const float DefaultTimingZeroSeconds  = 2f;
+
+        /// <summary>Ceiling for <see cref="prominenceFalloffAbove"/>. Above 1 is normal (the measured box is
+        /// clamped to the frame); beyond this the far side of the curve is so flat that prominence stops
+        /// discriminating at all.</summary>
+        public const float MaxFalloffAbove = 4f;
+
+        /// <summary>Ceiling for both timing bounds, in seconds. A peak window wider than this is longer than
+        /// most events, so timing would score full marks for every shot of them.</summary>
+        public const float MaxTimingSeconds = 60f;
+
         /// <summary>Occlusion samples, guaranteed usable regardless of what is serialized in the asset, and
         /// capped at the number of distinct sample points that actually exist.</summary>
         public int SafeOcclusionSamples =>
             Mathf.Clamp(occlusionSamples, 1, ShotGrader.MaxOcclusionSamples);
 
         /// <summary>Visible-fraction threshold, guaranteed in [0,1] and never NaN.</summary>
-        public float SafeMinVisibleSamples => Clamp01Finite(minVisibleSamples, 0f);
+        public float SafeMinVisibleSamples => Clamp01Finite(minVisibleSamples, DefaultMinVisibleSamples);
 
         /// <summary>
         /// The subject-height gate, guaranteed in [0,1] and never NaN. Falls back to the design value
@@ -158,30 +196,33 @@ namespace CameraGame.Grading
         public float SafeMinSubjectHeight => Clamp01Finite(minSubjectHeight, DefaultMinSubjectHeight);
 
         /// <summary>Bottom of the prominence sweet spot, finite and in [0,1].</summary>
-        public float SafeProminenceIdealMin => Clamp01Finite(prominenceIdealMin, 0.45f);
+        public float SafeProminenceIdealMin => Clamp01Finite(prominenceIdealMin, DefaultProminenceIdealMin);
 
         /// <summary>Top of the prominence sweet spot, finite and in [0,1].</summary>
-        public float SafeProminenceIdealMax => Clamp01Finite(prominenceIdealMax, 0.78f);
+        public float SafeProminenceIdealMax => Clamp01Finite(prominenceIdealMax, DefaultProminenceIdealMax);
 
         /// <summary>Small-side zero point, finite and in [0,1].</summary>
-        public float SafeProminenceFalloffBelow => Clamp01Finite(prominenceFalloffBelow, 0.15f);
+        public float SafeProminenceFalloffBelow => Clamp01Finite(prominenceFalloffBelow, DefaultFalloffBelow);
 
         /// <summary>Large-side zero point, finite. Allowed above 1 — see the field's tooltip.</summary>
-        public float SafeProminenceFalloffAbove => ClampFinite(prominenceFalloffAbove, 0f, 4f, 1.15f);
+        public float SafeProminenceFalloffAbove =>
+            ClampFinite(prominenceFalloffAbove, 0f, MaxFalloffAbove, DefaultFalloffAbove);
 
         /// <summary>Off-centre placement penalty weight, finite and in [0,1].</summary>
-        public float SafeCentreWeight => Clamp01Finite(centreWeight, 0.35f);
+        public float SafeCentreWeight => Clamp01Finite(centreWeight, DefaultCentreWeight);
 
         /// <summary>Cut-off penalty weight, finite and in [0,1].</summary>
-        public float SafeCutoffWeight => Clamp01Finite(cutoffWeight, 0.6f);
+        public float SafeCutoffWeight => Clamp01Finite(cutoffWeight, DefaultCutoffWeight);
 
         /// <summary>Full-marks timing half-window in seconds, finite and non-negative.</summary>
-        public float SafeTimingFullSeconds => ClampFinite(timingFullSeconds, 0f, 60f, 0.5f);
+        public float SafeTimingFullSeconds =>
+            ClampFinite(timingFullSeconds, 0f, MaxTimingSeconds, DefaultTimingFullSeconds);
 
         /// <summary>Zero-marks timing half-window in seconds, finite and non-negative. Ordering against
         /// <see cref="SafeTimingFullSeconds"/> is enforced by <see cref="ResolveTimingWindow"/>, not here —
         /// a per-field accessor cannot see its neighbour.</summary>
-        public float SafeTimingZeroSeconds => ClampFinite(timingZeroSeconds, 0f, 60f, 2f);
+        public float SafeTimingZeroSeconds =>
+            ClampFinite(timingZeroSeconds, 0f, MaxTimingSeconds, DefaultTimingZeroSeconds);
 
         // --- Resolvers --------------------------------------------------------------------------------
         //
@@ -224,9 +265,6 @@ namespace CameraGame.Grading
             fullSeconds = SafeTimingFullSeconds;
             zeroSeconds = Mathf.Max(SafeTimingZeroSeconds, fullSeconds + MinCurveWidth);
         }
-
-        /// <summary>The design value for the subject-height gate — the fallback for a bad asset.</summary>
-        private const float DefaultMinSubjectHeight = 0.20f;
 
         /// <summary>Clamps to [0,1], substituting <paramref name="fallback"/> for NaN/Infinity. Mathf.Clamp01
         /// alone is not enough: it returns NaN for NaN, so the bad value survives every guard downstream.</summary>
@@ -299,6 +337,63 @@ namespace CameraGame.Grading
             if (TryReportNonFinite(nameof(timingZeroSeconds), timingZeroSeconds,
                     TimingNaN, SafeTimingZeroSeconds, out problem))
                 return true;
+
+            // --- Out of range, i.e. SILENTLY CLAMPED --------------------------------------------------
+            //
+            // These run BEFORE every structural check below, and that ordering is load-bearing. The
+            // structural checks compare RAW fields, while the grader runs on the Safe*/resolved values —
+            // so an out-of-range field made them lie in both directions (review 2026-07-28):
+            //
+            //   FALSE ALARM:  prominenceIdealMax: 2.0 fired "prominenceFalloffAbove (1.15) is not above
+            //                 prominenceIdealMax (2)", telling the designer to raise a value that needed no
+            //                 raising — Safe clamps idealMax to 1.0 and the resolved curve was already fine.
+            //   MISSED ALARM: timingFullSeconds: 70 / timingZeroSeconds: 90 passed `90 <= 70` with a clean
+            //                 console, then both clamped to 60 and resolved to 60 / 60.001 — precisely the
+            //                 1 ms cliff the ordering check exists to prevent.
+            //
+            // Returning here first means anything that reaches the structural checks is already in range,
+            // so raw and Safe* are the same number and those checks are honest again. It also closes the
+            // "silently clamped, never warned" hole: [Range]/[Min] are editor-only and this project
+            // hand-authors these assets as YAML, so nothing else would ever have said a word.
+
+            if (TryReportClamped(nameof(minSubjectHeight), minSubjectHeight, SafeMinSubjectHeight,
+                    "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(minVisibleSamples), minVisibleSamples, SafeMinVisibleSamples,
+                    "0 and 1", out problem)) return true;
+
+            if (occlusionSamples != SafeOcclusionSamples)
+            {
+                problem = $"occlusionSamples is {occlusionSamples}, outside the usable range 1 to " +
+                          $"{ShotGrader.MaxOcclusionSamples} — grading will use {SafeOcclusionSamples} instead. " +
+                          $"{ShotGrader.MaxOcclusionSamples} is the number of DISTINCT sample points that " +
+                          "exist, so asking for more cannot buy more precision.";
+                return true;
+            }
+
+            if (TryReportClamped(nameof(prominenceIdealMin), prominenceIdealMin, SafeProminenceIdealMin,
+                    "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(prominenceIdealMax), prominenceIdealMax, SafeProminenceIdealMax,
+                    "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(prominenceFalloffBelow), prominenceFalloffBelow,
+                    SafeProminenceFalloffBelow, "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(prominenceFalloffAbove), prominenceFalloffAbove,
+                    SafeProminenceFalloffAbove, $"0 and {MaxFalloffAbove:0.###}", out problem)) return true;
+
+            if (TryReportClamped(nameof(centreWeight), centreWeight, SafeCentreWeight,
+                    "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(cutoffWeight), cutoffWeight, SafeCutoffWeight,
+                    "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(timingFullSeconds), timingFullSeconds, SafeTimingFullSeconds,
+                    $"0 and {MaxTimingSeconds:0.###} seconds", out problem)) return true;
+
+            if (TryReportClamped(nameof(timingZeroSeconds), timingZeroSeconds, SafeTimingZeroSeconds,
+                    $"0 and {MaxTimingSeconds:0.###} seconds", out problem)) return true;
 
             // --- Occlusion mask -----------------------------------------------------------------------
             if (occluderMask.value == 0)
@@ -401,6 +496,18 @@ namespace CameraGame.Grading
             }
 
             // --- Timing window ------------------------------------------------------------------------
+            // Symmetric with the two `<= 0` gate checks above, which is where this one was missing: at 0
+            // the GDD's ±0.5 s full-marks band vanishes and `distance <= 0` is true only when PeakOffset is
+            // exactly 0 — i.e. only inside the peak window itself. Every shot either side starts losing
+            // marks from the first frame, which reads to a player as the grader being unreasonably harsh.
+            if (timingFullSeconds <= 0f)
+            {
+                problem = "timingFullSeconds is 0 — there is no full-marks window at all, so only a shutter " +
+                          "pulled inside the peak itself scores full timing and everything either side is " +
+                          "immediately penalised. The GDD asks for ±0.5 s. Raise it.";
+                return true;
+            }
+
             if (timingZeroSeconds <= timingFullSeconds)
             {
                 problem = $"timingZeroSeconds ({timingZeroSeconds:0.###}) is not greater than " +
@@ -430,10 +537,36 @@ namespace CameraGame.Grading
             return true;
         }
 
+        /// <summary>Shared body for the out-of-range checks. Compares the authored value against what the
+        /// grader will actually use, so the message can name both — the designer needs to see that the
+        /// number they typed is not the number being scored. Assumes the non-finite checks have already
+        /// run (a NaN would compare unequal here and produce a confusing message).</summary>
+        private static bool TryReportClamped(string field, float raw, float safe, string range,
+                                             out string problem)
+        {
+            if (Mathf.Approximately(raw, safe))
+            {
+                problem = null;
+                return false;
+            }
+
+            problem = $"{field} is {raw:0.###}, outside the usable range {range} — grading will use " +
+                      $"{safe:0.###} instead. [Range]/[Min] and OnValidate are editor-only and this project " +
+                      "hand-authors these assets as YAML, so nothing would otherwise have told you.";
+            return true;
+        }
+
         private void OnValidate()
         {
             // Through the Safe* accessors so a NaN typed into the Inspector is repaired rather than clamped
             // to another NaN (Mathf.Clamp01(NaN) is NaN).
+            //
+            // ⚠️ THIS REWRITES HAND-AUTHORED YAML THE MOMENT THE ASSET IS SELECTED. Opening the asset in the
+            // Inspector once converts e.g. prominenceFalloffAbove: 10 to 4 and dirties the file — the value
+            // is destroyed by the act of looking at it, which matters because this project authors these
+            // assets as YAML by hand. That is the same repair [Range]/[Min] would apply anyway, so it is
+            // kept; what was missing is that nothing SAID so. TryGetConfigProblem now reports every clamped
+            // field at Awake, so the warning arrives before the Inspector silently rewrites it.
             minSubjectHeight = SafeMinSubjectHeight;
             occlusionSamples = SafeOcclusionSamples;
             minVisibleSamples = SafeMinVisibleSamples;

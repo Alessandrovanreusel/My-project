@@ -102,6 +102,20 @@ namespace CameraGame.Events
         {
             get
             {
+                // ⚠️ NOT IN A LIFECYCLE AT ALL — must be first. An actor that has not been Begin()-run has
+                // TimeToPeak 0 AND _phase Spawn (the enum's zero value), so the pre-peak branch below
+                // returned Max(0f, 0f) = 0 — which ISubject.PeakOffset DEFINES as "inside the peak window",
+                // i.e. FULL timing marks for a subject standing in its spawn pose. The old comment here
+                // claimed this case reported "before the peak"; it reported *at* the peak, the exact
+                // opposite (review 2026-07-28). Not reachable through EventManager, which calls Begin()
+                // before adding to ActiveActors — but ISubject is public API and carries no such promise,
+                // and grading's own guards are written to actually hold rather than to rely on callers.
+                //
+                // Infinity rather than a large finite number: it is unambiguous, and ShotGrader.Timing
+                // already maps anything at or beyond timingZeroSeconds to 0, so a subject that is not
+                // running scores no timing marks instead of perfect ones.
+                if (!_running) return float.PositiveInfinity;
+
                 if (_phase == EventPhase.Peak) return 0f;                 // anywhere in the money shot
                 if (_phase < EventPhase.Peak) return Mathf.Max(0f, TimeToPeak);
 
@@ -109,7 +123,15 @@ namespace CameraGame.Events
                 // duration back re-bases the countdown onto the window's END: 0 the instant the peak
                 // finishes, growing negative from there. Min(0) so a mis-authored zero-length peak or a
                 // frame overshoot can never report a POSITIVE offset from the far side.
-                float peakDuration = definition != null ? definition.GetPhase(EventPhase.Peak).duration : 0f;
+                //
+                // GetPhase can return NULL — PhaseConfig is a class and EventDefinition.IsValid explicitly
+                // tests it for null — so the `definition != null` guard alone covered the wrong half of the
+                // expression and this could throw inside a property read during capture (NFR8: never
+                // throw). Latent only because Awake disables actors whose definition fails IsValid.
+                EventDefinition.PhaseConfig peakPhase =
+                    definition != null ? definition.GetPhase(EventPhase.Peak) : null;
+                float peakDuration = peakPhase != null ? peakPhase.duration : 0f;
+
                 return Mathf.Min(0f, TimeToPeak + peakDuration);
             }
         }

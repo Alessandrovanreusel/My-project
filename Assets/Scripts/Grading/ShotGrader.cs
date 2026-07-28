@@ -38,10 +38,16 @@ namespace CameraGame.Grading
     /// so logging and the debug overlay cost nothing extra.</summary>
     public readonly struct GradeDetail
     {
-        /// <summary>Sentinel for <see cref="VisibleFraction"/> when the occlusion test never ran. Grading
-        /// early-outs at the first failed gate, so a shot rejected on frustum or coverage has NO
-        /// line-of-sight measurement — reporting that as 0% would read as "completely hidden" when the
-        /// subject was simply never checked.</summary>
+        /// <summary>Sentinel for a measurement that never ran. Grading early-outs at the first failed
+        /// gate, so a shot rejected on frustum or size has NO line-of-sight measurement — reporting that
+        /// as 0% would read as "completely hidden" when the subject was simply never checked.
+        ///
+        /// Used by <see cref="VisibleFraction"/>, <see cref="HeightFraction"/> and
+        /// <see cref="FramedFraction"/> alike. The last two were added in Story 1.10 defaulting to 0 and 1
+        /// respectively, which reproduced the exact misreading this sentinel exists to prevent: a
+        /// <c>BehindCamera</c> miss printed "height 0.0%, framed 100%", asserting that the subject was
+        /// microscopic and perfectly framed when neither had been measured (review 2026-07-28, reproduced
+        /// in <c>g_looking_away</c>).</summary>
         public const float NotEvaluated = -1f;
 
         public readonly GradeMiss Miss;
@@ -84,16 +90,43 @@ namespace CameraGame.Grading
         /// <summary>Line-of-sight for display: a percentage, or "n/a" when the test never ran.</summary>
         public string VisibleText => OcclusionTested ? VisibleFraction.ToString("P0") : "n/a";
 
-        /// <summary>Peak offset for display, or "n/a" when timing was never read. Same discipline as
-        /// <see cref="VisibleText"/>: a shot rejected at the coverage gate has no timing measurement, and
-        /// printing 0.00 s would read as "dead on the peak".</summary>
-        public string PeakOffsetText => float.IsNaN(PeakOffset) ? "n/a" : $"{PeakOffset:+0.00;-0.00;0.00}s";
+        /// <summary>True only when the subject was actually projected and measured. Same discipline as
+        /// <see cref="OcclusionTested"/> — a miss above the size gate never got this far.</summary>
+        public bool SizeMeasured => HeightFraction >= 0f && Miss != GradeMiss.Unevaluated;
 
-        /// <param name="heightFraction">Frame-height fraction; the measure the gate runs on.</param>
-        /// <param name="framedFraction">Share of the subject's box inside the frame; 1 when not measured.</param>
+        /// <summary>Subject height as a share of the frame, or "n/a" when it was never measured.</summary>
+        public string HeightText => SizeMeasured ? HeightFraction.ToString("P1") : "n/a";
+
+        /// <summary>Share of the subject inside the frame, or "n/a" when it was never measured.</summary>
+        public string FramedText => FramedFraction >= 0f && Miss != GradeMiss.Unevaluated
+            ? FramedFraction.ToString("P0") : "n/a";
+
+        /// <summary>Area coverage for display, or "n/a" when the subject was never projected. Coverage is
+        /// computed on the same line as the height fraction, so the two are measured together or not at
+        /// all.</summary>
+        public string CoverageText => SizeMeasured ? Coverage01.ToString("P1") : "n/a";
+
+        /// <summary>Peak offset for display, or "n/a" when there is no usable measurement. Same discipline
+        /// as <see cref="VisibleText"/>: a shot rejected at the SIZE gate has no timing measurement, and
+        /// printing 0.00 s would read as "dead on the peak".
+        ///
+        /// "n/a" covers two cases and deliberately does not distinguish them, because neither yields a
+        /// number worth showing: timing was never read (the shot failed an earlier gate), or it was read
+        /// and the subject reported a non-finite offset. <see cref="GradeMiss"/> already says which — a
+        /// counted shot showing "n/a" is the second case.</summary>
+        public string PeakOffsetText =>
+            float.IsNaN(PeakOffset) || float.IsInfinity(PeakOffset)
+                ? "n/a"
+                : $"{PeakOffset:+0.00;-0.00;0.00}s";
+
+        /// <param name="heightFraction">Frame-height fraction; the measure the gate runs on. Defaults to
+        /// <see cref="NotEvaluated"/> — NOT 0, which would assert a subject of zero height was measured.</param>
+        /// <param name="framedFraction">Share of the subject's box inside the frame. Defaults to
+        /// <see cref="NotEvaluated"/> — NOT 1, which would assert a perfectly framed subject was measured.</param>
         /// <param name="peakOffset">Seconds from the peak window, or NaN when timing was never read.</param>
         public GradeDetail(GradeMiss miss, Rect screenRect, float coverage01, float visibleFraction,
-                           float heightFraction = 0f, float framedFraction = 1f, float peakOffset = float.NaN)
+                           float heightFraction = NotEvaluated, float framedFraction = NotEvaluated,
+                           float peakOffset = float.NaN)
         {
             Miss = miss;
             ScreenRect = screenRect;
@@ -104,11 +137,14 @@ namespace CameraGame.Grading
             PeakOffset = peakOffset;
         }
 
+        // Every number here goes through its *Text accessor, so a miss that early-outed before a
+        // measurement prints "n/a" rather than a fabricated 0.0% / 100%.
         public override string ToString() =>
             Miss == GradeMiss.None
-                ? $"hit (height {HeightFraction:P1}, area {Coverage01:P1}, framed {FramedFraction:P0}, " +
+                ? $"hit (height {HeightText}, area {CoverageText}, framed {FramedText}, " +
                   $"visible {VisibleText}, peak {PeakOffsetText})"
-                : $"miss:{Miss} (height {HeightFraction:P1}, area {Coverage01:P1}, visible {VisibleText})";
+                : $"miss:{Miss} (height {HeightText}, area {CoverageText}, framed {FramedText}, " +
+                  $"visible {VisibleText})";
     }
 
     /// <summary>
@@ -200,7 +236,9 @@ namespace CameraGame.Grading
         {
             // Cheapest checks first, each with an early-out. The occlusion linecasts are by far the most
             // expensive step (this world carries 16,321 MeshColliders), so they must never run for a shot
-            // that already failed the frustum or the coverage gate.
+            // that already failed the frustum or the SIZE gate. ("Coverage gate" was this check's name until
+            // Story 1.10 moved it onto the height fraction; Coverage01 still exists as a live, differently
+            // defined field, so the old name now points at the wrong number.)
             if (cam == null) { detail = Fail(GradeMiss.NoCamera); return ShotGrade.Missed(GradeMiss.NoCamera); }
 
             // NOT `subject == null`. ISubject is an INTERFACE, so == is plain reference equality and
@@ -213,9 +251,17 @@ namespace CameraGame.Grading
             if (cfg == null) { detail = Fail(GradeMiss.NoConfig); return ShotGrade.Missed(GradeMiss.NoConfig); }
 
             // No drawable viewport means every measurement below is meaningless. Reported as its own reason
-            // rather than falling through to TooSmall, which looked identical to a real coverage failure.
+            // rather than falling through to TooSmall, which looked identical to a real size failure.
+            //
+            // The finiteness check matters for the same reason it does on `bounds` below, and was missing
+            // until the 2026-07-28 review: NaN fails every comparison, so `NaN <= 0f` is false and a NaN
+            // viewport sailed through this gate. heightFraction then became NaN, `NaN < SafeMinSubjectHeight`
+            // was false so the size gate passed too, and ShotGrade.Sane turned the NaN composition into 0 —
+            // yielding a COUNTED hit at 0% for a camera that cannot render.
             Rect view = cam.pixelRect;
-            if (view.width <= 0f || view.height <= 0f)
+            if (!IsFinite(view.width) || !IsFinite(view.height)
+                || !IsFinite(view.xMin) || !IsFinite(view.yMin)
+                || view.width <= 0f || view.height <= 0f)
             {
                 detail = Fail(GradeMiss.NoViewport);
                 return ShotGrade.Missed(GradeMiss.NoViewport);
@@ -262,7 +308,8 @@ namespace CameraGame.Grading
             }
 
             // --- Gate 2: fills enough of the frame -----------------------------------------------------
-            if (!TryGetScreenRect(cam, view, bounds, out Rect rect, out bool fullyOffscreen, out float framed))
+            if (!TryGetScreenRect(cam, view, bounds, out Rect rect, out bool fullyOffscreen,
+                                  out float framed, out Vector2 subjectCentre))
             {
                 // Every corner sat behind the near plane. TestPlanesAABB can pass here because it tests the
                 // whole box against the planes, and a box can intersect the frustum's side planes while
@@ -284,7 +331,8 @@ namespace CameraGame.Grading
 
             // ⚠️ HEIGHT, NOT AREA — the measurement change Story 1.10 turns on. The projected box around a
             // tall, thin, arms-down figure is mostly empty air, so its AREA reads 4.5% for a full-body
-            // portrait that plainly has him as the subject (Temp/PhotoShoot/b_mid.png, 1.9) and it BREATHES
+            // portrait that plainly has him as the subject (_bmad-output/verification/photo-shoot/b_mid.png
+            // — NOT Temp/, which Unity deletes on editor shutdown) and it BREATHES
             // with the walk cycle — 7.34% and 9.02% on two runs of the same pose, deciding pass/fail by
             // animation frame alone. The same photograph reads 39% of the frame HEIGHT, which is steady
             // across the animation and is what "he fills the frame" actually means to a photographer.
@@ -313,7 +361,7 @@ namespace CameraGame.Grading
             }
 
             // --- The shot counts: score it (Story 1.10) ------------------------------------------------
-            float composition = Composition(cfg, view, rect, heightFraction, framed);
+            float composition = Composition(cfg, view, subjectCentre, heightFraction, framed);
             float timing = Timing(cfg, subject, out float peakOffset);
 
             detail = new GradeDetail(GradeMiss.None, rect, coverage, visible, heightFraction, framed, peakOffset);
@@ -326,7 +374,7 @@ namespace CameraGame.Grading
         /// him made it into the picture. Pure arithmetic on numbers <see cref="Grade"/> has already measured
         /// — no allocation, no branch worth counting, nothing that needs the 0.2 s capture budget re-measured.
         /// </summary>
-        private static float Composition(GradingConfig cfg, Rect view, Rect rect,
+        private static float Composition(GradingConfig cfg, Rect view, Vector2 subjectCentre,
                                          float prominence, float framedFraction)
         {
             // The trapezoid, resolved as a consistent set: falloffBelow < idealMin <= idealMax < falloffAbove
@@ -360,8 +408,15 @@ namespace CameraGame.Grading
             // a picture-in-picture viewfinder) has a pixelRect that does not start at zero, and Story 1.9's
             // review reproduced a subject dead-centre in such a viewport measuring 0% from exactly that
             // confusion. `view` is the pixelRect, already computed in Grade.
-            float cx = (rect.center.x - view.xMin) / view.width;
-            float cy = (rect.center.y - view.yMin) / view.height;
+            //
+            // ⚠️ THE UNCLAMPED CENTRE, not rect.center. `rect` is clamped to the viewport, so for a subject
+            // spilling past an edge its centre is dragged back INTO frame: a box projecting to x ∈ [0.4, 1.4]
+            // has a true centre of 0.9 but a clamped centre of 0.7. The further out of frame he went, the
+            // more centred this term believed he was — a subject half out of the picture earned a centring
+            // BONUS (review 2026-07-28). The cut-off term below is the right place to punish spilling out of
+            // frame; placement should answer "where is he", which is a question about where he actually is.
+            float cx = (subjectCentre.x - view.xMin) / view.width;
+            float cy = (subjectCentre.y - view.yMin) / view.height;
 
             float dx = cx - 0.5f;
             float dy = cy - 0.5f;
@@ -401,6 +456,10 @@ namespace CameraGame.Grading
             // NaN fails every comparison, so without this an odd subject state would slide past both bounds
             // into InverseLerp and hand a NaN score to ShotGrade, the HUD and the gallery. (ShotGrade guards
             // it again on the way in; this keeps the reported offset honest as well as the score.)
+            //
+            // Infinity needs no special case and deliberately gets none: it is what ISubject.PeakOffset
+            // reports for a subject that is not in a lifecycle at all, and Abs(Inf) >= zeroSeconds falls
+            // through to the hard 0 below — which is the correct score for "nowhere near the peak".
             if (float.IsNaN(peakOffset)) return 0f;
 
             float distance = Mathf.Abs(peakOffset);
@@ -418,6 +477,8 @@ namespace CameraGame.Grading
         /// <summary>Null check that also catches a DESTROYED Unity object behind an interface reference.</summary>
         private static bool IsNullOrDestroyed(ISubject subject) =>
             subject is UnityEngine.Object o ? o == null : subject is null;
+
+        private static bool IsFinite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
 
         private static bool IsFinite(Vector3 v) =>
             !float.IsNaN(v.x) && !float.IsInfinity(v.x)
@@ -446,11 +507,17 @@ namespace CameraGame.Grading
         /// 3u/20u behind the lens are rejected rather than credited. Note the clip alone is NOT sufficient —
         /// see Gate 1b in <see cref="Grade"/> for the enclosing-camera case it does not cover.
         /// </summary>
+        /// <param name="unclampedCentre">Pixel-space centre of the projection BEFORE the viewport clamp —
+        /// where the subject actually is, including the part that fell outside the frame. The placement
+        /// term needs this; measuring from the clamped rect made a subject spilling off-screen read as
+        /// better centred the further out he went.</param>
         private static bool TryGetScreenRect(Camera cam, Rect view, Bounds bounds,
-                                             out Rect rect, out bool fullyOffscreen, out float framedFraction)
+                                             out Rect rect, out bool fullyOffscreen, out float framedFraction,
+                                             out Vector2 unclampedCentre)
         {
             fullyOffscreen = false;
             framedFraction = 1f;
+            unclampedCentre = view.center;   // harmless default; every early-out below is a miss
 
             Vector3 c = bounds.center, e = bounds.extents;
             for (int i = 0; i < 8; i++)
@@ -521,6 +588,9 @@ namespace CameraGame.Grading
             // screen, a picture-in-picture viewfinder) has a pixelRect that does not start at zero, and
             // clamping to [0, width] collapsed a perfectly framed subject to zero width — reproduced by the
             // review probe with cam.rect = (0.5, 0, 0.5, 1).
+            // Captured BEFORE the clamp below — that is the whole point of it.
+            unclampedCentre = new Vector2((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+
             float x0 = Mathf.Clamp(minX, view.xMin, view.xMax);
             float x1 = Mathf.Clamp(maxX, view.xMin, view.xMax);
             float y0 = Mathf.Clamp(minY, view.yMin, view.yMax);

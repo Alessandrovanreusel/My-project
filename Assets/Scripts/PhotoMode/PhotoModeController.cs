@@ -422,12 +422,24 @@ namespace CameraGame.PhotoMode
 
             // The three axes, which is what makes a disappointing score actionable: "62%" says nothing,
             // "composition 92% x timing 67%" says you were late, not badly framed.
+            //
+            // ⚠️ ONLY FOR A COUNTED SHOT. This line used to draw unconditionally, so a rejected shot
+            // printed "SHOT FAILED: Occluded" and then "composition 0% x timing 0% · subject seen 0%"
+            // directly above "line-of-sight 10%" — two adjacent readouts contradicting each other, and
+            // three axes asserting scores that were never computed (the gates early-out before scoring).
+            // Same discipline as the "▣ snapshot" label: the overlay must not state more than it knows.
             GUI.Label(new Rect(20f, 38f, 620f, 24f),
-                $"composition {_debugGrade.Composition01:P0}  ×  timing {_debugGrade.Timing01:P0}" +
-                $"   ·   subject seen {_debugGrade.Subject01:P0}");
+                hit
+                    ? $"composition {_debugGrade.Composition01:P0}  ×  timing {_debugGrade.Timing01:P0}" +
+                      $"   ·   subject seen {_debugGrade.Subject01:P0}"
+                    : "composition —  ×  timing —   ·   not scored (rejected before scoring)");
+
+            // Every measurement here goes through its *Text accessor, which prints "n/a" when the gate that
+            // would have taken it never ran. Printing "height 0.0% · framed 100%" for a shot rejected at the
+            // frustum told a designer the subject was microscopic and perfectly framed, measuring neither.
             GUI.Label(new Rect(20f, 60f, 620f, 24f),
-                $"height {_debugDetail.HeightFraction:P1}  (gate {(gradingConfig != null ? gradingConfig.SafeMinSubjectHeight : 0f):P1})" +
-                $"   ·   framed {_debugDetail.FramedFraction:P0}  ·  area {_debugDetail.Coverage01:P1}");
+                $"height {_debugDetail.HeightText}  (gate {(gradingConfig != null ? gradingConfig.SafeMinSubjectHeight : 0f):P1})" +
+                $"   ·   framed {_debugDetail.FramedText}  ·  area {_debugDetail.CoverageText}");
             GUI.Label(new Rect(20f, 82f, 620f, 24f),
                 $"peak offset {_debugDetail.PeakOffsetText}  ·  line-of-sight {_debugDetail.VisibleText}" +
                 $"  ·  box {r.width:F0}x{r.height:F0}px");
@@ -498,10 +510,27 @@ namespace CameraGame.PhotoMode
 
                 // Keyed on "have we graded anything yet", NOT on the loop index. With `i == 0` a null or
                 // inactive entry at index 0 meant the seeding branch never ran, and since every miss shares
-                // ShotGrade.Miss (0%) the `>` test also failed — so a real Occluded/TooSmall rejection was
+                // a 0% score the `>` test also failed — so a real Occluded/TooSmall rejection was
                 // reported to the player as "NoSubject". Strictly greater thereafter, so the FIRST graded
                 // subject's reason survives when everything misses at 0%.
-                if (!graded || g.Percent01 > best.Percent01)
+                //
+                // ⚠️ A COUNTED SHOT ALWAYS BEATS A MISS, whatever the percentages say. Story 1.10 created a
+                // state Story 1.9 could not produce: a shot that passes every gate and STILL scores exactly
+                // 0%, because the blend is composition x timing and timing is a hard 0 beyond
+                // timingZeroSeconds. That is not exotic — all 24 shots in the town placement study read
+                // "counted — 0% 1★". Ranking on Percent01 alone, a rejected actor graded first would beat a
+                // counted-but-late actor graded second (0 > 0 is false), and the player would be told
+                // "SHOT FAILED: TooSmall" for a photograph that actually counted.
+                //
+                // Story 1.10's Task 6 said not to touch this predicate; Alexv authorised the deviation on
+                // 2026-07-28 after the code review surfaced it. Invisible until maxConcurrent > 1, which is
+                // Epic 2 (The Living Town) — which is exactly why it had to be fixed before Epic 2, not
+                // during it. "First graded wins ties" is preserved WITHIN each class.
+                bool better = !graded
+                              || (g.Counted && !best.Counted)
+                              || (g.Counted == best.Counted && g.Percent01 > best.Percent01);
+
+                if (better)
                 {
                     best = g;
                     bestDetail = d;
