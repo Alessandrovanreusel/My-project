@@ -250,6 +250,12 @@ namespace CameraGame.Grading
 
             if (cfg == null) { detail = Fail(GradeMiss.NoConfig); return ShotGrade.Missed(GradeMiss.NoConfig); }
 
+            // Read ONCE, here, and carried into every miss below (Story 1.11). Read live off the subject
+            // rather than cached anywhere: subjects are pooled, so an id captured a frame early can name a
+            // different event entirely (ISubject's liveness contract). Everything above this line rejected
+            // BEFORE a subject existed and correctly leaves the id empty.
+            string who = subject.SubjectId;
+
             // No drawable viewport means every measurement below is meaningless. Reported as its own reason
             // rather than falling through to TooSmall, which looked identical to a real size failure.
             //
@@ -264,7 +270,7 @@ namespace CameraGame.Grading
                 || view.width <= 0f || view.height <= 0f)
             {
                 detail = Fail(GradeMiss.NoViewport);
-                return ShotGrade.Missed(GradeMiss.NoViewport);
+                return ShotGrade.Missed(GradeMiss.NoViewport, who);
             }
 
             Bounds bounds = subject.Bounds;
@@ -280,7 +286,7 @@ namespace CameraGame.Grading
                 || bounds.extents.sqrMagnitude <= Mathf.Epsilon)
             {
                 detail = Fail(GradeMiss.DegenerateBounds);
-                return ShotGrade.Missed(GradeMiss.DegenerateBounds);
+                return ShotGrade.Missed(GradeMiss.DegenerateBounds, who);
             }
 
             // --- Gate 1: inside the view frustum -------------------------------------------------------
@@ -288,7 +294,7 @@ namespace CameraGame.Grading
             if (!GeometryUtility.TestPlanesAABB(FrustumPlanes, bounds))
             {
                 detail = Fail(GradeMiss.OutsideFrustum);
-                return ShotGrade.Missed(GradeMiss.OutsideFrustum);
+                return ShotGrade.Missed(GradeMiss.OutsideFrustum, who);
             }
 
             // --- Gate 1b: the subject is actually in FRONT of the lens ---------------------------------
@@ -304,7 +310,7 @@ namespace CameraGame.Grading
             if (cam.WorldToScreenPoint(bounds.center).z <= cam.nearClipPlane)
             {
                 detail = Fail(GradeMiss.BehindCamera);
-                return ShotGrade.Missed(GradeMiss.BehindCamera);
+                return ShotGrade.Missed(GradeMiss.BehindCamera, who);
             }
 
             // --- Gate 2: fills enough of the frame -----------------------------------------------------
@@ -315,7 +321,7 @@ namespace CameraGame.Grading
                 // whole box against the planes, and a box can intersect the frustum's side planes while
                 // lying entirely behind the camera.
                 detail = Fail(GradeMiss.BehindCamera);
-                return ShotGrade.Missed(GradeMiss.BehindCamera);
+                return ShotGrade.Missed(GradeMiss.BehindCamera, who);
             }
 
             if (fullyOffscreen)
@@ -324,7 +330,7 @@ namespace CameraGame.Grading
                 // That is "not in frame", not "too small" — reporting TooSmall here sent a designer looking
                 // at the coverage threshold for a framing problem.
                 detail = Fail(GradeMiss.OutsideFrustum);
-                return ShotGrade.Missed(GradeMiss.OutsideFrustum);
+                return ShotGrade.Missed(GradeMiss.OutsideFrustum, who);
             }
 
             float coverage = (rect.width * rect.height) / (view.width * view.height);
@@ -349,7 +355,7 @@ namespace CameraGame.Grading
                 // NotEvaluated, not 0: we early-out here, so line of sight was never measured.
                 detail = new GradeDetail(GradeMiss.TooSmall, rect, coverage, GradeDetail.NotEvaluated,
                                          heightFraction, framed);
-                return ShotGrade.Missed(GradeMiss.TooSmall);
+                return ShotGrade.Missed(GradeMiss.TooSmall, who);
             }
 
             // --- Gate 3: actually visible, not hidden behind the scenery -------------------------------
@@ -357,7 +363,7 @@ namespace CameraGame.Grading
             if (visible < cfg.SafeMinVisibleSamples)
             {
                 detail = new GradeDetail(GradeMiss.Occluded, rect, coverage, visible, heightFraction, framed);
-                return ShotGrade.Missed(GradeMiss.Occluded);
+                return ShotGrade.Missed(GradeMiss.Occluded, who);
             }
 
             // --- The shot counts: score it (Story 1.10) ------------------------------------------------
@@ -369,7 +375,7 @@ namespace CameraGame.Grading
             // The star boundaries come from the config, resolved into a guaranteed-descending set. They are
             // a designer's call ("how good must a photograph be for five stars"), not an implementation
             // detail — the previous CeilToInt(grade x 5) silently hardcoded "80% is perfect".
-            return ShotGrade.Scored(visible, composition, timing, cfg.SafeStarScale);
+            return ShotGrade.Scored(visible, composition, timing, cfg.SafeStarScale, who);
         }
 
         /// <summary>

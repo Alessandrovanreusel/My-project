@@ -3,7 +3,8 @@
     "rootNamespace": "CameraGame.Editor",
     "references": [
         "CameraGame",
-        "Unity.AI.Navigation"
+        "Unity.AI.Navigation",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

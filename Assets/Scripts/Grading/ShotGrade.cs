@@ -100,6 +100,31 @@ namespace CameraGame.Grading
         /// was actually shown rather than silently re-rating itself when someone retunes the thresholds.</summary>
         public readonly int Stars;
 
+        /// <summary>
+        /// Which subject this grade is OF — <c>ISubject.SubjectId</c>, e.g. "TownDrunk". Added by Story
+        /// 1.11 so the gallery can record what a stored photograph is a photograph of, without the channel
+        /// payload growing a Unity object reference and without the gallery reaching back into
+        /// <c>PhotoModeController</c> (AR4). A string, so this struct stays pure data.
+        ///
+        /// ⚠️ EMPTY MEANS "THERE WAS NO SUBJECT", and that is the whole point of it being empty rather than
+        /// a <c>"None"</c>/<c>"Unknown"</c> sentinel: a sentinel string is indistinguishable from a real
+        /// event id the moment somebody authors an event called "None", and the reader has no way to tell a
+        /// missing measurement from a measured one. Same discipline as
+        /// <see cref="GradeDetail.NotEvaluated"/> and <see cref="GradeMiss.Unevaluated"/>.
+        ///
+        /// A MISS may still carry an id, and should: a shot rejected as <see cref="GradeMiss.Occluded"/> or
+        /// <see cref="GradeMiss.TooSmall"/> was rejected against a subject that really was there, and "the
+        /// drunk, behind a wall" is more truthful than "nobody". Only the gates that run before a subject
+        /// exists — NoCamera, NoConfig, NoViewport, NoSubject — leave it empty.
+        /// Never null: the constructor normalizes, so <c>default(ShotGrade).SubjectId</c> is "" and callers
+        /// never need a null check.
+        /// </summary>
+        public readonly string SubjectId;
+
+        /// <summary>True when this grade names the subject it was measured against. False for a shot that
+        /// never had one — see <see cref="SubjectId"/>.</summary>
+        public bool HasSubject => !string.IsNullOrEmpty(SubjectId);
+
         /// <summary>True when the shot passed every gate and the score is meaningful.</summary>
         public bool Counted => MissReason == GradeMiss.None && !IsPlaceholder;
 
@@ -108,7 +133,8 @@ namespace CameraGame.Grading
         public bool IsMiss => MissReason != GradeMiss.None && MissReason != GradeMiss.Unevaluated;
 
         private ShotGrade(float percent01, bool isPlaceholder, GradeMiss missReason,
-                          float subject01, float composition01, float timing01, int stars)
+                          float subject01, float composition01, float timing01, int stars,
+                          string subjectId)
         {
             Percent01 = Sane(percent01);
             IsPlaceholder = isPlaceholder;
@@ -117,6 +143,11 @@ namespace CameraGame.Grading
             Composition01 = Sane(composition01);
             Timing01 = Sane(timing01);
             Stars = Mathf.Clamp(stars, 1, 5);
+
+            // Normalized here and nowhere else, so no reader ever has to defend itself against null. The
+            // same reason Sane() sits on this line: a struct that guarantees its own invariants cannot be
+            // constructed into a state that surprises the gallery or the HUD.
+            SubjectId = subjectId ?? string.Empty;
         }
 
         /// <summary>Every score that enters this struct passes through here. Mathf.Clamp01(NaN) is NaN, so
@@ -133,11 +164,14 @@ namespace CameraGame.Grading
         /// requires BOTH axes to be near 1, which is why the sweet spot has to be authored so it actually
         /// reaches 1.0 — <c>GradingConfig.TryGetConfigProblem</c> warns when it cannot.
         /// </summary>
-        public static ShotGrade Scored(float subject01, float composition01, float timing01, StarScale scale)
+        /// <param name="subjectId">Who was photographed (<c>ISubject.SubjectId</c>). A counted shot always
+        /// has one — it passed every gate, so a subject was certainly measured.</param>
+        public static ShotGrade Scored(float subject01, float composition01, float timing01, StarScale scale,
+                                       string subjectId)
         {
             float percent = Sane(composition01) * Sane(timing01);
             return new ShotGrade(percent, isPlaceholder: false, GradeMiss.None,
-                                 subject01, composition01, timing01, scale.StarsFor(percent));
+                                 subject01, composition01, timing01, scale.StarsFor(percent), subjectId);
         }
 
         /// <summary>A real grade from a normalized score in [0,1], with no breakdown. Retained for callers
@@ -145,25 +179,35 @@ namespace CameraGame.Grading
         /// needs.</summary>
         public static ShotGrade FromPercent(float p01) =>
             new ShotGrade(p01, isPlaceholder: false, GradeMiss.None, 0f, 0f, 0f,
-                          StarScale.Default.StarsFor(Sane(p01)));
+                          StarScale.Default.StarsFor(Sane(p01)), string.Empty);
 
         /// <summary>A rejected shot (0%), carrying the gate that rejected it. Always 1★ — the floor of the
-        /// GDD's scale — whatever the thresholds are, which is why it needs no <see cref="StarScale"/>.</summary>
-        public static ShotGrade Missed(GradeMiss reason) =>
-            new ShotGrade(0f, isPlaceholder: false, reason, 0f, 0f, 0f, 1);
+        /// GDD's scale — whatever the thresholds are, which is why it needs no <see cref="StarScale"/>.
+        ///
+        /// <paramref name="subjectId"/> defaults to empty, which is correct for the gates that reject
+        /// BEFORE a subject exists (NoCamera, NoConfig, NoViewport, NoSubject). The gates that reject a
+        /// subject they actually measured — TooSmall, Occluded, OutsideFrustum, BehindCamera,
+        /// DegenerateBounds — should pass the id, because "the drunk, behind a wall" is a more truthful
+        /// gallery entry than "nobody". See <see cref="SubjectId"/>.</summary>
+        public static ShotGrade Missed(GradeMiss reason, string subjectId = null) =>
+            new ShotGrade(0f, isPlaceholder: false, reason, 0f, 0f, 0f, 1, subjectId);
 
         /// <summary>A clearly-temporary grade used by Story 1.5 when grading is not configured.</summary>
         public static ShotGrade Placeholder =>
-            new ShotGrade(0f, isPlaceholder: true, GradeMiss.Unevaluated, 0f, 0f, 0f, 1);
+            new ShotGrade(0f, isPlaceholder: true, GradeMiss.Unevaluated, 0f, 0f, 0f, 1, string.Empty);
 
         /// <summary>One line carrying the total AND the breakdown. A bare "62%" tells a designer nothing
         /// about which axis cost them the shot, which is the whole reason the axes are on this struct.</summary>
         public override string ToString()
         {
-            if (IsPlaceholder) return "ShotGrade(placeholder)";
-            if (IsMiss) return $"ShotGrade(miss:{MissReason})";
+            // "of nobody" rather than an empty gap, so a log line never silently omits the fact that there
+            // was no subject — the same reason GradeDetail prints "n/a" instead of a fabricated 0.
+            string who = HasSubject ? $"of {SubjectId}" : "of nobody";
 
-            return $"ShotGrade({Percent01:P0}, {Stars}★ — composition {Composition01:P0} × " +
+            if (IsPlaceholder) return "ShotGrade(placeholder)";
+            if (IsMiss) return $"ShotGrade(miss:{MissReason} {who})";
+
+            return $"ShotGrade({Percent01:P0}, {Stars}★ {who} — composition {Composition01:P0} × " +
                    $"timing {Timing01:P0}; subject seen {Subject01:P0})";
         }
     }

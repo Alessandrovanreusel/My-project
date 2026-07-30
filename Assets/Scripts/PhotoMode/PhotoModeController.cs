@@ -80,6 +80,12 @@ namespace CameraGame.PhotoMode
         /// <summary>True while the camera is raised. Future Zoom/Capture handlers gate on this (AC3).</summary>
         public bool IsPhotoMode => Mode == CameraMode.Photo;
 
+        /// <summary>
+        /// True while something else owns the screen and the camera must stay down — the gallery, in Story
+        /// 1.11. See <see cref="SetRaiseSuppressed"/>.
+        /// </summary>
+        public bool RaiseSuppressed { get; private set; }
+
         // Cached CanvasGroup on the viewfinder so we fade alpha instead of toggling the whole object
         // (smoother, and avoids per-toggle UI layout rebuilds).
         private CanvasGroup _viewfinderGroup;
@@ -256,7 +262,33 @@ namespace CameraGame.PhotoMode
         /// anything that needs to drive the camera without synthesising an InputValue can call it.</summary>
         public void SetPhotoMode(bool raised)
         {
+            // A raise is REFUSED while suppressed; a lower always goes through. Refusing the lower as well
+            // would be how the camera gets stuck raised — this project has fixed that class of sticky-input
+            // bug twice already, and the asymmetry here is deliberate.
+            if (raised && RaiseSuppressed) return;
+
             SetMode(raised ? CameraMode.Photo : CameraMode.Walk);
+        }
+
+        /// <summary>
+        /// Stops (or allows) the camera being raised, and lowers it immediately when suppression turns on.
+        /// Story 1.11's gallery calls this while it owns the screen: photo mode is the mode capture and zoom
+        /// both gate on, so suppressing the raise makes the shutter and the zoom inert at the same time,
+        /// with no extra flags for either to consult.
+        ///
+        /// ⚠️ DELIBERATELY KNOWS NOTHING ABOUT THE GALLERY. The architecture allows Gallery to depend on
+        /// PhotoMode and forbids the reverse (AR4), so this is a general capability the caller supplies
+        /// meaning to — not a <c>galleryView != null &amp;&amp; galleryView.IsOpen</c> check living here.
+        /// Story 1.12's HUD, a pause menu or a map screen would use the same switch.
+        /// </summary>
+        public void SetRaiseSuppressed(bool suppressed)
+        {
+            RaiseSuppressed = suppressed;
+
+            // Lower on the way in rather than trusting the caller to have checked. Today the gallery can
+            // only open from Walk, so this is a no-op — but a future caller that suppresses while the camera
+            // is up would otherwise leave it raised and un-lowerable-by-input over the top of its own UI.
+            if (suppressed) SetMode(CameraMode.Walk);
         }
 
         // Method name "OnZoom" derives from the action name GameConstants.InputActions.Zoom ("Zoom").

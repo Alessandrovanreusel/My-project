@@ -13,6 +13,7 @@ namespace CameraGame.Core
             public const string Capture     = "Capture";      // repurposed from "Attack" in Story 1.5
             public const string RaiseCamera = "RaiseCamera";  // added in Story 1.3
             public const string Zoom        = "Zoom";         // added in Story 1.4
+            public const string Gallery     = "Gallery";      // added in Story 1.11
         }
 
         // Layers / tags — fill in as systems need them (kept here to kill magic strings).
