@@ -186,34 +186,49 @@ namespace CameraGame.Gallery
         /// </summary>
         private Texture2D TryRenderThumbnail()
         {
-            // ⚠️ READ THE ASPECT BEFORE THE TARGET TEXTURE IS REBOUND. Assigning cam.targetTexture makes
-            // Unity recompute Camera.aspect from the new target, so reading it afterwards would return the
-            // thumbnail's own aspect — the width would derive from itself and always "agree".
-            float aspect = photoCamera.aspect;
-
-            // The height is the authored quality dial; the WIDTH FOLLOWS THE WINDOW, so a stored photograph
-            // frames what the player actually framed rather than a fixed 16:9 slice of it. Recomputed every
-            // capture, so resizing the window mid-session is simply handled.
-            int h = galleryConfig.SafeThumbnailHeight;
-            int w = galleryConfig.ThumbnailWidthFor(aspect);
-
-            WarnIfWidthClamped(aspect, w, h);
-
-            // ⚠️ SAVE AND RESTORE BOTH. Neither is safely assumed null: the photo-shoot rig binds its own
-            // render target to this very camera for the whole of a run (PhotoShootRunner.cs:320-322), and a
-            // gallery that clobbers it breaks the one tool this project verifies grading with.
-            RenderTexture prevTarget = photoCamera.targetTexture;
-            RenderTexture prevActive = RenderTexture.active;
-
-            // GetTemporary/ReleaseTemporary pools the render target, which is the cheaper choice for a
-            // per-capture readback than constructing one each time — but it still has to be released, or a
-            // leak per shutter press is exactly what we have built.
-            RenderTexture rt = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGB32);
+            // ⚠️ EVERYTHING THAT CAN THROW IS INSIDE THE TRY, INCLUDING THE SETUP.
+            //
+            // These four setup statements used to sit ABOVE it, which quietly made the guarantee in this
+            // method's doc-comment false. `_cameraReady` is resolved once at Awake and never revalidated, so
+            // a camera destroyed at runtime (an additive scene unload, a camera swap, a rig teardown) left
+            // the flag true and `photoCamera.aspect` threw MissingReferenceException from OUTSIDE the guard.
+            // It propagated out of HandleShotCaptured into the channel's invocation list, so the shot was
+            // never stored at all AND any subscriber registered after the gallery — Story 1.12's HUD is named
+            // as one in this file's own header — never ran for that capture. Found by the 2026-07-30 review.
+            RenderTexture prevTarget = null;
+            RenderTexture prevActive = null;
+            RenderTexture rt = null;
             Texture2D tex = null;
+            bool targetSwapped = false;
 
             try
             {
+                // ⚠️ READ THE ASPECT BEFORE THE TARGET TEXTURE IS REBOUND. Assigning cam.targetTexture makes
+                // Unity recompute Camera.aspect from the new target, so reading it afterwards would return the
+                // thumbnail's own aspect — the width would derive from itself and always "agree".
+                float aspect = photoCamera.aspect;
+
+                // The height is the authored quality dial; the WIDTH FOLLOWS THE WINDOW, so a stored photograph
+                // frames what the player actually framed rather than a fixed 16:9 slice of it. Recomputed every
+                // capture, so resizing the window mid-session is simply handled.
+                int h = galleryConfig.SafeThumbnailHeight;
+                int w = galleryConfig.ThumbnailWidthFor(aspect);
+
+                WarnIfWidthClamped(aspect, w, h);
+
+                // ⚠️ SAVE AND RESTORE BOTH. Neither is safely assumed null: the photo-shoot rig binds its own
+                // render target to this very camera for the whole of a run (PhotoShootRunner.cs:320-322), and a
+                // gallery that clobbers it breaks the one tool this project verifies grading with.
+                prevTarget = photoCamera.targetTexture;
+                prevActive = RenderTexture.active;
+
+                // GetTemporary/ReleaseTemporary pools the render target, which is the cheaper choice for a
+                // per-capture readback than constructing one each time — but it still has to be released, or a
+                // leak per shutter press is exactly what we have built.
+                rt = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGB32);
+
                 photoCamera.targetTexture = rt;
+                targetSwapped = true;
                 photoCamera.Render();
 
                 RenderTexture.active = rt;
@@ -240,9 +255,16 @@ namespace CameraGame.Gallery
             }
             finally
             {
-                photoCamera.targetTexture = prevTarget;
-                RenderTexture.active = prevActive;
-                RenderTexture.ReleaseTemporary(rt);
+                // Only put back what was actually taken. If the throw happened before the swap, restoring a
+                // null target would CLEAR a render target the camera legitimately had (the photo-shoot rig
+                // binds one for a whole run) — turning a failed thumbnail into a broken verification tool.
+                if (targetSwapped)
+                {
+                    photoCamera.targetTexture = prevTarget;
+                    RenderTexture.active = prevActive;
+                }
+
+                if (rt != null) RenderTexture.ReleaseTemporary(rt);
             }
         }
 
@@ -273,9 +295,9 @@ namespace CameraGame.Gallery
         ///
         /// ⚠️ <c>Destroy</c> is not optional and dropping the reference is not enough. A Texture2D holds
         /// NATIVE memory that the C# garbage collector never touches, so an evicted-but-undestroyed
-        /// thumbnail is a permanent 380 KB — invisible, with a clean console and a working game, growing
-        /// once per shutter press for as long as the session lasts. This is the first story in the project
-        /// that can do that.
+        /// thumbnail is a permanent 506 KB at the shipped config (640 x 270 x 3, the ceiling the derived
+        /// width can reach) — invisible, with a clean console and a working game, growing once per shutter
+        /// press for as long as the session lasts. This is the first story in the project that can do that.
         /// </summary>
         private void EvictOverflow()
         {

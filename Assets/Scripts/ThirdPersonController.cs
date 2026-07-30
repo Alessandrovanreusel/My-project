@@ -133,6 +133,7 @@ public class ThirdPersonController : MonoBehaviour
     // (0,1) = forward, (0,-1) = backward, (1,0) = right, (-1,0) = left.
     public void OnMove(InputValue value)
     {
+        if (InputSuppressed) return;
         _moveInput = value.Get<Vector2>();
     }
 
@@ -140,6 +141,8 @@ public class ThirdPersonController : MonoBehaviour
     // We only allow jumping if the character is on the ground.
     public void OnJump(InputValue value)
     {
+        if (InputSuppressed) return;
+
         if (_controller.isGrounded)
             _jumpRequested = true;
     }
@@ -148,6 +151,7 @@ public class ThirdPersonController : MonoBehaviour
     // value.isPressed is true while held, false when released.
     public void OnSprint(InputValue value)
     {
+        if (InputSuppressed) return;
         _isSprinting = value.isPressed;
     }
 
@@ -156,7 +160,38 @@ public class ThirdPersonController : MonoBehaviour
     // Delta means "how many pixels the mouse moved this frame", not the absolute position.
     public void OnLook(InputValue value)
     {
+        if (InputSuppressed) return;
         _lookInput = value.Get<Vector2>();
+    }
+
+    /// <summary>True while something else owns the screen and the player should not be driving.</summary>
+    public bool InputSuppressed { get; private set; }
+
+    /// <summary>
+    /// Stops (or allows) the player walking and looking. Story 1.11's gallery calls this while it owns the
+    /// screen: its backdrop is fully opaque, so without this the player walks blind — and the 2026-07-30
+    /// code review found they could stroll off a ledge behind their own photographs.
+    ///
+    /// ⚠️ THE HELD INPUT IS CLEARED ON THE WAY IN, and that is the whole point rather than tidiness. Under
+    /// PlayerInput's Send Messages, a key held down when suppression starts sends NO further message until
+    /// it changes — so a player holding W as the gallery opens would keep the last non-zero _moveInput and
+    /// walk for as long as it stayed open. Zeroing here is what makes "suppressed" actually mean stopped.
+    /// This project has fixed the sticky-held-input class of bug twice already.
+    ///
+    /// ⚠️ DELIBERATELY KNOWS NOTHING ABOUT THE GALLERY, exactly like PhotoModeController.SetRaiseSuppressed.
+    /// It is a general capability the caller supplies meaning to, so a pause menu or a map screen can use
+    /// the same switch without this class learning about any of them.
+    /// </summary>
+    public void SetInputSuppressed(bool suppressed)
+    {
+        InputSuppressed = suppressed;
+
+        if (!suppressed) return;
+
+        _moveInput = Vector2.zero;
+        _lookInput = Vector2.zero;
+        _isSprinting = false;
+        _jumpRequested = false;
     }
 
     // =====================================================================

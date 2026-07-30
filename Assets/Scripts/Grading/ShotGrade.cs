@@ -114,10 +114,20 @@ namespace CameraGame.Grading
         ///
         /// A MISS may still carry an id, and should: a shot rejected as <see cref="GradeMiss.Occluded"/> or
         /// <see cref="GradeMiss.TooSmall"/> was rejected against a subject that really was there, and "the
-        /// drunk, behind a wall" is more truthful than "nobody". Only the gates that run before a subject
-        /// exists — NoCamera, NoConfig, NoViewport, NoSubject — leave it empty.
-        /// Never null: the constructor normalizes, so <c>default(ShotGrade).SubjectId</c> is "" and callers
-        /// never need a null check.
+        /// drunk, behind a wall" is more truthful than "nobody". Only the gates that run before a subject is
+        /// known — NoCamera, NoConfig, NoSubject — leave it empty. <see cref="GradeMiss.NoViewport"/> is
+        /// raised AFTER the subject has been resolved and therefore does carry the id (ShotGrader).
+        ///
+        /// ⚠️ NOT ALWAYS NON-NULL, DESPITE THE CONSTRUCTOR NORMALIZING. This comment used to promise that
+        /// <c>default(ShotGrade).SubjectId</c> was <c>""</c> and that callers never needed a null check.
+        /// That is false and the 2026-07-30 review proved it by running it: <c>default(T)</c> on a struct
+        /// zero-initialises the memory and runs NO constructor, so the field is null. Any zeroed grade
+        /// reaches you that way — <c>new ShotGrade[n]</c>, an unassigned struct field, a <c>default</c>
+        /// switch arm, a failed <c>TryGetValue</c>.
+        ///
+        /// Use <see cref="HasSubject"/> (null-safe) rather than touching this string directly. It matters
+        /// most for Epic 5: <c>CapturedShot</c>'s class comment instructs the next author to map this field
+        /// into a JSON DTO, and <c>.Trim()</c> or <c>.Length</c> on a defaulted grade would throw there.
         /// </summary>
         public readonly string SubjectId;
 
@@ -185,10 +195,14 @@ namespace CameraGame.Grading
         /// GDD's scale — whatever the thresholds are, which is why it needs no <see cref="StarScale"/>.
         ///
         /// <paramref name="subjectId"/> defaults to empty, which is correct for the gates that reject
-        /// BEFORE a subject exists (NoCamera, NoConfig, NoViewport, NoSubject). The gates that reject a
-        /// subject they actually measured — TooSmall, Occluded, OutsideFrustum, BehindCamera,
-        /// DegenerateBounds — should pass the id, because "the drunk, behind a wall" is a more truthful
-        /// gallery entry than "nobody". See <see cref="SubjectId"/>.</summary>
+        /// BEFORE the subject is known (NoCamera, NoConfig, NoSubject). Every gate that runs after it is
+        /// resolved should pass the id — the ones that measured the subject (TooSmall, Occluded,
+        /// OutsideFrustum, BehindCamera, DegenerateBounds) and NoViewport, which is raised further down
+        /// ShotGrader and does carry it. "The drunk, behind a wall" is a more truthful gallery entry than
+        /// "nobody". See <see cref="SubjectId"/>.
+        ///
+        /// (This list said NoViewport was empty while the code passed the id. The 2026-07-30 review caught
+        /// the contradiction; the CODE was right, so the doc moved.)</summary>
         public static ShotGrade Missed(GradeMiss reason, string subjectId = null) =>
             new ShotGrade(0f, isPlaceholder: false, reason, 0f, 0f, 0f, 1, subjectId);
 

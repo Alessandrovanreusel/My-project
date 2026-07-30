@@ -159728,8 +159728,10 @@ MonoBehaviour:
   service: {fileID: 1355993526}
   uiCamera: {fileID: 330585545}
   photoMode: {fileID: 1871784535}
+  player: {fileID: 1871784530}
   cellFont: {fileID: 0}
   cellSize: {x: 240, y: 135}
+  minCellSize: {x: 96, y: 54}
   spacing: 12
   fontSize: 16
 --- !u!225 &900783882

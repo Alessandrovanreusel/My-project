@@ -276,10 +276,21 @@ namespace CameraGame.PhotoMode
         /// both gate on, so suppressing the raise makes the shutter and the zoom inert at the same time,
         /// with no extra flags for either to consult.
         ///
-        /// ⚠️ DELIBERATELY KNOWS NOTHING ABOUT THE GALLERY. The architecture allows Gallery to depend on
-        /// PhotoMode and forbids the reverse (AR4), so this is a general capability the caller supplies
+        /// ⚠️ DELIBERATELY KNOWS NOTHING ABOUT THE GALLERY. This is a general capability the caller supplies
         /// meaning to — not a <c>galleryView != null &amp;&amp; galleryView.IsOpen</c> check living here.
         /// Story 1.12's HUD, a pause menu or a map screen would use the same switch.
+        ///
+        /// The direction this implies (Gallery → PhotoMode) is sanctioned by game-architecture.md
+        /// §Architectural Boundaries. It is worth noting WHY that citation is spelled out: the comment here
+        /// previously asserted "the architecture allows Gallery to depend on PhotoMode", and the 2026-07-30
+        /// code review found the architecture document said no such thing — the dependency was real and
+        /// probably right, but it was an undeclared deviation wearing the clothes of compliance. The rule
+        /// was written down; this comment now points at it rather than inventing it.
+        ///
+        /// ⚠️ THIS IS A BOOL, NOT A REFCOUNT, so it supports exactly ONE suppressor at a time. With a second
+        /// caller (Story 1.12's HUD is the next one due) whichever closes first un-suppresses for both, and
+        /// the camera becomes raisable underneath whatever is still up. Fix that before adding the second
+        /// caller — see deferred-work.md.
         /// </summary>
         public void SetRaiseSuppressed(bool suppressed)
         {

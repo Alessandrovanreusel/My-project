@@ -49,6 +49,12 @@ namespace CameraGame.Gallery
                  "the gallery still opens and closes but stops gating the camera.")]
         [SerializeField] private PhotoModeController photoMode;
 
+        [Tooltip("The player, frozen while the gallery is open. The backdrop is fully opaque, so without " +
+                 "this the player walks blind behind their own photographs — the 2026-07-30 review found " +
+                 "they could stroll off a ledge. If unassigned, the gallery still opens but stops freezing " +
+                 "movement.")]
+        [SerializeField] private ThirdPersonController player;
+
         [Tooltip("Font for the rating line under each thumbnail. Optional — falls back to Unity's built-in " +
                  "LegacyRuntime font, which is a built-in ENGINE resource and not a project asset, so this " +
                  "is not the Resources.Load the architecture rules out for game data.")]
@@ -134,6 +140,12 @@ namespace CameraGame.Gallery
                     "No camera for the gallery canvas — the gallery cannot be shown. Everything else " +
                     "(capture, grading, storing shots) is unaffected.", this);
                 _viewReady = false;
+
+                // ⚠️ HIDE ON THE WAY OUT. The scene ships this canvas ENABLED at alpha 1, and Close() early-
+                // returns on !_viewReady — so returning here without hiding leaves it on with nothing able to
+                // turn it off, which is the opposite of AC5's "disables only its own function". Found by the
+                // 2026-07-30 review.
+                ApplyOpenState(false);
                 return;
             }
 
@@ -141,12 +153,77 @@ namespace CameraGame.Gallery
                 GameLog.Error("Gallery",
                     "GalleryView has no GalleryService — the gallery will open empty.", this);
 
+            ValidateLayout();
+
             ConfigureCanvas();
             BuildCells();
 
             _viewReady = true;
             ApplyOpenState(false);
         }
+
+        /// <summary>
+        /// Repairs unusable layout tunables and says so, once, at Awake.
+        ///
+        /// ⚠️ THESE FOUR FIELDS HAD NO VALIDATION AT ALL while GalleryConfig validates hard, and the gap was
+        /// reachable: <c>cellSize.x = 0</c> is clamped DOWN by <see cref="LayoutGrid"/> but never back up to
+        /// <see cref="minCellSize"/>, so every cell was activated at zero width and the gallery opened to a
+        /// backdrop and a header reading "50 shots" with no photographs on it and a clean console — the same
+        /// silent-nothing class this project has now been caught by five times. Found by the 2026-07-30 review.
+        ///
+        /// ⚠️ DELIBERATELY NOT AN <c>OnValidate</c>. That is the trap this same review found in GalleryConfig:
+        /// OnValidate runs on asset load, BEFORE Awake, so it repairs the value and the warning that was
+        /// supposed to report it can then never fire. Clamping here, where the warning is issued, means the
+        /// authored value is still intact at the moment it is described.
+        ///
+        /// Reports EVERY problem in one message rather than the first — a designer with three mistakes
+        /// should not need three play-mode cycles to find them (the first-wins complaint standing against
+        /// both config validators).
+        /// </summary>
+        private void ValidateLayout()
+        {
+            var problems = new List<string>();
+
+            if (spacing < 0f)
+            {
+                problems.Add($"spacing is {spacing}, which overlaps cells — using 0.");
+                spacing = 0f;
+            }
+
+            if (fontSize < MinFontSize)
+            {
+                problems.Add($"fontSize is {fontSize}, below the {MinFontSize} the captions floor at — using " +
+                             $"{MinFontSize}, and compact captions can never engage.");
+                fontSize = MinFontSize;
+            }
+
+            // The floor first: cellSize is validated against it below, so a broken floor would pass a broken
+            // ceiling as sane.
+            if (minCellSize.x < MinCellEdge || minCellSize.y < MinCellEdge)
+            {
+                Vector2 was = minCellSize;
+                minCellSize = new Vector2(Mathf.Max(minCellSize.x, MinCellEdge),
+                                          Mathf.Max(minCellSize.y, MinCellEdge));
+                problems.Add($"minCellSize is {was}, at or below zero on an axis — a cell that size draws " +
+                             $"nothing at all. Using {minCellSize}.");
+            }
+
+            if (cellSize.x < minCellSize.x || cellSize.y < minCellSize.y)
+            {
+                Vector2 was = cellSize;
+                cellSize = new Vector2(Mathf.Max(cellSize.x, minCellSize.x),
+                                       Mathf.Max(cellSize.y, minCellSize.y));
+                problems.Add($"cellSize is {was}, smaller than minCellSize {minCellSize} — the largest a cell " +
+                             $"may be drawn cannot be below the smallest, and at zero the gallery opens with " +
+                             $"no visible photographs and a clean console. Using {cellSize}.");
+            }
+
+            if (problems.Count > 0)
+                GameLog.Warn("Gallery", "GalleryView layout: " + string.Join("  ", problems.ToArray()));
+        }
+
+        /// <summary>Smallest a cell edge may be authored at. Below this a cell is not small, it is absent.</summary>
+        private const float MinCellEdge = 8f;
 
         private void ConfigureCanvas()
         {
@@ -334,15 +411,56 @@ namespace CameraGame.Gallery
             // inert too, because both already gate on IsPhotoMode. No new flags in PhotoModeController and
             // no new way to photograph the gallery UI.
             if (photoMode != null) photoMode.SetRaiseSuppressed(true);
+
+            // ...and the player stops walking. The backdrop is fully opaque, so anything that still moves
+            // behind it moves blind (2026-07-30 review).
+            if (player != null) player.SetInputSuppressed(true);
         }
 
-        /// <summary>Closes the gallery and hands the camera back.</summary>
+        /// <summary>Closes the gallery and hands the camera and the player back.</summary>
         public void Close()
         {
             if (!_viewReady || !IsOpen) return;
 
             ApplyOpenState(false);
+            ReleaseSuppression();
+        }
+
+        /// <summary>
+        /// Hands back everything <see cref="Open"/> took. Split out of <see cref="Close"/> so the teardown
+        /// path below can call it without needing the view to still be in a closable state.
+        /// </summary>
+        private void ReleaseSuppression()
+        {
             if (photoMode != null) photoMode.SetRaiseSuppressed(false);
+            if (player != null) player.SetInputSuppressed(false);
+        }
+
+        /// <summary>
+        /// ⚠️ THE GALLERY MUST HAND THE CAMERA BACK EVEN WHEN IT IS NOT CLOSED POLITELY.
+        ///
+        /// <see cref="Open"/> asserts suppression on PhotoModeController and the player; before the
+        /// 2026-07-30 review <see cref="Close"/> was the ONLY thing that released it, and this class had no
+        /// teardown hook at all. Deactivate this GameObject while the gallery is open — a pause menu, an
+        /// additive scene unload, tooling swapping the canvas, or the verification rig rebuilding the view
+        /// between scenarios — and <c>RaiseSuppressed</c> stayed true for the rest of the session:
+        /// <c>SetPhotoMode(true)</c> returns immediately, so the camera could never be raised again, no
+        /// capture, no zoom, no grading, and a completely clean console.
+        ///
+        /// The rig already worked around this in its own code (GalleryShootRunner "close BEFORE destroying"),
+        /// which is exactly the wrong place for the fix to live — the shipped scene got no such protection.
+        ///
+        /// ⚠️ GUARDED ON <see cref="IsOpen"/>, NOT UNCONDITIONAL. A closed gallery holds no suppression, so
+        /// releasing anyway would clear a flag some OTHER owner had set — turning this fix into the very
+        /// bug it exists to prevent, one caller along. (That the flag is a plain bool and cannot express
+        /// two owners at once is recorded as deferred work against Story 1.12.)
+        /// </summary>
+        private void OnDisable()
+        {
+            if (!IsOpen) return;
+
+            IsOpen = false;
+            ReleaseSuppression();
         }
 
         /// <summary>
@@ -362,6 +480,27 @@ namespace CameraGame.Gallery
             _group.alpha = open ? 1f : 0f;
             _group.blocksRaycasts = open;
             _group.interactable = open;
+        }
+
+        /// <summary>
+        /// Re-fits the grid when the canvas changes size — a window resize, a fullscreen toggle, a
+        /// resolution change — but only while the gallery is actually on screen.
+        ///
+        /// ⚠️ WITHOUT THIS THE GRID IS SIZED ONCE PER OPEN AND NEVER AGAIN. <see cref="Refresh"/> is called
+        /// only from <see cref="Open"/>, and the cell size it computes is in PIXELS against a Constant Pixel
+        /// Size scaler — so resizing the window mid-open left cells laid out for the old resolution, spilling
+        /// off the bottom and right edges (the exact regression <see cref="LayoutGrid"/> was written to fix)
+        /// while the header went on reporting a count measured against a rect that no longer existed.
+        /// Closing and reopening fixed it, and nothing told the player that. Found by the 2026-07-30 review.
+        ///
+        /// Unity calls this on the frame the rect changes, not per frame, so it is not a per-frame path.
+        /// </summary>
+        private void OnRectTransformDimensionsChange()
+        {
+            // Fires during Awake before the cells exist, hence the readiness guard as well as IsOpen.
+            if (!_viewReady || !IsOpen) return;
+
+            Refresh();
         }
 
         /// <summary>
@@ -529,7 +668,24 @@ namespace CameraGame.Gallery
                 Rect canvasRect = ((RectTransform)transform).rect;
                 w = canvasRect.width  - spacing * 4f;
                 h = canvasRect.height - spacing * 4f - fontSize * 2.6f;
-                if (w <= 1f || h <= 1f) return count;   // genuinely nothing to lay out into
+
+                if (w <= 1f || h <= 1f)
+                {
+                    // Genuinely nothing to lay out into — a minimised window, a zero-size Game view, or a
+                    // canvas that has not produced a rect yet.
+                    //
+                    // ⚠️ SET THE CELL SIZE ON THE WAY OUT, like the other two exits do. This branch used to
+                    // `return count` and touch neither _cellWidth nor _grid.cellSize, so it claimed every
+                    // shot was on screen while leaving cells at their Awake size and driving FontFor() from
+                    // a stale (or, on a first open, zero) width — captions mis-banded against pictures of a
+                    // different size, and the "showing newest N" warning could never fire. Found by the
+                    // 2026-07-30 review. Return 0 rather than count: nothing is visible in a rect this size,
+                    // and saying so is what keeps the header honest.
+                    _cellWidth = minCellSize.x;
+                    _grid.cellSize = new Vector2(minCellSize.x,
+                                                 minCellSize.y + LabelHeightFor(FontFor(minCellSize.x)));
+                    return 0;
+                }
             }
 
             int bestCols = 0;

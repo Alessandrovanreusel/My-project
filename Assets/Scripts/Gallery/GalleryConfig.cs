@@ -215,17 +215,25 @@ namespace CameraGame.Gallery
             return false;
         }
 
-        private void OnValidate()
-        {
-            // Through the Safe* accessors, exactly as GradingConfig does.
-            //
-            // ⚠️ This REWRITES HAND-AUTHORED YAML the moment the asset is selected in the Inspector — the
-            // out-of-range value is destroyed by the act of looking at it. That is the same repair [Range]
-            // would apply anyway; what matters is that TryGetConfigProblem reports it at Awake FIRST, so the
-            // warning arrives before the Inspector silently rewrites the evidence.
-            maxThumbnailWidth = SafeMaxThumbnailWidth;
-            thumbnailHeight = SafeThumbnailHeight;
-            maxStoredShots = SafeMaxStoredShots;
-        }
+        // ⚠️ THERE IS DELIBERATELY NO OnValidate HERE ANY MORE, AND IT MUST NOT COME BACK.
+        //
+        // It used to repair the three fields through the Safe* accessors, with a comment claiming that was
+        // harmless "because TryGetConfigProblem reports it at Awake FIRST, so the warning arrives before the
+        // Inspector silently rewrites the evidence". The 2026-07-30 code review reproduced that claim and it
+        // is FALSE. Unity calls OnValidate when the asset is loaded and imported and on every domain reload,
+        // not merely when someone clicks it — long before any Awake runs. Every out-of-range branch above
+        // detects trouble by comparing the raw field against its Safe* value, so once OnValidate has written
+        // Safe back INTO the raw field the two agree and the branch can never fire again. Measured:
+        //
+        //     hand-authored maxStoredShots: 0
+        //     before OnValidate -> warning fires ("outside the usable range 1 to 500")
+        //     after  OnValidate -> raw is 1, warning silent, console clean
+        //
+        // So the single most repeated failure mode this file exists to catch was being silently repaired in
+        // the editor, which is precisely where designers author these values. (In a player build OnValidate
+        // does not exist, so the warning worked there — i.e. it was broken only where it was needed.)
+        //
+        // Nothing is lost by removing it: every reader goes through a Safe* accessor already, so an
+        // out-of-range asset still RUNS correctly. The only difference is that it now also says so.
     }
 }
