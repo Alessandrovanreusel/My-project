@@ -1,0 +1,93 @@
+# generated: 2026-06-04
+# last_updated: 2026-06-04 (story 1.1 → review; AC3 verified via Unity MCP)
+# project: My project
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+#
+# JIRA MIRROR (project KAN — see CLAUDE.md "Jira Sync"):
+# - epic-1=KAN-4, epic-2=KAN-5, epic-3=KAN-6, epic-4=KAN-7, epic-5=KAN-8,
+#   epic-6=KAN-9, epic-7=KAN-10, epic-8=KAN-11
+# - 1-1..1-12 stories = KAN-12..KAN-23 (in order)
+# - When a story's status changes here, reflect it on the matching Jira issue.
+
+generated: 2026-06-04
+last_updated: 2026-07-31 (story 1.12 -> ready-for-dev; context file created, 7 tasks, KAN-23 + subtasks synced) | 2026-07-30 (story 1.11 -> done. Code review: 3 decisions resolved, 13 patches applied and re-verified by running, 10 deferred, 4 dismissed as disproven. Final human check (window resize) passed; AC2 fully proven. NFR2 re-measured 6.036ms mean / 7.321ms worst, texture count flat at the cap)
+project: My project
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  # ----- Epic 1: First Playable Slice — The Catch Loop (MVP) [Jira KAN-4] -----
+  epic-1: in-progress
+  1-1-establish-project-scaffold-and-shared-infrastructure: done          # KAN-12
+  1-2-walkable-town-patch-with-traversal-and-navmesh: done            # KAN-13
+  1-3-raise-and-lower-the-camera-photo-mode-toggle: done              # KAN-14
+  1-4-zoom-to-compose-in-photo-mode: done                            # KAN-15
+  1-5-capture-a-photo: done                                           # KAN-16
+  1-6-event-actor-lifecycle-engine: done                            # KAN-17
+  1-7-the-town-drunk-event: done                                     # KAN-18
+  1-8-diegetic-cue-telegraphing: done                                 # KAN-19
+  1-9-subject-capture-gate-grading: done                             # KAN-20
+  1-10-composition-and-timing-scoring: done                          # KAN-21
+  1-11-minimal-gallery: done                                          # KAN-22
+  1-12-grade-feedback-hud: ready-for-dev                              # KAN-23
+  epic-1-retrospective: optional
+
+  # ----- Epic 2: The Living Town [Jira KAN-5] (stories TBD just-in-time) -----
+  epic-2: backlog
+  epic-2-retrospective: optional
+
+  # ----- Epic 3: Event Content Pack #1 [Jira KAN-6] (stories TBD just-in-time) -----
+  epic-3: backlog
+  epic-3-retrospective: optional
+
+  # ----- Epic 4: Progression & Reputation [Jira KAN-7] (stories TBD just-in-time) -----
+  epic-4: backlog
+  epic-4-retrospective: optional
+
+  # ----- Epic 5: Home Base [Jira KAN-8] (stories TBD just-in-time) -----
+  epic-5: backlog
+  epic-5-retrospective: optional
+
+  # ----- Epic 6: Nature & Collection Layer [Jira KAN-9] (stories TBD just-in-time) -----
+  epic-6: backlog
+  epic-6-retrospective: optional
+
+  # ----- Epic 7: Missions & Mystery [Jira KAN-10] (stories TBD just-in-time) -----
+  epic-7: backlog
+  epic-7-retrospective: optional
+
+  # ----- Epic 8: Stealth Layer [Jira KAN-11] (stories TBD just-in-time) -----
+  epic-8: backlog
+  epic-8-retrospective: optional
