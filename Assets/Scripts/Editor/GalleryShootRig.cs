@@ -231,7 +231,12 @@ namespace CameraGame.EditorTools
                 playerInput = playerGo.AddComponent<PlayerInput>();
                 playerInput.actions = actions;
                 playerInput.defaultActionMap = "Player";
-                playerInput.notificationBehavior = PlayerNotifications.SendMessages;
+                // BroadcastMessages, because that is what SampleScene's PlayerInput is actually set to.
+                // The rig must reproduce the game's configuration, not a plausible-looking one: Broadcast
+                // delivers OnXxx to the object AND its children while Send delivers only to the object, so
+                // a rig on Send could pass while the real scene silently dropped every press (or vice
+                // versa, if a handler ever ends up on a child).
+                playerInput.notificationBehavior = PlayerNotifications.BroadcastMessages;
                 playerInput.camera = cam;
             }
             else

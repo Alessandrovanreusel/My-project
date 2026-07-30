@@ -143,6 +143,7 @@ namespace CameraGame.Gallery
             yield return PhaseA_ARollOfFilm();
             yield return PhaseB_PhotographTheGalleryItself();
             yield return PhaseC_EvictionAndTextureCount();
+            yield return PhaseC2_AFullGalleryOnScreen();
             yield return PhaseD_Boundaries();
             yield return PhaseE_MeasureTheShutter();
             yield return PhaseF_PooledRespawnIdentity();
@@ -221,7 +222,13 @@ namespace CameraGame.Gallery
             new Shot("d_corner",       2.2f, "Same distance, shoved into the corner of the frame.",
                                              targetX: 0.12f, targetY: 0.85f),
             new Shot("e_too_far",      16f,  "Far down the road — should fail the size gate."),
-            new Shot("f_behind_wall",  1.2f, "A wall dropped between the camera and him."),
+            // ⚠️ `wall: true` is load-bearing and was MISSING on the first run (2026-07-30). The pose still
+            // produced a perfectly plausible line — "counted, visible 100%" — under a caption promising a
+            // wall, and it was within one sentence of being written up as a reproduction of Story 1.9's
+            // deferred "occlusion gate appears inert" finding. The photograph is what caught it: there was
+            // no wall in the picture. A caption that asserts what the code did not do is worse than no
+            // caption at all.
+            new Shot("f_behind_wall",  1.2f, "A wall dropped between the camera and him.", wall: true),
             new Shot("g_looking_away", 2f,   "Close, but facing the opposite way.", yaw: 180f),
         };
 
@@ -488,6 +495,88 @@ namespace CameraGame.Gallery
             _log.AppendLine();
 
             yield return WriteContactSheet("evicted");
+        }
+
+        // =====================================================================
+        // PHASE C2 — what a BUSY gallery actually looks like
+        // =====================================================================
+
+        /// <summary>
+        /// Photographs the gallery holding a realistic number of shots, and again holding a full one.
+        ///
+        /// ⚠️ THIS PHASE EXISTS BECAUSE EIGHT SHOTS HID A DEFECT. The first run photographed the gallery
+        /// with the eight shots of Phase A, and the newest row was already sliced off by the bottom of the
+        /// screen — which was easy to read as a cosmetic margin problem. It was not: the grid flowed as many
+        /// rows as it liked, so the failure got *worse* the more photographs the player had taken, and at
+        /// the shipped cap of fifty they would have seen about six of them with nothing saying so. A bench
+        /// that only ever tests the small case cannot see that shape of bug.
+        /// </summary>
+        private IEnumerator PhaseC2_AFullGalleryOnScreen()
+        {
+            Section("PHASE C2 — the gallery with a realistic number of shots in it");
+            _log.AppendLine("Two pictures: a busy gallery and a completely full one. The question both are");
+            _log.AppendLine("asked is the same — is every shot the header CLAIMS to be showing actually on");
+            _log.AppendLine("screen, and is anything hidden admitted to rather than silently dropped?");
+            _log.AppendLine();
+
+            yield return RebuildService(shippedConfig, cam, channel);
+
+            photo.SetPhotoMode(true);
+            if (TryGetActor(out EventActor a0)) PlaceCamera(new Shot("full", 2.2f, ""), a0.Bounds);
+            yield return null;
+
+            foreach (int target in new[] { 30, shippedConfig != null ? shippedConfig.SafeMaxStoredShots : 50 })
+            {
+                while (service.Shots.Count < target)
+                {
+                    if (TryGetActor(out EventActor a)) PlaceCamera(new Shot("full", 2.2f, ""), a.Bounds, aimOnly: true);
+                    photo.Capture();
+                    yield return null;
+                }
+
+                photo.SetPhotoMode(false);
+                yield return null;
+                view.Close();
+                view.Toggle();
+                yield return null;
+                yield return null;
+
+                string file = $"ui_open_{service.Shots.Count:D2}shots.png";
+                SaveCameraFrame(Path.Combine(outputDir, file));
+                _log.AppendLine($"  {service.Shots.Count} shots stored -> {file}");
+                _log.AppendLine($"     header reads: \"{ReadHeader()}\"");
+                _log.AppendLine($"     cells actually enabled on screen: {CountVisibleCells()}");
+
+                view.Toggle();
+                yield return null;
+                photo.SetPhotoMode(true);
+                yield return null;
+            }
+
+            _log.AppendLine();
+            _log.AppendLine("  LOOK AT THESE. Every enabled cell must be fully inside the frame — no row");
+            _log.AppendLine("  clipped by the bottom edge — and the count in the header must match the number");
+            _log.AppendLine("  of cells you can actually see.");
+            _log.AppendLine();
+        }
+
+        /// <summary>Reads the gallery's own header text back, so the log records what the PLAYER was told
+        /// rather than what the rig assumed they were told.</summary>
+        private string ReadHeader()
+        {
+            foreach (Text t in view.GetComponentsInChildren<Text>(includeInactive: true))
+                if (t.transform.parent == view.transform && t.text.StartsWith("GALLERY")) return t.text;
+            return "<no header found>";
+        }
+
+        /// <summary>Counts the cells the view actually turned on — the honest denominator for "is the
+        /// header telling the truth?".</summary>
+        private int CountVisibleCells()
+        {
+            int n = 0;
+            foreach (RawImage img in view.GetComponentsInChildren<RawImage>(includeInactive: true))
+                if (img.gameObject.activeInHierarchy) n++;
+            return n;
         }
 
         // =====================================================================

@@ -56,9 +56,15 @@ namespace CameraGame.Gallery
 
         [Header("Layout")]
 
-        [Tooltip("Pixel size of one thumbnail cell in the grid. The picture keeps the config's 16:9 " +
-                 "thumbnail aspect; this is how large it is drawn.")]
+        [Tooltip("LARGEST a thumbnail cell may be drawn. Cells shrink below this to fit however many shots " +
+                 "the player is actually holding — see LayoutGrid. They are never drawn bigger, so three " +
+                 "shots do not become three billboards.")]
         [SerializeField] private Vector2 cellSize = new Vector2(240f, 135f);
+
+        [Tooltip("SMALLEST a thumbnail cell may be drawn. Below this a photograph stops being readable as " +
+                 "a photograph, so the gallery shows fewer of them rather than shrinking further — and " +
+                 "says so in the header.")]
+        [SerializeField] private Vector2 minCellSize = new Vector2(96f, 54f);
 
         [Tooltip("Pixel gap between cells, and the margin around the whole grid.")]
         [SerializeField] private float spacing = 12f;
@@ -71,8 +77,21 @@ namespace CameraGame.Gallery
         /// all cameras regardless of sorting order — harmless, because neither is visible in Walk mode.</summary>
         private const int GallerySortingOrder = 500;
 
-        /// <summary>Backdrop behind the grid, so thumbnails stay legible over a bright street.</summary>
-        private static readonly Color BackdropColor = new Color(0.05f, 0.05f, 0.07f, 0.92f);
+        /// <summary>
+        /// Backdrop behind the grid. FULLY OPAQUE, and that is a correctness decision rather than a taste one.
+        ///
+        /// ⚠️ PARTIAL ALPHA DOES NOT WORK IN THIS PROJECT, and the rig's private world cannot show you why.
+        /// A Screen Space – Camera canvas is composited in the TRANSPARENT pass, i.e. BEFORE URP's
+        /// post-processing — so whatever leaks through the backdrop is then run through the Global Volume's
+        /// tonemapping along with the scene. The town renders bright HDR values (open sky, sunlit ground),
+        /// so even a 1.5% leak at alpha 0.985 came back as a clearly readable forest of trees across the
+        /// bottom half of the gallery (real-scene check, 2026-07-30). Measured in the same run: at alpha 1
+        /// the same pixels sample exactly (0,0,0).
+        ///
+        /// The rig's world is a grey plane with no Volume and no bright sky, so it looked perfect there at
+        /// 0.92 AND at 0.985. This is the one defect in this story that only the real scene could produce.
+        /// </summary>
+        private static readonly Color BackdropColor = new Color(0.05f, 0.05f, 0.07f, 1f);
 
         private static readonly Color CountedTextColor = new Color(0.94f, 0.94f, 0.90f);
         private static readonly Color MissTextColor = new Color(1f, 0.55f, 0.45f);
@@ -89,6 +108,11 @@ namespace CameraGame.Gallery
         private readonly List<GameObject> _cells = new List<GameObject>();
 
         private Text _headerLabel;
+
+        // Kept so Refresh can re-fit the grid to however many shots exist. Sizing the grid ONCE at Awake is
+        // what let the first run push the newest row off the bottom of the screen.
+        private GridLayoutGroup _grid;
+        private RectTransform _gridRect;
 
         private bool _viewReady;
 
@@ -179,7 +203,7 @@ namespace CameraGame.Gallery
             headerRect.pivot = new Vector2(0.5f, 1f);
             headerRect.offsetMin = new Vector2(spacing * 2f, -(fontSize * 2.2f));
             headerRect.offsetMax = new Vector2(-spacing * 2f, -spacing);
-            _headerLabel = MakeText(header, font, Mathf.RoundToInt(fontSize * 1.25f), TextAnchor.MiddleLeft);
+            _headerLabel = MakeText(header, font, Mathf.RoundToInt(fontSize * 1.25f), TextAnchor.MiddleLeft, wrap: false);
 
             var grid = NewUIObject("Grid", transform);
             RectTransform gridRect = grid.GetComponent<RectTransform>();
@@ -187,12 +211,13 @@ namespace CameraGame.Gallery
             gridRect.offsetMin = new Vector2(spacing * 2f, spacing * 2f);
             gridRect.offsetMax = new Vector2(-spacing * 2f, -(fontSize * 2.6f + spacing));
 
-            var layout = grid.AddComponent<GridLayoutGroup>();
-            layout.cellSize = new Vector2(cellSize.x, cellSize.y + fontSize * 2.4f);
-            layout.spacing = new Vector2(spacing, spacing);
-            layout.startCorner = GridLayoutGroup.Corner.UpperLeft;
-            layout.startAxis = GridLayoutGroup.Axis.Horizontal;
-            layout.childAlignment = TextAnchor.UpperLeft;
+            _gridRect = gridRect;
+            _grid = grid.AddComponent<GridLayoutGroup>();
+            _grid.cellSize = new Vector2(cellSize.x, cellSize.y + LabelHeight);
+            _grid.spacing = new Vector2(spacing, spacing);
+            _grid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+            _grid.startAxis = GridLayoutGroup.Axis.Horizontal;
+            _grid.childAlignment = TextAnchor.UpperLeft;
 
             for (int i = 0; i < capacity; i++) BuildCell(grid.transform, font);
         }
@@ -203,10 +228,13 @@ namespace CameraGame.Gallery
 
             var picture = NewUIObject("Picture", cell.transform);
             RectTransform pictureRect = picture.GetComponent<RectTransform>();
-            pictureRect.anchorMin = new Vector2(0f, 1f);
-            pictureRect.anchorMax = new Vector2(1f, 1f);
-            pictureRect.pivot = new Vector2(0.5f, 1f);
-            pictureRect.offsetMin = new Vector2(0f, -cellSize.y);
+
+            // STRETCHED to the cell, not a fixed height. The cell's size is decided per-open by
+            // LayoutGrid, so a picture pinned to a fixed offset would keep its Awake-time size while the
+            // cell around it shrank — cells overlapping their own labels.
+            pictureRect.anchorMin = Vector2.zero;
+            pictureRect.anchorMax = Vector2.one;
+            pictureRect.offsetMin = new Vector2(0f, LabelHeight);
             pictureRect.offsetMax = Vector2.zero;
 
             // RawImage, not Image: it takes a Texture2D directly, where Image would need a Sprite — an extra
@@ -220,16 +248,16 @@ namespace CameraGame.Gallery
             labelRect.anchorMax = new Vector2(1f, 0f);
             labelRect.pivot = new Vector2(0.5f, 0f);
             labelRect.offsetMin = Vector2.zero;
-            labelRect.offsetMax = new Vector2(0f, fontSize * 2.4f);
+            labelRect.offsetMax = new Vector2(0f, LabelHeight);
 
             _cells.Add(cell);
             _cellImages.Add(raw);
-            _cellLabels.Add(MakeText(label, font, fontSize, TextAnchor.UpperLeft));
+            _cellLabels.Add(MakeText(label, font, fontSize, TextAnchor.UpperLeft, wrap: true));
 
             cell.SetActive(false);
         }
 
-        private static Text MakeText(GameObject host, Font font, int size, TextAnchor anchor)
+        private static Text MakeText(GameObject host, Font font, int size, TextAnchor anchor, bool wrap)
         {
             var text = host.AddComponent<Text>();
             text.font = font;
@@ -237,8 +265,12 @@ namespace CameraGame.Gallery
             text.alignment = anchor;
             text.color = CountedTextColor;
             text.raycastTarget = false;
-            text.horizontalOverflow = HorizontalWrapMode.Overflow;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
+
+            // WRAP for cell captions, Overflow for the header. The header sits alone on a full-width row
+            // and has nothing to collide with; a cell caption has seven neighbours, and Overflow let it
+            // print straight across them.
+            text.horizontalOverflow = wrap ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Truncate;
             return text;
         }
 
@@ -289,8 +321,14 @@ namespace CameraGame.Gallery
             if (!_viewReady || IsOpen) return;
             if (photoMode != null && photoMode.IsPhotoMode) return;   // AC2: Walk mode only
 
-            Refresh();
+            // ⚠️ SHOW FIRST, FILL SECOND. Refresh sizes the grid from the RectTransform's measured rect, and
+            // a DISABLED canvas never lays out — so refreshing before enabling read a zero-sized rect, and
+            // LayoutGrid bailed out leaving the Awake cell size in place. It only bit the FIRST open (later
+            // ones inherited a rect from the previous layout pass), which is exactly the kind of bug that
+            // survives a bench that opens the gallery more than once and never looks at the first picture.
             ApplyOpenState(true);
+            Canvas.ForceUpdateCanvases();
+            Refresh();
 
             // While the gallery owns the screen the camera cannot be raised — which makes capture and zoom
             // inert too, because both already gate on IsPhotoMode. No new flags in PhotoModeController and
@@ -339,35 +377,59 @@ namespace CameraGame.Gallery
             int count = shots != null ? shots.Count : 0;
             int slots = _cells.Count;
 
+            // Fit the grid to what is actually being shown BEFORE filling it, and find out how many of them
+            // will genuinely be on screen.
+            int shown = LayoutGrid(count);
+
             if (_headerLabel != null)
-                _headerLabel.text = count == 0
-                    ? "GALLERY — no shots yet"
-                    : $"GALLERY — {count} shot{(count == 1 ? "" : "s")}" +
-                      (slots > 0 ? $" (holds {slots})" : string.Empty);
+            {
+                if (count == 0)
+                    _headerLabel.text = "GALLERY — no shots yet";
+                else if (shown < count)
+                    // Say it out loud. A gallery quietly showing 6 of 50 is indistinguishable from a
+                    // gallery that lost 44 photographs, and that is the worse of the two to be wrong about.
+                    _headerLabel.text = $"GALLERY — {count} shots · showing newest {shown}";
+                else
+                    _headerLabel.text = $"GALLERY — {count} shot{(count == 1 ? "" : "s")}" +
+                                        (slots > 0 ? $" (holds {slots})" : string.Empty);
+            }
+
+            int capFont = FontFor(_cellWidth);
+            float band = LabelHeightFor(capFont);
+
+            // When the cells get small the subject's name is the first thing to go: the stars and the
+            // "why" are what AC2 is about, and a name that wraps to a third line pushes both out of view.
+            bool compact = capFont < fontSize;
 
             for (int i = 0; i < slots; i++)
             {
-                // NEWEST FIRST: the shot the player just took is the one they opened this to look at, and
-                // the service stores oldest-first.
-                int shotIndex = count - 1 - i;
-
-                if (shotIndex < 0)
+                // Anything past what fits on screen is hidden rather than drawn off the edge — that is what
+                // pushed the newest row off the bottom on the first run. `shown` is already clamped to the
+                // shot count, so this covers empty slots too.
+                if (i >= shown)
                 {
                     _cells[i].SetActive(false);
+
                     // Drop the texture reference on a hidden cell as well. A RawImage holding an evicted
                     // Texture2D is a dangling native reference the moment eviction destroys it — Unity draws
                     // it as pink rather than crashing, but pink squares in a gallery are indistinguishable
                     // from a rendering bug, and pointing at destroyed memory is not a thing to leave lying
-                    // around because it happens to be survivable.
+                    // around just because it happens to be survivable.
                     _cellImages[i].texture = null;
                     continue;
                 }
 
-                CapturedShot shot = shots[shotIndex];
+                // NEWEST FIRST: the shot the player just took is the one they opened this to look at, and
+                // the service stores oldest-first.
+                CapturedShot shot = shots[count - 1 - i];
                 _cells[i].SetActive(true);
 
                 RawImage picture = _cellImages[i];
                 picture.texture = shot.Image;
+
+                // Re-fit the caption band to the size the grid just settled on. The cells are laid out per
+                // open, so a band fixed at Awake would sit under a picture of a completely different size.
+                picture.rectTransform.offsetMin = new Vector2(0f, band);
 
                 // A shot stored without a picture (no camera) still gets a cell — a flat plate, so the entry
                 // reads as "no picture" rather than as a black photograph.
@@ -376,9 +438,121 @@ namespace CameraGame.Gallery
                 Text label = _cellLabels[i];
                 if (label == null) continue;
 
-                label.text = DescribeShot(shot);
+                ((RectTransform)label.transform).offsetMax = new Vector2(0f, band);
+                label.fontSize = capFont;
+
+                label.text = DescribeShot(shot, compact);
                 label.color = shot.Grade.IsMiss ? MissTextColor : CountedTextColor;
             }
+        }
+
+        /// <summary>Caption height at the DESIGN font size — the band reserved under a full-size cell.</summary>
+        private float LabelHeight => LabelHeightFor(fontSize);
+
+        /// <summary>Caption band for a given font size. Three lines' worth rather than two: the cell labels
+        /// WRAP (see <see cref="MakeText"/>), so a long miss reason in a narrow cell needs somewhere to go
+        /// that is not the cell next door.</summary>
+        private static float LabelHeightFor(float font) => font * 3.6f;
+
+        /// <summary>
+        /// Caption font for a cell of a given width.
+        ///
+        /// ⚠️ THIS IS NOT COSMETIC. With a fixed font, a grid eight columns wide rendered
+        /// "24 % · TownDrunk" wider than the cell holding it, and the text ran straight over the top of the
+        /// neighbouring caption — producing "24 % · TownDrunk21 % · TownDrunk" across the whole row. Every
+        /// rating on screen was unreadable while each individual cell was, technically, correct.
+        /// </summary>
+        private int FontFor(float cellWidth) =>
+            Mathf.Clamp(Mathf.RoundToInt(cellWidth * 0.085f), MinFontSize, fontSize);
+
+        /// <summary>Below this the caption is not worth drawing at all.</summary>
+        private const int MinFontSize = 9;
+
+        /// <summary>Width the grid settled on at the last <see cref="LayoutGrid"/>, so the captions can be
+        /// scaled to match the cells they sit under.</summary>
+        private float _cellWidth;
+
+        /// <summary>
+        /// Sizes the grid so the shots the player is holding actually fit on screen, and returns how many
+        /// of them will be visible.
+        ///
+        /// ⚠️ WHY THIS EXISTS. The first version set <c>cellSize</c> once at Awake and let GridLayoutGroup
+        /// flow as many rows as it liked. With eight shots the newest row was already sliced in half by the
+        /// bottom of the screen, and at the shipped cap of fifty the player would have seen about six of
+        /// them — with no indication the other forty-four existed. AC2 is "the player can open the gallery
+        /// and SEE the shots"; a grid that silently runs off the screen fails it, and it fails it worse the
+        /// more photographs you have taken, which is exactly backwards.
+        ///
+        /// Cells shrink to fit, down to <see cref="minCellSize"/> — below which a photograph stops reading
+        /// as a photograph, so the gallery shows fewer of them and <see cref="Refresh"/> says so in the
+        /// header instead of hiding the difference.
+        /// </summary>
+        private int LayoutGrid(int count)
+        {
+            if (_grid == null || _gridRect == null || count <= 0) return 0;
+
+            // The rect is not valid until the canvas has laid out at least once, and Open() calls Refresh()
+            // on the same frame it enables the canvas — so force the layout rather than reading a zero and
+            // computing a grid of infinite columns.
+            Canvas.ForceUpdateCanvases();
+
+            float w = _gridRect.rect.width;
+            float h = _gridRect.rect.height;
+
+            // Belt and braces for the zero-rect case above: derive the area from the canvas itself rather
+            // than giving up and leaving cells at their Awake size, which is what clipped the first open.
+            if (w <= 1f || h <= 1f)
+            {
+                Rect canvasRect = ((RectTransform)transform).rect;
+                w = canvasRect.width  - spacing * 4f;
+                h = canvasRect.height - spacing * 4f - fontSize * 2.6f;
+                if (w <= 1f || h <= 1f) return count;   // genuinely nothing to lay out into
+            }
+
+            float aspect = cellSize.x / Mathf.Max(1f, cellSize.y);   // picture aspect, from the design size
+
+            int bestCols = 0;
+            float bestCellW = 0f;
+
+            // Try every column count and keep the one that makes the cells LARGEST while still fitting every
+            // shot. Iterating is fine: this runs once per open, over at most a few hundred entries.
+            for (int cols = 1; cols <= count; cols++)
+            {
+                int rows = Mathf.CeilToInt(count / (float)cols);
+
+                float cw = (w - spacing * (cols - 1)) / cols;
+                float picH = cw / aspect;
+
+                // The caption band shrinks with the cell, because the font does — otherwise a narrow cell
+                // would reserve a full-size label under a postage-stamp picture.
+                float ch = picH + LabelHeightFor(FontFor(cw));
+
+                if (cw < minCellSize.x || picH < minCellSize.y) continue;
+                if (rows * ch + spacing * (rows - 1) > h) continue;
+
+                if (cw > bestCellW) { bestCellW = cw; bestCols = cols; }
+            }
+
+            if (bestCols > 0)
+            {
+                // Never bigger than the design size — three shots should not become three billboards.
+                float cw = Mathf.Min(bestCellW, cellSize.x);
+                _cellWidth = cw;
+                _grid.cellSize = new Vector2(cw, cw / aspect + LabelHeightFor(FontFor(cw)));
+                return count;
+            }
+
+            // Nothing fits at a readable size: fall back to the minimum cell and show as many of the NEWEST
+            // as genuinely go on screen.
+            float minW = minCellSize.x;
+            float minPicH = minCellSize.y;
+            float minLabel = LabelHeightFor(FontFor(minW));
+            _cellWidth = minW;
+            _grid.cellSize = new Vector2(minW, minPicH + minLabel);
+
+            int fitCols = Mathf.Max(1, Mathf.FloorToInt((w + spacing) / (minW + spacing)));
+            int fitRows = Mathf.Max(1, Mathf.FloorToInt((h + spacing) / (minPicH + minLabel + spacing)));
+            return Mathf.Min(count, fitCols * fitRows);
         }
 
         /// <summary>
@@ -391,7 +565,7 @@ namespace CameraGame.Gallery
         /// the same cell, and the player would have no way to tell "he was behind a wall" from "you were
         /// two seconds late". <see cref="ShotGrade.MissReason"/> is what separates them, so it is printed.
         /// </summary>
-        private static string DescribeShot(CapturedShot shot)
+        private static string DescribeShot(CapturedShot shot, bool compact)
         {
             ShotGrade grade = shot.Grade;
             string who = shot.HasSubject ? shot.SubjectId : "nobody";
@@ -399,10 +573,15 @@ namespace CameraGame.Gallery
             if (grade.IsPlaceholder)
                 return $"{Stars(grade.Stars)}\nnot graded";
 
+            // ⚠️ THE MISS REASON SURVIVES COMPACTION AND THE SUBJECT NAME DOES NOT. Telling a miss from a
+            // merely late shot IS the acceptance criterion (both read 1★); naming who was in the frame is a
+            // nicety. When space runs out, the nicety goes.
             if (grade.IsMiss)
                 return $"{Stars(grade.Stars)}\nmissed — {Describe(grade.MissReason)}";
 
-            return $"{Stars(grade.Stars)}\n{grade.Percent01:P0}  ·  {who}";
+            return compact
+                ? $"{Stars(grade.Stars)}\n{grade.Percent01:P0}"
+                : $"{Stars(grade.Stars)}\n{grade.Percent01:P0}  ·  {who}";
         }
 
         /// <summary>Five glyphs, always — filled up to the rating. A fixed width so the ratings line up down
@@ -420,12 +599,16 @@ namespace CameraGame.Gallery
         {
             switch (miss)
             {
-                case GradeMiss.NoSubject:        return "nobody in frame";
+                // ⚠️ KEEP THESE SHORT. They are printed inside a thumbnail cell, and the cell gets narrower
+                // the more photographs the player has taken. "something in the way" came back from the
+                // verification run truncated to "missed — something in the", which tells the player less
+                // than nothing — it looks like the gallery itself is broken.
+                case GradeMiss.NoSubject:        return "nobody there";
                 case GradeMiss.TooSmall:         return "too far away";
-                case GradeMiss.Occluded:         return "something in the way";
+                case GradeMiss.Occluded:         return "blocked";
                 case GradeMiss.OutsideFrustum:   return "out of frame";
-                case GradeMiss.BehindCamera:     return "behind the lens";
-                case GradeMiss.DegenerateBounds: return "nothing to photograph";
+                case GradeMiss.BehindCamera:     return "behind you";
+                case GradeMiss.DegenerateBounds: return "nothing there";
                 case GradeMiss.NoCamera:         return "no camera";
                 case GradeMiss.NoConfig:         return "grading not set up";
                 case GradeMiss.NoViewport:       return "no viewport";
