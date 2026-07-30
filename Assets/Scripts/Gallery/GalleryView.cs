@@ -379,7 +379,7 @@ namespace CameraGame.Gallery
 
             // Fit the grid to what is actually being shown BEFORE filling it, and find out how many of them
             // will genuinely be on screen.
-            int shown = LayoutGrid(count);
+            int shown = LayoutGrid(count, ShownAspect(shots, count));
 
             if (_headerLabel != null)
             {
@@ -446,6 +446,29 @@ namespace CameraGame.Gallery
             }
         }
 
+        /// <summary>
+        /// The aspect the cells should be drawn at: the aspect of the pictures actually being shown.
+        ///
+        /// ⚠️ NOT <see cref="cellSize"/>'s ratio. Since the service derives a thumbnail's width from the
+        /// game window, a hard-coded 16:9 cell would stretch every photograph taken in a window that is not
+        /// 16:9 — the gallery would distort the very framing the derived width exists to preserve.
+        ///
+        /// Read from the NEWEST shot that has a picture. Shots taken before a mid-session window resize
+        /// keep their own (now slightly different) aspect and will be a little stretched in their cell;
+        /// that is a deliberate trade against giving every cell its own size, which would make the grid
+        /// ragged for a case that only arises when someone drags the window mid-game.
+        /// </summary>
+        private float ShownAspect(IReadOnlyList<CapturedShot> shots, int count)
+        {
+            for (int i = count - 1; i >= 0; i--)
+            {
+                Texture2D img = shots[i].Image;
+                if (img != null && img.height > 0) return img.width / (float)img.height;
+            }
+
+            return cellSize.x / Mathf.Max(1f, cellSize.y);   // nothing stored yet, or no pictures at all
+        }
+
         /// <summary>Caption height at the DESIGN font size — the band reserved under a full-size cell.</summary>
         private float LabelHeight => LabelHeightFor(fontSize);
 
@@ -487,7 +510,7 @@ namespace CameraGame.Gallery
         /// as a photograph, so the gallery shows fewer of them and <see cref="Refresh"/> says so in the
         /// header instead of hiding the difference.
         /// </summary>
-        private int LayoutGrid(int count)
+        private int LayoutGrid(int count, float aspect)
         {
             if (_grid == null || _gridRect == null || count <= 0) return 0;
 
@@ -508,8 +531,6 @@ namespace CameraGame.Gallery
                 h = canvasRect.height - spacing * 4f - fontSize * 2.6f;
                 if (w <= 1f || h <= 1f) return count;   // genuinely nothing to lay out into
             }
-
-            float aspect = cellSize.x / Mathf.Max(1f, cellSize.y);   // picture aspect, from the design size
 
             int bestCols = 0;
             float bestCellW = 0f;

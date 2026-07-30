@@ -12,6 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a7a2ce7a47f54567b6f36720311bb3a8, type: 3}
   m_Name: GalleryConfig
   m_EditorClassIdentifier: CameraGame::CameraGame.Gallery.GalleryConfig
-  thumbnailWidth: 480
   thumbnailHeight: 270
+  maxThumbnailWidth: 640
   maxStoredShots: 50

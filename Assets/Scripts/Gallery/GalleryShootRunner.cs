@@ -52,16 +52,23 @@ namespace CameraGame.Gallery
         [HideInInspector] public GameObject playerObject;
         [HideInInspector] public string outputDir = "_bmad-output/verification/gallery";
 
-        /// <summary>Size the shoot camera renders at. Deliberately NOT the thumbnail size: the whole point
-        /// is that the gallery takes its own, smaller picture from a camera that is rendering at some other
-        /// resolution, which is the arrangement the real game is in.</summary>
+        /// <summary>Size the shoot camera renders at. Deliberately NOT the thumbnail size: the gallery
+        /// takes its own, smaller picture from a camera rendering at some other resolution, which is the
+        /// arrangement the real game is in.</summary>
+        // ⚠️ AND DELIBERATELY NOT 16:9. The gallery derives a thumbnail's width from the camera's aspect, so
+        // shooting at 16:9 would make a broken derivation indistinguishable from a working one — the
+        // thumbnail would come out 480x270 either way. 960x490 is 1.959, close to the real Game View, so a
+        // stored picture that is 480x270 rather than ~529x270 is visibly wrong in the log.
         private const int ShotWidth = 960;
-        private const int ShotHeight = 540;
+        private const int ShotHeight = 490;
 
         /// <summary>Contact-sheet page size: the thumbnail scaled up, plus a caption band under it.</summary>
         private const int SheetWidth = 720;
         private const int SheetHeight = 480;
-        private const int SheetPictureHeight = 405;   // 720x405 is 16:9
+
+        /// <summary>Picture pane height, derived from the shoot aspect rather than hard-coded, so the
+        /// contact sheet never stretches the very framing it exists to show.</summary>
+        private const int SheetPictureHeight = SheetWidth * ShotHeight / ShotWidth;
 
         /// <summary>The UI layer. The contact sheet lives here and the shoot camera is masked OFF it, so
         /// the sheet can never leak into a photograph of the world.</summary>
@@ -170,8 +177,16 @@ namespace CameraGame.Gallery
                 // or renamed key silently reads as 0, and a zero cap is a gallery that stores nothing while
                 // the console stays clean. Printing them beside the results makes that visible, not inferred.
                 _log.AppendLine("GALLERY CONFIG read back from the live asset:");
-                _log.AppendLine($"    thumbnail    {shippedConfig.SafeThumbnailWidth}x{shippedConfig.SafeThumbnailHeight}" +
-                                $"   (raw fields: {shippedConfig.thumbnailWidth}x{shippedConfig.thumbnailHeight})");
+                _log.AppendLine($"    height       {shippedConfig.SafeThumbnailHeight}px" +
+                                $"   (raw field: {shippedConfig.thumbnailHeight})");
+                _log.AppendLine($"    width        derived from the window; ceiling " +
+                                $"{shippedConfig.SafeMaxThumbnailWidth}px (raw field: {shippedConfig.maxThumbnailWidth})");
+                _log.AppendLine($"    at this shoot's aspect {ShotWidth / (float)ShotHeight:0.###} that is " +
+                                $"{shippedConfig.ThumbnailWidthFor(ShotWidth / (float)ShotHeight)}" +
+                                $"x{shippedConfig.SafeThumbnailHeight}" +
+                                (shippedConfig.WouldClampWidth(ShotWidth / (float)ShotHeight)
+                                    ? "   (CLAMPED - stored shots will not match the graded frame)"
+                                    : "   (not clamped)"));
                 _log.AppendLine($"    maxStoredShots {shippedConfig.SafeMaxStoredShots}" +
                                 $"   (raw field: {shippedConfig.maxStoredShots})");
                 _log.AppendLine($"    budget       {shippedConfig.DescribeBudget()}");
@@ -342,6 +357,19 @@ namespace CameraGame.Gallery
             {
                 CapturedShot stored = service.Shots[after - 1];
                 _log.AppendLine($"    stored: {stored}");
+
+                // The width should follow the window. Printed as a comparison rather than a bare size, so
+                // "it derived correctly" is something you can read instead of something you assume.
+                if (stored.HasImage)
+                {
+                    float camAspect = cam.aspect;
+                    float imgAspect = stored.Image.width / (float)stored.Image.height;
+                    _log.AppendLine($"    aspect: camera {camAspect:0.###} vs stored image {imgAspect:0.###}" +
+                                    $" ({stored.Image.width}x{stored.Image.height})" +
+                                    (Mathf.Abs(camAspect - imgAspect) <= 0.01f * camAspect
+                                        ? "  MATCH"
+                                        : "  ⚠ MISMATCH - the stored picture is not the graded frame"));
+                }
 
                 // The one cross-check worth making in text: the gallery recorded the id the LIVE actor was
                 // reporting at the shutter, not one cached from an earlier frame or an earlier lifecycle.
@@ -594,6 +622,13 @@ namespace CameraGame.Gallery
             yield return Boundary("thumbnail 0x0", MakeConfig(0, 0, 10), cam, channel);
             yield return Boundary("thumbnail negative", MakeConfig(-64, -64, 10), cam, channel);
             yield return Boundary("thumbnail huge (4096)", MakeConfig(4096, 4096, 10), cam, channel);
+
+            // The failure mode that only exists now the width is derived: a ceiling too narrow for the
+            // window clamps every thumbnail, so no stored picture matches the frame it was graded in.
+            yield return Boundary("width ceiling below height (64 wide, 270 tall)",
+                                  MakeConfig(64, 270, 10), cam, channel);
+            yield return Boundary("width ceiling exactly 16:9 on a 1.96 window",
+                                  MakeConfig(480, 270, 10), cam, channel);
             yield return Boundary("maxStoredShots 0", MakeConfig(480, 270, 0), cam, channel);
             yield return Boundary("maxStoredShots negative", MakeConfig(480, 270, -5), cam, channel);
             yield return Boundary("maxStoredShots huge (100000)", MakeConfig(480, 270, 100000), cam, channel);
@@ -618,12 +653,12 @@ namespace CameraGame.Gallery
             _log.AppendLine();
         }
 
-        private GalleryConfig MakeConfig(int w, int h, int max)
+        private GalleryConfig MakeConfig(int maxWidth, int height, int maxShots)
         {
             GalleryConfig c = ScriptableObject.CreateInstance<GalleryConfig>();
-            c.thumbnailWidth = w;
-            c.thumbnailHeight = h;
-            c.maxStoredShots = max;
+            c.maxThumbnailWidth = maxWidth;
+            c.thumbnailHeight = height;
+            c.maxStoredShots = maxShots;
             _tempConfigs.Add(c);
             return c;
         }

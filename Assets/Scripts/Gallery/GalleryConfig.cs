@@ -27,23 +27,29 @@ namespace CameraGame.Gallery
     {
         [Header("Thumbnail")]
 
-        [Tooltip("Width in pixels of the picture stored for each shot. The default 480x270 is 16:9 — the " +
-                 "aspect the camera renders — so the thumbnail frames exactly what was graded. If you " +
-                 "change one dimension, change the other to match, or the stored picture will show a " +
-                 "wider or narrower field of view than the player saw. (GalleryService warns once at the " +
-                 "first capture whose camera aspect disagrees with this one.)")]
-        [Range(MinThumbnailSize, MaxThumbnailSize)] public int thumbnailWidth = DefaultThumbnailWidth;
-
-        [Tooltip("Height in pixels of the picture stored for each shot. See thumbnailWidth — keep the pair " +
-                 "at the camera's aspect ratio.")]
+        [Tooltip("Height in pixels of the picture stored for each shot. THIS IS THE QUALITY DIAL — the " +
+                 "width is not authored, it is derived from the game window's aspect ratio at the moment " +
+                 "the shutter fires, so a stored photograph always frames exactly what the player framed. " +
+                 "Raise this for sharper thumbnails and a bigger memory bill; the bill is width x height x " +
+                 "3 bytes per shot, and the width moves with the window.")]
         [Range(MinThumbnailSize, MaxThumbnailSize)] public int thumbnailHeight = DefaultThumbnailHeight;
+
+        [Tooltip("CEILING on the derived width, in pixels — a memory guard, not a size. The width normally " +
+                 "comes from the window: at this height, a 16:9 window gives 480, 16:10 gives 432, and an " +
+                 "ultrawide 21:9 gives 630. The default 640 covers everything up to 21:9 without clamping.\n\n" +
+                 "If a window is wider than this allows, the width is clamped and the stored picture stops " +
+                 "matching the graded frame — GalleryService says so once when that actually happens, " +
+                 "rather than staying quiet about a photograph that is subtly not the shot you took.")]
+        [UnityEngine.Serialization.FormerlySerializedAs("thumbnailWidth")]
+        [Range(MinThumbnailSize, MaxThumbnailSize)] public int maxThumbnailWidth = DefaultMaxThumbnailWidth;
 
         [Header("Capacity")]
 
         [Tooltip("How many shots the gallery keeps. When the player takes one more, the OLDEST is dropped " +
                  "and its picture is destroyed — which is the only thing that frees the native memory it " +
                  "holds (NFR3). Raising this raises the worst-case memory bill linearly: at the default " +
-                 "480x270 each shot costs about 380 KB, so 50 shots is roughly 19 MB.")]
+                 "270px tall with a 640px ceiling each shot costs at most about 506 KB, so 50 shots is " +
+                 "roughly 24.7 MB worst case — less in practice, since the width follows the window.")]
         [Range(MinStoredShots, MaxStoredShots)] public int maxStoredShots = DefaultMaxStoredShots;
 
         // --- Design defaults and clamp bounds ---------------------------------------------------------
@@ -53,9 +59,14 @@ namespace CameraGame.Gallery
         // left the corrupt-asset fallback silently restoring the OLD value (review 2026-07-28). One
         // constant, referenced by both the initializer and the accessor, cannot drift.
 
-        private const int DefaultThumbnailWidth  = 480;
-        private const int DefaultThumbnailHeight = 270;
-        private const int DefaultMaxStoredShots  = 50;
+        private const int DefaultThumbnailHeight   = 270;
+        private const int DefaultMaxThumbnailWidth = 640;   // 270 x 21:9 = 630, so nothing normal clamps
+        private const int DefaultMaxStoredShots    = 50;
+
+        /// <summary>Aspect used when the live camera reports something unusable (NaN, infinity, zero or a
+        /// negative). 16:9 rather than 1:1 because it is what this game is authored against, and a square
+        /// thumbnail would be a far stranger thing to find in a gallery than a slightly wrong one.</summary>
+        public const float FallbackAspect = 16f / 9f;
 
         /// <summary>Smallest usable thumbnail edge. Below about this the picture stops being recognisable
         /// as a photograph, which defeats the point of a gallery.</summary>
@@ -83,32 +94,60 @@ namespace CameraGame.Gallery
 
         // --- Safe accessors ---------------------------------------------------------------------------
 
-        /// <summary>Thumbnail width, guaranteed usable however the asset was authored.</summary>
-        public int SafeThumbnailWidth => Mathf.Clamp(thumbnailWidth, MinThumbnailSize, MaxThumbnailSize);
+        /// <summary>Width ceiling, guaranteed usable however the asset was authored.</summary>
+        public int SafeMaxThumbnailWidth => Mathf.Clamp(maxThumbnailWidth, MinThumbnailSize, MaxThumbnailSize);
 
         /// <summary>Thumbnail height, guaranteed usable however the asset was authored.</summary>
         public int SafeThumbnailHeight => Mathf.Clamp(thumbnailHeight, MinThumbnailSize, MaxThumbnailSize);
+
+        /// <summary>
+        /// The width to store a shot at, for the aspect the camera is ACTUALLY rendering. This is what
+        /// makes a stored photograph frame what the player framed, instead of a fixed 16:9 slice of it.
+        ///
+        /// NaN and infinity are handled explicitly rather than clamped: Mathf.Clamp(NaN) is NaN and
+        /// Mathf.RoundToInt(NaN) is 0, which would reach the Texture2D constructor as a zero width and
+        /// throw inside the shutter. Same discipline as GradingConfig's Clamp01Finite.
+        /// </summary>
+        public int ThumbnailWidthFor(float aspect)
+        {
+            if (float.IsNaN(aspect) || float.IsInfinity(aspect) || aspect <= 0f) aspect = FallbackAspect;
+            return Mathf.Clamp(Mathf.RoundToInt(SafeThumbnailHeight * aspect),
+                               MinThumbnailSize, SafeMaxThumbnailWidth);
+        }
+
+        /// <summary>True when this aspect is wider than <see cref="SafeMaxThumbnailWidth"/> allows, i.e.
+        /// the stored picture will NOT match the graded frame. The only case worth warning about now that
+        /// the width follows the window.</summary>
+        public bool WouldClampWidth(float aspect)
+        {
+            if (float.IsNaN(aspect) || float.IsInfinity(aspect) || aspect <= 0f) aspect = FallbackAspect;
+            return Mathf.RoundToInt(SafeThumbnailHeight * aspect) > SafeMaxThumbnailWidth;
+        }
 
         /// <summary>Stored-shot cap, guaranteed at least 1. Falls back through a clamp rather than to the
         /// design default so a deliberate 500 survives, while a hand-authored 0 fails CLOSED (one shot
         /// kept) instead of open (unbounded, i.e. the leak).</summary>
         public int SafeMaxStoredShots => Mathf.Clamp(maxStoredShots, MinStoredShots, MaxStoredShots);
 
-        /// <summary>Native bytes one stored thumbnail costs, at the resolved (Safe) size.</summary>
-        public long BytesPerShot => (long)SafeThumbnailWidth * SafeThumbnailHeight * BytesPerPixel;
+        /// <summary>Native bytes a stored thumbnail costs AT ITS WORST, i.e. at the width ceiling. Any
+        /// given shot costs less whenever the window is narrower than the ceiling allows, but a memory
+        /// budget has to be stated against the worst case rather than against today's window.</summary>
+        public long BytesPerShot => (long)SafeMaxThumbnailWidth * SafeThumbnailHeight * BytesPerPixel;
+
+        /// <summary>Native bytes a shot costs at a specific aspect, i.e. what it actually costs today.</summary>
+        public long BytesPerShotAt(float aspect) =>
+            (long)ThumbnailWidthFor(aspect) * SafeThumbnailHeight * BytesPerPixel;
 
         /// <summary>Native bytes the gallery costs with every slot full — the number NFR3 is about.</summary>
         public long WorstCaseBytes => BytesPerShot * SafeMaxStoredShots;
-
-        /// <summary>The thumbnail's aspect ratio, for comparison against the live camera's.</summary>
-        public float ThumbnailAspect => SafeThumbnailWidth / (float)SafeThumbnailHeight;
 
         /// <summary>Human-readable memory budget, for the one-line log the service writes at Awake. Stating
         /// the number beats asserting the bound: AC4 asks for both figures, and a budget nobody ever prints
         /// is a budget nobody notices being blown.</summary>
         public string DescribeBudget() =>
-            $"{SafeThumbnailWidth}x{SafeThumbnailHeight} RGB24 = {BytesPerShot / 1024f:0} KB per shot, " +
-            $"x{SafeMaxStoredShots} shots = {WorstCaseBytes / (1024f * 1024f):0.0} MB worst case";
+            $"{SafeThumbnailHeight}px tall, width follows the window (ceiling {SafeMaxThumbnailWidth}) - " +
+            $"up to {BytesPerShot / 1024f:0} KB per shot, x{SafeMaxStoredShots} shots = " +
+            $"{WorstCaseBytes / (1024f * 1024f):0.0} MB worst case";
 
         /// <summary>
         /// Reports authoring mistakes that would break the gallery SILENTLY rather than loudly — the
@@ -121,19 +160,33 @@ namespace CameraGame.Gallery
             // Out of range, i.e. SILENTLY CLAMPED. Checked first and reported with BOTH numbers, because the
             // value the designer typed is not the value being used and nothing else in the pipeline would
             // ever say so — [Range] and OnValidate are editor-only, and these assets are hand-written YAML.
-            if (thumbnailWidth != SafeThumbnailWidth)
-            {
-                problem = $"thumbnailWidth is {thumbnailWidth}, outside the usable range {MinThumbnailSize} " +
-                          $"to {MaxThumbnailSize} — the gallery will store {SafeThumbnailWidth}px wide " +
-                          "instead. A non-positive width would have thrown inside the Texture2D constructor " +
-                          "on the first capture.";
-                return true;
-            }
-
             if (thumbnailHeight != SafeThumbnailHeight)
             {
                 problem = $"thumbnailHeight is {thumbnailHeight}, outside the usable range {MinThumbnailSize} " +
                           $"to {MaxThumbnailSize} — the gallery will store {SafeThumbnailHeight}px tall instead.";
+                return true;
+            }
+
+            if (maxThumbnailWidth != SafeMaxThumbnailWidth)
+            {
+                problem = $"maxThumbnailWidth is {maxThumbnailWidth}, outside the usable range " +
+                          $"{MinThumbnailSize} to {MaxThumbnailSize} - the gallery will cap widths at " +
+                          $"{SafeMaxThumbnailWidth}px instead. A non-positive ceiling would have clamped " +
+                          "every thumbnail to a sliver, or thrown inside the Texture2D constructor.";
+                return true;
+            }
+
+            // The silent one in this shape: a ceiling narrower than the HEIGHT clamps every window wider
+            // than a square, which is every window this game will ever run in - so no stored photograph
+            // would ever match the frame it was graded in, and the per-capture warning would fire forever
+            // without pointing at anything the reader could act on.
+            if (SafeMaxThumbnailWidth < SafeThumbnailHeight)
+            {
+                problem = $"maxThumbnailWidth ({SafeMaxThumbnailWidth}) is below thumbnailHeight " +
+                          $"({SafeThumbnailHeight}), so the derived width is clamped for any window wider " +
+                          "than a square. Stored pictures would never frame what was graded. Raise it: " +
+                          $"16:9 needs {Mathf.RoundToInt(SafeThumbnailHeight * 16f / 9f)}, 21:9 needs " +
+                          $"{Mathf.RoundToInt(SafeThumbnailHeight * 21f / 9f)}.";
                 return true;
             }
 
@@ -170,7 +223,7 @@ namespace CameraGame.Gallery
             // out-of-range value is destroyed by the act of looking at it. That is the same repair [Range]
             // would apply anyway; what matters is that TryGetConfigProblem reports it at Awake FIRST, so the
             // warning arrives before the Inspector silently rewrites the evidence.
-            thumbnailWidth = SafeThumbnailWidth;
+            maxThumbnailWidth = SafeMaxThumbnailWidth;
             thumbnailHeight = SafeThumbnailHeight;
             maxStoredShots = SafeMaxStoredShots;
         }

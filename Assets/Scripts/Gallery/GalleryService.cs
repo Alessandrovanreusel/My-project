@@ -186,10 +186,18 @@ namespace CameraGame.Gallery
         /// </summary>
         private Texture2D TryRenderThumbnail()
         {
-            int w = galleryConfig.SafeThumbnailWidth;
-            int h = galleryConfig.SafeThumbnailHeight;
+            // ⚠️ READ THE ASPECT BEFORE THE TARGET TEXTURE IS REBOUND. Assigning cam.targetTexture makes
+            // Unity recompute Camera.aspect from the new target, so reading it afterwards would return the
+            // thumbnail's own aspect — the width would derive from itself and always "agree".
+            float aspect = photoCamera.aspect;
 
-            WarnOnAspectMismatch(w, h);
+            // The height is the authored quality dial; the WIDTH FOLLOWS THE WINDOW, so a stored photograph
+            // frames what the player actually framed rather than a fixed 16:9 slice of it. Recomputed every
+            // capture, so resizing the window mid-session is simply handled.
+            int h = galleryConfig.SafeThumbnailHeight;
+            int w = galleryConfig.ThumbnailWidthFor(aspect);
+
+            WarnIfWidthClamped(aspect, w, h);
 
             // ⚠️ SAVE AND RESTORE BOTH. Neither is safely assumed null: the photo-shoot rig binds its own
             // render target to this very camera for the whole of a run (PhotoShootRunner.cs:320-322), and a
@@ -239,31 +247,24 @@ namespace CameraGame.Gallery
         }
 
         /// <summary>
-        /// Says out loud when the stored picture will not frame what the player saw.
+        /// Says out loud on the one occasion the stored picture will NOT frame what the player saw: when
+        /// the window is wider than <c>maxThumbnailWidth</c> allows, so the derived width gets clamped.
         ///
-        /// Binding a target texture makes Unity recompute <c>Camera.aspect</c> from it, so a 16:9 thumbnail
-        /// taken from a camera rendering at 21:9 shows MORE of the scene vertically and less horizontally
-        /// than the graded frame did. Nothing crashes and the picture looks perfectly plausible — the
-        /// subject is simply not where the grade says he was. Exactly the class of silent disagreement this
-        /// project keeps getting caught by, so it warns once and names both numbers.
+        /// Everywhere else this is now silent by construction — the width comes from the same aspect the
+        /// camera graded through, so there is nothing to disagree about. That is the point of deriving it
+        /// rather than authoring it: the old fixed 480x270 disagreed with a 1.957 window on every single
+        /// capture and could only nag about it.
         /// </summary>
-        private void WarnOnAspectMismatch(int w, int h)
+        private void WarnIfWidthClamped(float aspect, int w, int h)
         {
-            if (_warnedAspect) return;
-
-            // Read BEFORE the target texture is rebound, or we would be comparing the thumbnail with itself.
-            float live = photoCamera.aspect;
-            float thumb = w / (float)h;
-
-            // A percent of slack: a 1920x1080 Game View and a 480x270 thumbnail are the same ratio to
-            // floating-point noise, and a warning that fires on rounding is a warning nobody reads.
-            if (Mathf.Abs(live - thumb) <= 0.01f * thumb) return;
+            if (_warnedAspect || !galleryConfig.WouldClampWidth(aspect)) return;
 
             _warnedAspect = true;
             GameLog.Warn("Gallery",
-                $"The camera is rendering at aspect {live:0.###} but the gallery thumbnail is " +
-                $"{w}x{h} ({thumb:0.###}) — stored pictures will not frame exactly what was graded. " +
-                "Set thumbnailWidth/Height to the game's aspect ratio in GalleryConfig.");
+                $"The camera is rendering at aspect {aspect:0.###}, which needs a " +
+                $"{Mathf.RoundToInt(h * aspect)}px-wide thumbnail, but maxThumbnailWidth caps it at {w}px " +
+                $"— stored pictures will be a {w}x{h} ({w / (float)h:0.###}) crop rather than the frame " +
+                "that was graded. Raise maxThumbnailWidth in GalleryConfig.");
         }
 
         /// <summary>
