@@ -1,0 +1,51 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__UnityMCP__read_console",
+      "mcp__UnityMCP__find_gameobjects",
+      "mcp__UnityMCP__validate_script",
+      "mcp__UnityMCP__unity_docs",
+      "mcp__UnityMCP__find_in_file",
+      "mcp__UnityMCP__get_sha",
+      "mcp__UnityMCP__unity_reflect",
+      "mcp__UnityMCP__manage_script_capabilities",
+      "mcp__UnityMCP__debug_request_context",
+      "mcp__UnityMCP__get_test_job",
+
+      "mcp__UnityMCP__refresh_unity",
+      "mcp__UnityMCP__manage_editor",
+      "mcp__UnityMCP__manage_scene",
+      "mcp__UnityMCP__manage_asset",
+      "mcp__UnityMCP__manage_scriptable_object",
+      "mcp__UnityMCP__manage_camera",
+
+      "mcp__atlassian__searchJiraIssuesUsingJql",
+      "mcp__atlassian__getJiraIssue",
+      "mcp__atlassian__atlassianUserInfo",
+      "mcp__atlassian__getAccessibleAtlassianResources",
+      "mcp__atlassian__getVisibleJiraProjects",
+      "mcp__atlassian__getTransitionsForJiraIssue",
+      "mcp__atlassian__getJiraProjectIssueTypesMetadata",
+      "mcp__atlassian__getJiraIssueTypeMetaWithFields",
+      "mcp__atlassian__lookupJiraAccountId",
+
+      "Bash(curl -s https://api.github.com/*)",
+      "Bash(curl -s https://raw.githubusercontent.com/*)",
+      "Bash(curl -s https://pypi.org/pypi/*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/post_edit_reminders.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
