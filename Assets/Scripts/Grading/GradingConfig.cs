@@ -151,6 +151,29 @@ namespace CameraGame.Grading
         // one: it fails every comparison, so `x < NaN` is false forever and the check it guards silently
         // stops existing. (Note Mathf.Clamp01(NaN) is NaN, which is why plain clamping is not enough.)
 
+        [Header("Star rating")]
+
+        // Where the 1-5 star boundaries sit on the blended grade. See StarScale for why these are here
+        // rather than baked into ShotGrade.
+
+        [Tooltip("Minimum grade for FIVE stars. This was effectively 0.80 while stars were computed as " +
+                 "CeilToInt(grade x 5), and 0.80 turned out to be too generous: the 2026-07-28 shoot " +
+                 "produced two 5-star photographs, and Alexv judged one clearly better than the other. At " +
+                 "0.90 the money shot (100%) keeps its five stars and the merely-good shot (85%) drops to " +
+                 "four, which is what AC3 asks for — five stars reachable by a good shot, not a mediocre one.")]
+        [Range(0f, 1f)] public float starThreshold5 = DefaultStar5;
+
+        [Tooltip("Minimum grade for FOUR stars.")]
+        [Range(0f, 1f)] public float starThreshold4 = DefaultStar4;
+
+        [Tooltip("Minimum grade for THREE stars.")]
+        [Range(0f, 1f)] public float starThreshold3 = DefaultStar3;
+
+        [Tooltip("Minimum grade for TWO stars. Anything below this is one star — the GDD's scale starts " +
+                 "at one and there is no zero-star rating, which is why a MISS and a bad shot both read " +
+                 "1 star and ShotGrade.MissReason exists to tell them apart.")]
+        [Range(0f, 1f)] public float starThreshold2 = DefaultStar2;
+
         // --- Design defaults and clamp bounds ---------------------------------------------------------
         //
         // Named rather than repeated as literals inside each Safe* accessor. Story 1.10 shipped eight
@@ -171,6 +194,10 @@ namespace CameraGame.Grading
         private const float DefaultCutoffWeight       = 0.60f;
         private const float DefaultTimingFullSeconds  = 0.5f;
         private const float DefaultTimingZeroSeconds  = 2f;
+        private const float DefaultStar5             = 0.90f;
+        private const float DefaultStar4             = 0.70f;
+        private const float DefaultStar3             = 0.45f;
+        private const float DefaultStar2             = 0.20f;
 
         /// <summary>Ceiling for <see cref="prominenceFalloffAbove"/>. Above 1 is normal (the measured box is
         /// clamped to the frame); beyond this the far side of the curve is so flat that prominence stops
@@ -223,6 +250,36 @@ namespace CameraGame.Grading
         /// a per-field accessor cannot see its neighbour.</summary>
         public float SafeTimingZeroSeconds =>
             ClampFinite(timingZeroSeconds, 0f, MaxTimingSeconds, DefaultTimingZeroSeconds);
+
+        /// <summary>Five-star boundary, finite and in [0,1].</summary>
+        public float SafeStarThreshold5 => Clamp01Finite(starThreshold5, DefaultStar5);
+
+        /// <summary>Four-star boundary, finite and in [0,1].</summary>
+        public float SafeStarThreshold4 => Clamp01Finite(starThreshold4, DefaultStar4);
+
+        /// <summary>Three-star boundary, finite and in [0,1].</summary>
+        public float SafeStarThreshold3 => Clamp01Finite(starThreshold3, DefaultStar3);
+
+        /// <summary>Two-star boundary, finite and in [0,1].</summary>
+        public float SafeStarThreshold2 => Clamp01Finite(starThreshold2, DefaultStar2);
+
+        /// <summary>
+        /// The star boundaries as a resolved, guaranteed-DESCENDING set, so the grader can never be handed
+        /// a scale where a higher grade earns fewer stars. Enforced by successive Min rather than rejected:
+        /// an out-of-order set is warned about at Awake, and grading must keep producing a usable rating in
+        /// the meantime (NFR8 — the game has no fail state).
+        /// </summary>
+        public StarScale SafeStarScale
+        {
+            get
+            {
+                float five  = SafeStarThreshold5;
+                float four  = Mathf.Min(SafeStarThreshold4, five);
+                float three = Mathf.Min(SafeStarThreshold3, four);
+                float two   = Mathf.Min(SafeStarThreshold2, three);
+                return new StarScale(five, four, three, two);
+            }
+        }
 
         // --- Resolvers --------------------------------------------------------------------------------
         //
@@ -338,6 +395,24 @@ namespace CameraGame.Grading
                     TimingNaN, SafeTimingZeroSeconds, out problem))
                 return true;
 
+            const string StarsNaN = "the star rating would fall back to its default boundaries";
+
+            if (TryReportNonFinite(nameof(starThreshold5), starThreshold5,
+                    StarsNaN, SafeStarThreshold5, out problem))
+                return true;
+
+            if (TryReportNonFinite(nameof(starThreshold4), starThreshold4,
+                    StarsNaN, SafeStarThreshold4, out problem))
+                return true;
+
+            if (TryReportNonFinite(nameof(starThreshold3), starThreshold3,
+                    StarsNaN, SafeStarThreshold3, out problem))
+                return true;
+
+            if (TryReportNonFinite(nameof(starThreshold2), starThreshold2,
+                    StarsNaN, SafeStarThreshold2, out problem))
+                return true;
+
             // --- Out of range, i.e. SILENTLY CLAMPED --------------------------------------------------
             //
             // These run BEFORE every structural check below, and that ordering is load-bearing. The
@@ -394,6 +469,18 @@ namespace CameraGame.Grading
 
             if (TryReportClamped(nameof(timingZeroSeconds), timingZeroSeconds, SafeTimingZeroSeconds,
                     $"0 and {MaxTimingSeconds:0.###} seconds", out problem)) return true;
+
+            if (TryReportClamped(nameof(starThreshold5), starThreshold5, SafeStarThreshold5,
+                    "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(starThreshold4), starThreshold4, SafeStarThreshold4,
+                    "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(starThreshold3), starThreshold3, SafeStarThreshold3,
+                    "0 and 1", out problem)) return true;
+
+            if (TryReportClamped(nameof(starThreshold2), starThreshold2, SafeStarThreshold2,
+                    "0 and 1", out problem)) return true;
 
             // --- Occlusion mask -----------------------------------------------------------------------
             if (occluderMask.value == 0)
@@ -517,6 +604,30 @@ namespace CameraGame.Grading
                 return true;
             }
 
+            // --- Star boundaries ----------------------------------------------------------------------
+            // Out of order means a higher grade can earn FEWER stars. SafeStarScale sorts them so grading
+            // keeps working, but the ladder being scored is then not the one that was authored.
+            if (!(starThreshold5 > starThreshold4 && starThreshold4 > starThreshold3
+                  && starThreshold3 > starThreshold2))
+            {
+                problem = $"the star boundaries are not in descending order (5★ {starThreshold5:0.###}, " +
+                          $"4★ {starThreshold4:0.###}, 3★ {starThreshold3:0.###}, 2★ {starThreshold2:0.###}) — " +
+                          "grading will sort them to keep running, but the ladder you authored is not the " +
+                          "one being scored. Each threshold must be strictly above the one below it.";
+                return true;
+            }
+
+            // The silent one, in the same family as the prominence checks above: a five-star boundary at 1
+            // demands a mathematically perfect photograph on every axis at once, so five stars becomes
+            // unreachable in practice and every shot the player takes caps at four.
+            if (starThreshold5 >= 1f)
+            {
+                problem = "starThreshold5 is 1 — five stars would require a mathematically perfect grade " +
+                          "(composition AND timing both exactly 1.0), so in practice no photograph will " +
+                          "ever earn five stars. Lower it.";
+                return true;
+            }
+
             problem = null;
             return false;
         }
@@ -579,6 +690,10 @@ namespace CameraGame.Grading
             cutoffWeight = SafeCutoffWeight;
             timingFullSeconds = SafeTimingFullSeconds;
             timingZeroSeconds = SafeTimingZeroSeconds;
+            starThreshold5 = SafeStarThreshold5;
+            starThreshold4 = SafeStarThreshold4;
+            starThreshold3 = SafeStarThreshold3;
+            starThreshold2 = SafeStarThreshold2;
 
             // NOT sorted/reordered here, deliberately. OnValidate fires on every keystroke in the Inspector,
             // so "repairing" an inverted sweet spot would fight the designer mid-edit — typing 0.9 into

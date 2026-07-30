@@ -26,3 +26,7 @@ MonoBehaviour:
   cutoffWeight: 0.6
   timingFullSeconds: 0.5
   timingZeroSeconds: 2
+  starThreshold5: 0.9
+  starThreshold4: 0.7
+  starThreshold3: 0.45
+  starThreshold2: 0.2

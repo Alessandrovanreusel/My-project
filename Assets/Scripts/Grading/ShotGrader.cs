@@ -366,7 +366,10 @@ namespace CameraGame.Grading
 
             detail = new GradeDetail(GradeMiss.None, rect, coverage, visible, heightFraction, framed, peakOffset);
 
-            return ShotGrade.Scored(visible, composition, timing);
+            // The star boundaries come from the config, resolved into a guaranteed-descending set. They are
+            // a designer's call ("how good must a photograph be for five stars"), not an implementation
+            // detail — the previous CeilToInt(grade x 5) silently hardcoded "80% is perfect".
+            return ShotGrade.Scored(visible, composition, timing, cfg.SafeStarScale);
         }
 
         /// <summary>
