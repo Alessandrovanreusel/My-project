@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
+using CameraGame.Core;
 using CameraGame.Events;
 using CameraGame.Grading;
 
@@ -321,6 +322,11 @@ namespace CameraGame.PhotoMode
             _rt = new RenderTexture(ShotWidth, ShotHeight, 24, RenderTextureFormat.ARGB32);
             cam.targetTexture = _rt;
 
+            // Offer the same target to the editor-side recorder, so the clip is literally the frames that
+            // were graded. Publishing rather than calling Recorder directly: this is the runtime assembly
+            // and Recorder's API is Editor-only — see RigVideoFeed. Withdrawn in Restore().
+            RigVideoFeed.Publish(_rt, outputDir, placementStudy ? "placement-study" : "photo-shoot");
+
             _log.AppendLine("PHOTO SHOOT — real shutter, real grader, real actor.");
             _log.AppendLine("No expected values: these are photographs to be looked at.");
             _log.AppendLine($"Graded and saved at {ShotWidth}x{ShotHeight} (one pixel space, no rescaling).");
@@ -402,6 +408,10 @@ namespace CameraGame.PhotoMode
         /// cannot leave the camera rendering into a dead target or the editor on borrowed settings.</summary>
         private void Restore()
         {
+            // BEFORE the texture is released — filming a released RenderTexture is a read of freed native
+            // memory. The recorder stops on the next editor tick, and also on ExitingPlayMode as a backstop.
+            RigVideoFeed.Clear();
+
             if (cam != null) cam.targetTexture = _prevTarget;
 
             if (_rt != null)

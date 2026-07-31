@@ -10,6 +10,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.UI;
+using CameraGame.Core;
 using CameraGame.Events;
 using CameraGame.Grading;
 using CameraGame.PhotoMode;
@@ -124,6 +125,10 @@ namespace CameraGame.Gallery
             _prevCullingMask = cam.cullingMask;
             _rt = new RenderTexture(ShotWidth, ShotHeight, 24, RenderTextureFormat.ARGB32);
             cam.targetTexture = _rt;
+
+            // Offer the same target to the editor-side recorder — see RigVideoFeed for why this is a
+            // publish rather than a direct call. Withdrawn in Restore().
+            RigVideoFeed.Publish(_rt, outputDir, "gallery-shoot");
 
             // Mask the shoot camera off the contact-sheet layer. Without this the sheet's own canvas could
             // appear inside a photograph of the world, and a rig whose evidence contains the rig is worthless.
@@ -1242,6 +1247,9 @@ namespace CameraGame.Gallery
         /// cannot leave the editor on borrowed settings or the camera rendering into a dead target.</summary>
         private void Restore()
         {
+            // BEFORE _rt is released below — filming a released RenderTexture reads freed native memory.
+            RigVideoFeed.Clear();
+
             if (cam != null)
             {
                 cam.targetTexture = _prevTarget;
