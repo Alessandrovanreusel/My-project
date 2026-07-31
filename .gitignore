@@ -11,10 +11,6 @@
 # Asset Store tools
 **/Assets/AssetStoreTools
 
-# Plastic SCM
-/Assets/Plugins/PlasticSCM*
-.plastic/
-
 # Private files
 *.private
 *.private.meta
