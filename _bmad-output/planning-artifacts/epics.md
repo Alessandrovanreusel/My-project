@@ -219,7 +219,7 @@ These are technical/setup requirements drawn from the Architecture document that
 
 ### UX Design Requirements
 
-_No standalone UX Design Specification exists yet. UI work items (first-person viewfinder/lens overlay styled like a 2000s camcorder, on-capture grade-feedback HUD showing subject %/composition/timing) are captured within the functional requirements above (FR1–FR8) and the Architecture's UI/`Scripts/PhotoMode` + `UI/` sections. If `gds-create-ux-design` is run later, dedicated UX-DRs can be folded in._
+_No standalone UX Design Specification exists yet. UI work items (first-person viewfinder/lens overlay styled like a 2000s camcorder, on-capture grade-feedback HUD showing subject %/composition/timing) are captured within the functional requirements above (FR1–FR8) and the Architecture's UI/`Scripts/PhotoMode` + `UI/` sections. If `gds-ux` is run later, dedicated UX-DRs can be folded in._
 
 ### FR Coverage Map
 
