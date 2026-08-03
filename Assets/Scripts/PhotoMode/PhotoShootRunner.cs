@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.AI;
 using CameraGame.Core;
 using CameraGame.Events;
 using CameraGame.Grading;
@@ -282,6 +283,7 @@ namespace CameraGame.PhotoMode
         [HideInInspector] public bool placementStudy;
 
         private readonly StringBuilder _log = new StringBuilder();
+        private readonly StringBuilder _trace = new StringBuilder();   // see TraceActor()
         private GameObject _wall;
 
         // Bound for the whole run so cam.pixelWidth/Height match the saved image exactly — see Save().
@@ -294,6 +296,9 @@ namespace CameraGame.PhotoMode
             // Record before mutating: a rig must put back everything it changes, even a play-session value.
             _prevRunInBackground = Application.runInBackground;
             Application.runInBackground = true;
+
+            // Runs alongside the shoot for its whole duration — see TraceActor().
+            StartCoroutine(TraceActor());
 
             try
             {
@@ -699,6 +704,69 @@ namespace CameraGame.PhotoMode
         /// <summary>The live actor, or false. Mirrors <c>PhotoModeController.GradeBestSubject</c>'s checks:
         /// ActiveActors tracks the LIFECYCLE, not activation, so an inactive entry reports plausible bounds
         /// while being invisible in the picture.</summary>
+        /// <summary>
+        /// Samples the actor's WORLD position and its NavMeshAgent every frame for the whole run.
+        ///
+        /// ⚠️ WHY THIS EXISTS. Video of a shoot cannot answer "is he actually going anywhere". The
+        /// rig re-frames the camera per pose, so a subject who never moves and a subject the camera
+        /// is tracking look identical on screen — and with the camera locked he still measured only
+        /// ~20cm of travel in 24.5s while his legs cycled. That is either an actor legitimately
+        /// idling at Peak or a NavMeshAgent that is not moving while the walk animation plays, and
+        /// pixels cannot tell those apart. Agent velocity can.
+        ///
+        /// Writes actor-trace.csv beside the photographs. Costs one line per frame and never touches
+        /// what the shoot measures.
+        /// </summary>
+        private IEnumerator TraceActor()
+        {
+            _trace.AppendLine("time,active_count,live,x,y,z,step_m,agent_speed,desired_speed," +
+                              "is_stopped,has_path,remaining,at_peak,time_to_peak,anim_speed");
+
+            Vector3 prev = Vector3.zero;
+            bool first = true;
+
+            while (true)
+            {
+                // Log EVERY frame, not only when an actor is resolvable. The first version wrote
+                // nothing when TryGetActor failed, so a silent gap was indistinguishable from the
+                // probe dying — and that is exactly what it looked like when the trace stopped after
+                // 2.6s while the shoot went on counting subjects for the rest of the run.
+                int count = manager != null ? manager.ActiveActors.Count : -1;
+                EventActor head = count > 0 ? manager.ActiveActors[0] : null;
+                int live = head != null && head.isActiveAndEnabled ? 1 : 0;
+
+                if (!TryGetActor(out EventActor a))
+                {
+                    _trace.AppendLine($"{Time.time:0.###},{count},{live},,,,,,,,,,,,");
+                }
+                else
+                {
+                    Vector3 p = a.transform.position;
+                    var agent = a.GetComponent<NavMeshAgent>();
+                    var anim = a.GetComponent<Animator>();
+
+                    float step = first ? 0f : Vector3.Distance(p, prev);
+                    float rem = agent != null && agent.hasPath ? agent.remainingDistance : -1f;
+                    if (float.IsInfinity(rem)) rem = -2f;   // agent still computing a path
+
+                    _trace.AppendLine(
+                        $"{Time.time:0.###},{count},{live}," +
+                        $"{p.x:0.###},{p.y:0.###},{p.z:0.###},{step:0.#####}," +
+                        $"{(agent != null ? agent.velocity.magnitude : -1f):0.###}," +
+                        $"{(agent != null ? agent.desiredVelocity.magnitude : -1f):0.###}," +
+                        $"{(agent != null && agent.isStopped ? 1 : 0)}," +
+                        $"{(agent != null && agent.hasPath ? 1 : 0)},{rem:0.###}," +
+                        $"{(a.IsAtPeak ? 1 : 0)},{a.TimeToPeak:0.###}," +
+                        $"{(anim != null ? anim.speed : -1f):0.###}");
+
+                    prev = p;
+                    first = false;
+                }
+
+                yield return null;
+            }
+        }
+
         private bool TryGetActor(out EventActor actor)
         {
             actor = null;
@@ -922,6 +990,15 @@ namespace CameraGame.PhotoMode
             catch (IOException e)
             {
                 Debug.LogError($"[PhotoShoot] Could not write shots.txt: {e.Message}");
+            }
+
+            try
+            {
+                File.WriteAllText(Path.Combine(outputDir, "actor-trace.csv"), _trace.ToString());
+            }
+            catch (IOException e)
+            {
+                Debug.LogError($"[PhotoShoot] Could not write actor-trace.csv: {e.Message}");
             }
 
             Debug.Log("[PhotoShoot] DONE\n" + _log);

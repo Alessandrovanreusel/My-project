@@ -98,7 +98,27 @@ human is asked to look at must outlive the editor session that produced it.
 
 **Alexv is the second opinion, not the first.** Do not hand him a list of things to go and try. Bring
 him a conclusion and the evidence behind it. Say plainly which parts you verified and which you could
-not — never present a structural check as though it were a played one.
+not — never present a structural check as though it were a played one. Ask him at the **end**, once
+you have already found and fixed what the tooling can find.
+
+**For anything a still frame cannot settle, use `tools/verification/` — frame analysis first, then
+video.** Motion smoothness, foot sliding, loop seams and timing are invisible in a screenshot. Read
+`tools/verification/README.md` before using it; the rules there are not style preferences, they are
+the difference between findings and fiction, and each was measured. The short version:
+
+- **Frame analysis first** — free, local, and it settles most questions. Find the segment by
+  *measuring*, never by guessing a timestamp. Verify the subject is genuinely on screen before
+  concluding anything: a motion mask also fires on camera moves and on a horizon line dithering.
+  Build one labelled contact sheet rather than reading N frames separately.
+- **Then Gemini** (`tools/verification/gemini_motion_review.py`), only for the temporal questions.
+  Send a **short clip with the subject present in every frame**, verified programmatically. Supply
+  **no timestamps** and never name the defect you expect — it anchors on both and manufactures
+  findings to fit. Say explicitly that "nothing" and "I cannot tell" are correct answers.
+- **Verify every claim it makes before repeating it to Alexv.** Extract the cited frame and look.
+  Given the full 219s rig recording, it reported an `[OBSERVED]` hyperextending knee in frames
+  containing only sky and ground; on a clean clip its headline finding was disproven by measurement
+  in minutes. A control test showed perception is sound — asked to *describe* that same timestamp it
+  correctly said the frame was empty. Leading prompts are what break it.
 
 **Traps already paid for — do not rediscover these:**
 - A MonoBehaviour in an **Editor-only assembly** cannot be resolved on a scene object when entering
