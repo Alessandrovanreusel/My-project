@@ -375,7 +375,10 @@ namespace CameraGame.Grading
             // The star boundaries come from the config, resolved into a guaranteed-descending set. They are
             // a designer's call ("how good must a photograph be for five stars"), not an implementation
             // detail — the previous CeilToInt(grade x 5) silently hardcoded "80% is perfect".
-            return ShotGrade.Scored(visible, composition, timing, cfg.SafeStarScale, who);
+            // peakOffset is carried onto the SHIPPED grade as well as onto the editor-only detail (Story
+            // 1.12): the HUD has to tell the player whether they were early or late, and Timing01 alone
+            // cannot — 20% is the same number two seconds either side of the peak.
+            return ShotGrade.Scored(visible, composition, timing, cfg.SafeStarScale, who, peakOffset);
         }
 
         /// <summary>

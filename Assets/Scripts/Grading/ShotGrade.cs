@@ -131,9 +131,50 @@ namespace CameraGame.Grading
         /// </summary>
         public readonly string SubjectId;
 
+        /// <summary>
+        /// Seconds from the peak WINDOW at the instant of the shutter — POSITIVE EARLY, 0 during the money
+        /// shot, NEGATIVE LATE. <see cref="float.NaN"/> when timing was never read. Added by Story 1.12 so
+        /// the HUD can say which way the player was wrong.
+        ///
+        /// ⚠️ WHY <see cref="Timing01"/> IS NOT ENOUGH. It names the axis that cost the shot but not the
+        /// direction: 20% is the same number two seconds early and two seconds late, and "click sooner" is
+        /// the only half a player can act on. This is the same value <c>GradeDetail.PeakOffset</c> carries
+        /// for the editor overlay, promoted onto the shipped payload for the same reason
+        /// <see cref="MissReason"/> and the three axes were (see this struct's header).
+        ///
+        /// ⚠️ DELIBERATELY NOT RUN THROUGH <see cref="Sane"/>, UNLIKE EVERY OTHER FLOAT HERE. That helper
+        /// does NaN → 0 then Clamp01, which is right for a normalized score and catastrophic for a SIGNED
+        /// VALUE IN SECONDS: it would turn "never measured" into "dead on the peak" — the precise lie AC2
+        /// exists to prevent — and clamp a two-second miss to 1. Stored RAW, with NaN kept as the
+        /// never-measured sentinel, exactly as <c>GradeDetail.PeakOffset</c> does.
+        ///
+        /// ⚠️ NEVER READ THIS FIELD DIRECTLY TO PRINT IT. A zeroed <c>default(ShotGrade)</c> — from
+        /// <c>new ShotGrade[n]</c>, an unassigned struct field, a failed <c>TryGetValue</c> — has 0 here
+        /// and would read as perfect timing. Go through <see cref="TimingMeasured"/> or
+        /// <see cref="PeakOffsetText"/>, which check the miss reason as well as the value. Same discipline
+        /// as <c>GradeDetail.OcclusionTested</c>.
+        ///
+        /// It is a plain <c>float</c>, so <c>CapturedShot</c>'s shape is unchanged and Epic 5's JSON DTO
+        /// seam is untouched — which the existing <c>DateTime</c> field would not have been.
+        /// </summary>
+        public readonly float PeakOffset;
+
         /// <summary>True when this grade names the subject it was measured against. False for a shot that
         /// never had one — see <see cref="SubjectId"/>.</summary>
         public bool HasSubject => !string.IsNullOrEmpty(SubjectId);
+
+        /// <summary>True only when the shutter's distance from the peak was actually measured. Requires a
+        /// COUNTED shot as well as a finite value: grading early-outs at the first failed gate, so every
+        /// miss reaches the reader with no timing measurement at all, and a zeroed default is not a
+        /// measurement either. See <see cref="PeakOffset"/>.</summary>
+        public bool TimingMeasured =>
+            Counted && !float.IsNaN(PeakOffset) && !float.IsInfinity(PeakOffset);
+
+        /// <summary>Peak offset for display, or "n/a" when there is no usable measurement. Mirrors
+        /// <c>GradeDetail.PeakOffsetText</c> so the shipped payload and the editor overlay cannot print the
+        /// same number two different ways.</summary>
+        public string PeakOffsetText =>
+            TimingMeasured ? $"{PeakOffset:+0.00;-0.00;0.00}s" : "n/a";
 
         /// <summary>True when the shot passed every gate and the score is meaningful.</summary>
         public bool Counted => MissReason == GradeMiss.None && !IsPlaceholder;
@@ -144,7 +185,7 @@ namespace CameraGame.Grading
 
         private ShotGrade(float percent01, bool isPlaceholder, GradeMiss missReason,
                           float subject01, float composition01, float timing01, int stars,
-                          string subjectId)
+                          string subjectId, float peakOffset)
         {
             Percent01 = Sane(percent01);
             IsPlaceholder = isPlaceholder;
@@ -153,6 +194,11 @@ namespace CameraGame.Grading
             Composition01 = Sane(composition01);
             Timing01 = Sane(timing01);
             Stars = Mathf.Clamp(stars, 1, 5);
+
+            // ⚠️ RAW, not Sane(). This is the one float on this struct that is signed, is measured in
+            // seconds, and uses NaN as a sentinel — see PeakOffset for why passing it through Sane would
+            // turn "never measured" into "perfectly timed".
+            PeakOffset = peakOffset;
 
             // Normalized here and nowhere else, so no reader ever has to defend itself against null. The
             // same reason Sane() sits on this line: a struct that guarantees its own invariants cannot be
@@ -176,20 +222,32 @@ namespace CameraGame.Grading
         /// </summary>
         /// <param name="subjectId">Who was photographed (<c>ISubject.SubjectId</c>). A counted shot always
         /// has one — it passed every gate, so a subject was certainly measured.</param>
+        /// <param name="peakOffset">Seconds from the peak window at the shutter (+ early, − late), or
+        /// <see cref="float.NaN"/> if the subject reported no usable timing. REQUIRED rather than
+        /// defaulted: a caller that forgets it would silently ship "dead on the peak" on every shot, and
+        /// this struct's whole discipline is that a number nobody measured is never stated.</param>
         public static ShotGrade Scored(float subject01, float composition01, float timing01, StarScale scale,
-                                       string subjectId)
+                                       string subjectId, float peakOffset)
         {
             float percent = Sane(composition01) * Sane(timing01);
             return new ShotGrade(percent, isPlaceholder: false, GradeMiss.None,
-                                 subject01, composition01, timing01, scale.StarsFor(percent), subjectId);
+                                 subject01, composition01, timing01, scale.StarsFor(percent), subjectId,
+                                 peakOffset);
         }
 
-        /// <summary>A real grade from a normalized score in [0,1], with no breakdown. Retained for callers
-        /// that genuinely have only a total; prefer <see cref="Scored"/>, which fills in the axes the HUD
-        /// needs.</summary>
-        public static ShotGrade FromPercent(float p01) =>
-            new ShotGrade(p01, isPlaceholder: false, GradeMiss.None, 0f, 0f, 0f,
-                          StarScale.Default.StarsFor(Sane(p01)), string.Empty);
+        // ⚠️ THERE IS DELIBERATELY NO `FromPercent` HERE ANY MORE, AND IT MUST NOT COME BACK.
+        //
+        // It built a grade from a bare total with an all-zero breakdown and `Counted == true`, so
+        // ToString() printed `ShotGrade(62%, 4★ — composition 0% × timing 0%)` — a grade asserting two
+        // measurements it never took, which is the exact failure Story 1.12's AC2 exists to prevent, on the
+        // one readout the PLAYER sees. It had zero production callers from the moment `Scored` landed in
+        // Story 1.10 (confirmed again across all of Assets/ before removal), and deferred-work.md assigned
+        // the decision to Story 1.12: "delete it, or make it non-Counted, when the HUD lands."
+        //
+        // Deleted rather than made non-Counted, because there is no caller that genuinely has only a total.
+        // Anything that scores a shot has the axes — that is what `Scored` takes — and anything that does
+        // not has a miss, which is what `Missed` is for. A third factory would only be a way to construct
+        // the state AC2 forbids.
 
         /// <summary>A rejected shot (0%), carrying the gate that rejected it. Always 1★ — the floor of the
         /// GDD's scale — whatever the thresholds are, which is why it needs no <see cref="StarScale"/>.
@@ -203,12 +261,19 @@ namespace CameraGame.Grading
         ///
         /// (This list said NoViewport was empty while the code passed the id. The 2026-07-30 review caught
         /// the contradiction; the CODE was right, so the doc moved.)</summary>
+        ///
+        /// The peak offset is NaN for every miss without exception: grading early-outs at the first failed
+        /// gate and timing is read LAST, after the size and occlusion gates, so no rejected shot has ever
+        /// had its distance from the peak measured.
         public static ShotGrade Missed(GradeMiss reason, string subjectId = null) =>
-            new ShotGrade(0f, isPlaceholder: false, reason, 0f, 0f, 0f, 1, subjectId);
+            new ShotGrade(0f, isPlaceholder: false, reason, 0f, 0f, 0f, 1, subjectId, float.NaN);
 
-        /// <summary>A clearly-temporary grade used by Story 1.5 when grading is not configured.</summary>
+        /// <summary>A clearly-temporary grade used by Story 1.5 when grading is not configured. Nothing was
+        /// measured, so the peak offset is NaN like every other axis is zero — and
+        /// <see cref="IsPlaceholder"/> is what stops any of it being read as a score.</summary>
         public static ShotGrade Placeholder =>
-            new ShotGrade(0f, isPlaceholder: true, GradeMiss.Unevaluated, 0f, 0f, 0f, 1, string.Empty);
+            new ShotGrade(0f, isPlaceholder: true, GradeMiss.Unevaluated, 0f, 0f, 0f, 1, string.Empty,
+                          float.NaN);
 
         /// <summary>One line carrying the total AND the breakdown. A bare "62%" tells a designer nothing
         /// about which axis cost them the shot, which is the whole reason the axes are on this struct.</summary>
@@ -221,8 +286,10 @@ namespace CameraGame.Grading
             if (IsPlaceholder) return "ShotGrade(placeholder)";
             if (IsMiss) return $"ShotGrade(miss:{MissReason} {who})";
 
+            // The peak offset goes through PeakOffsetText, which prints "n/a" rather than a fabricated
+            // 0.00s — the same rule every other number on this line already follows.
             return $"ShotGrade({Percent01:P0}, {Stars}★ {who} — composition {Composition01:P0} × " +
-                   $"timing {Timing01:P0}; subject seen {Subject01:P0})";
+                   $"timing {Timing01:P0} @ peak {PeakOffsetText}; subject seen {Subject01:P0})";
         }
     }
 }

@@ -41,7 +41,7 @@
 # - When a story's status changes here, reflect it on the matching Jira issue.
 
 generated: 2026-06-04
-last_updated: 2026-07-31 (story 1.12 -> ready-for-dev; context file created, 7 tasks, KAN-23 + subtasks synced) | 2026-07-30 (story 1.11 -> done. Code review: 3 decisions resolved, 13 patches applied and re-verified by running, 10 deferred, 4 dismissed as disproven. Final human check (window resize) passed; AC2 fully proven. NFR2 re-measured 6.036ms mean / 7.321ms worst, texture count flat at the cap)
+last_updated: 2026-08-07 (story 1.12 -> review; HUD implemented + verified by running in SampleScene. AC1/AC2/AC5 proven with photographs; AC3/AC4 are perceptual and OPEN pending Alexv. Regressions clean (photo-shoot 0 diffs, gallery-shoot captions byte-identical), 140/140 EditMode tests pass) | 2026-07-31 (story 1.12 -> ready-for-dev; context file created, 7 tasks, KAN-23 + subtasks synced) | 2026-07-30 (story 1.11 -> done. Code review: 3 decisions resolved, 13 patches applied and re-verified by running, 10 deferred, 4 dismissed as disproven. Final human check (window resize) passed; AC2 fully proven. NFR2 re-measured 6.036ms mean / 7.321ms worst, texture count flat at the cap)
 project: My project
 project_key: NOKEY
 tracking_system: file-system
@@ -61,7 +61,7 @@ development_status:
   1-9-subject-capture-gate-grading: done                             # KAN-20
   1-10-composition-and-timing-scoring: done                          # KAN-21
   1-11-minimal-gallery: done                                          # KAN-22
-  1-12-grade-feedback-hud: ready-for-dev                              # KAN-23
+  1-12-grade-feedback-hud: review                                     # KAN-23
   epic-1-retrospective: optional
 
   # ----- Epic 2: The Living Town [Jira KAN-5] (stories TBD just-in-time) -----

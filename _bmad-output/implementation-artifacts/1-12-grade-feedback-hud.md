@@ -1,6 +1,10 @@
+---
+baseline_commit: 94ed9461d6c6c35c47c8d0375d578a8334a1d11f
+---
+
 # Story 1.12: Grade-feedback HUD
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -85,12 +89,12 @@ so that I can tell a great shot from a weak one and want to do better.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Decide the five things that gate this story (AC1, AC2, AC5) — DO THESE FIRST**
+- [x] **Task 1 — Decide the five things that gate this story (AC1, AC2, AC5) — DO THESE FIRST**
 
   Each of the five has a recommendation. Record the choice **and the reasoning** in the Dev Agent
   Record, including for the ones you follow — a later reader needs to know it was decided, not defaulted.
 
-  - [ ] **1a. Render mode, and how you will PROVE the HUD is on screen. (Blocks everything.)**
+  - [x] **1a. Render mode, and how you will PROVE the HUD is on screen. (Blocks everything.)**
         - **Recommended: Screen Space – Overlay**, matching `PhotoViewfinder` and `CaptureFlash`
           (both `m_RenderMode: 0` in `SampleScene.unity`). An Overlay canvas is composited *after* every
           camera and so **cannot** be captured by `cam.Render()` — which is precisely the guarantee AC5
@@ -114,7 +118,7 @@ so that I can tell a great shot from a weak one and want to do better.
         - If you choose Screen Space – Camera anyway, you must prove — by running it, with a stored
           thumbnail in your hand — that no HUD pixel reaches a gallery image, for **every** subscriber
           ordering you can produce.
-  - [ ] **1b. Does the HUD gain the ability to say "not now"?** **Recommended: NO.**
+  - [x] **1b. Does the HUD gain the ability to say "not now"?** **Recommended: NO.**
         `PhotoModeController.SetRaiseSuppressed` is a **bool, not a refcount**, and its own doc-comment
         plus `deferred-work.md` both name Story 1.12 as the second caller that breaks it — the first
         closer un-suppresses for everyone (`PhotoModeController.cs:290-293`). A transient readout has no
@@ -122,7 +126,7 @@ so that I can tell a great shot from a weak one and want to do better.
         chasing a better grade immediately is the loop this story exists to encourage. **Call nothing on
         `PhotoModeController` and the deferred refcount stays deferred.** If you conclude you must
         suppress, the refcount/owner-token fix is a prerequisite and lands before the HUD does.
-  - [ ] **1c. When does the HUD go away?** Options: a timed hold + fade (like the capture flash), hide on
+  - [x] **1c. When does the HUD go away?** Options: a timed hold + fade (like the capture flash), hide on
         camera-lower, hide on the next capture, or a combination. **Recommended: a timed hold + fade,
         restarted by each capture, plus hide-on-lower.** The hold and fade are tunables (Task 3), not
         literals. Hide-on-lower is the cheap fix for the one overlap that can otherwise happen: the
@@ -130,7 +134,7 @@ so that I can tell a great shot from a weak one and want to do better.
         Screen Space – Camera gallery, so a lingering HUD would sit on top of the gallery grid.
         ⚠️ Hiding on lower reads `PhotoModeController.IsPhotoMode`, which is `UI → PhotoMode` — already
         sanctioned (`game-architecture.md:432`) and read-only, so it does not touch 1b.
-  - [ ] **1d. Does `ShotGrade` gain a signed peak offset?** **Recommended: YES.**
+  - [x] **1d. Does `ShotGrade` gain a signed peak offset?** **Recommended: YES.**
         `Timing01` names the *axis* that cost the shot; it does not say whether the player was early or
         late, and "click sooner" is the actionable half. `ShotGrader` already reads
         `subject.PeakOffset` for the timing term, so this is one primitive `float` carried through — the
@@ -144,7 +148,7 @@ so that I can tell a great shot from a weak one and want to do better.
           a NaN.
         - The rejection is equally defensible (a smaller diff, one fewer field on a struct three
           stories read). Record whichever you choose with its reason.
-  - [ ] **1e. What happens to the editor debug overlay?** `PhotoModeController.OnGUI` already draws
+  - [x] **1e. What happens to the editor debug overlay?** `PhotoModeController.OnGUI` already draws
         stars, percentage, the three axes and the grader's box for 1.5 s after every capture
         (`PhotoModeController.cs:424-493`). With the shipped HUD live, **two readouts of the same
         capture will be on screen at once**, and every verification screenshot from here on contains
@@ -154,13 +158,13 @@ so that I can tell a great shot from a weak one and want to do better.
         panel occupies the top-left, `Rect(12, 12, 640, 120)`), or add an editor-only toggle. Do **not**
         delete it, and do not quietly let them overlap in the evidence you hand over.
 
-- [ ] **Task 2 — Grading housekeeping this story is the assigned owner of (AC1, AC2)**
-  - [ ] ⚠️ **Do not write a second set of star glyphs and miss wording.** `GalleryView` already has
+- [x] **Task 2 — Grading housekeeping this story is the assigned owner of (AC1, AC2)**
+  - [x] ⚠️ **Do not write a second set of star glyphs and miss wording.** `GalleryView` already has
         `Stars(int)` and `Describe(GradeMiss)` as private statics (`GalleryView.cs:766-795`), and the
         HUD needs the same two things. Two copies means the gallery and the HUD can disagree about what
         `Occluded` is called, which is exactly the "reinventing wheels" failure this project's story
         process exists to prevent.
-  - [ ] **Extract them into `Assets/Scripts/Grading/GradeText.cs`** (`static class GradeText`, namespace
+  - [x] **Extract them into `Assets/Scripts/Grading/GradeText.cs`** (`static class GradeText`, namespace
         `CameraGame.Grading`). Both `Gallery` and `UI` may depend on `Grading`
         (`game-architecture.md:430-432`), and the wording is a property of the grade, not of either view.
         Then **change `GalleryView` to call it** and delete its private copies.
@@ -172,7 +176,7 @@ so that I can tell a great shot from a weak one and want to do better.
           `GradeText.MissLong(miss)` (the HUD's fuller "why"). Do not "improve" the short set.
         - This is a refactor of shipped, verified code. **Re-run `Tools > Gallery > Gallery Shoot (Play)`
           afterwards** and confirm the cell captions are byte-identical to Story 1.11's evidence.
-  - [ ] **Settle `ShotGrade.FromPercent`.** It has **zero production callers** and returns
+  - [x] **Settle `ShotGrade.FromPercent`.** It has **zero production callers** and returns
         `Counted == true` with an all-zero breakdown, so `ToString()` prints
         `ShotGrade(62%, 4★ — composition 0% × timing 0%)` — a grade asserting two measurements it never
         took, which is the very thing AC2 is about. `deferred-work.md` assigns the decision to **this
@@ -180,97 +184,97 @@ so that I can tell a great shot from a weak one and want to do better.
         delete it.** Confirm zero callers first (`ShotGrade.FromPercent` across `Assets/`), and remove
         the deferred entry when you do.
 
-- [ ] **Task 3 — `GradeHudConfig` ScriptableObject + asset (AC4, AC5)**
-  - [ ] Create `Assets/Scripts/UI/GradeHudConfig.cs`, namespace `CameraGame.UI`, with `[CreateAssetMenu]`.
+- [x] **Task 3 — `GradeHudConfig` ScriptableObject + asset (AC4, AC5)**
+  - [x] Create `Assets/Scripts/UI/GradeHudConfig.cs`, namespace `CameraGame.UI`, with `[CreateAssetMenu]`.
         Mirror `CaptureConfig.cs` for shape (it is the smallest template in the project) and
         `GalleryConfig.cs` for the validation idiom.
-  - [ ] Tunables, each with a `[Tooltip]`, a `[Range]`/`[Min]` **and** a `Safe*` accessor: **hold
+  - [x] Tunables, each with a `[Tooltip]`, a `[Range]`/`[Min]` **and** a `Safe*` accessor: **hold
         seconds** (how long the readout stays at full), **fade seconds**, and the **counted / miss /
         placeholder text colours**. Anything you find yourself typing as a number in the HUD class
         belongs here (architecture §Configuration, §Data Patterns).
-  - [ ] ⚠️ **`[Range]` is editor-only and this project hand-authors these assets as YAML** — a value
+  - [x] ⚠️ **`[Range]` is editor-only and this project hand-authors these assets as YAML** — a value
         typed straight into the `.asset` bypasses it entirely. That is why every config here reads
         through a `Safe*` accessor rather than the raw field (`GradingConfig.cs`, `CaptureConfig.cs:22`,
         `GalleryConfig.cs`). Follow it exactly.
-  - [ ] Add `TryGetConfigProblem(out string)` and warn **once at `Awake`**. Silent numeric
+  - [x] Add `TryGetConfigProblem(out string)` and warn **once at `Awake`**. Silent numeric
         misconfiguration is this project's single most repeated failure mode — `cueRadius = 0` gave
         total silence with a clean console; `minCoverage = NaN`, `minVisibleSamples = 0` and
         `timingFullSeconds = 0` each disabled a gate invisibly. **Your instances this story:** a
         non-positive hold (a HUD that flickers for one frame and is never read), a negative fade, and a
         hold so long the readout is still up two captures later.
-  - [ ] ⚠️ **Do NOT add an `OnValidate` that repairs the fields.** `GalleryConfig` did, and the
+  - [x] ⚠️ **Do NOT add an `OnValidate` that repairs the fields.** `GalleryConfig` did, and the
         2026-07-30 review reproduced the consequence: `OnValidate` runs on asset load *before* any
         `Awake`, so it rewrote the bad value and the warning that existed to report it could then never
         fire — broken exactly where designers author (`GalleryConfig.cs:218-224`). Clamp at the point of
         use via `Safe*`, and let the warning describe the value the designer actually typed.
-  - [ ] Author `Assets/Data/UI/GradeHudConfig.asset` **as YAML** using the script's `.meta` GUID —
+  - [x] Author `Assets/Data/UI/GradeHudConfig.asset` **as YAML** using the script's `.meta` GUID —
         Unity MCP cannot create custom ScriptableObject assets. Copy the header shape from
         `Assets/Data/Gallery/GalleryConfig.asset`. [[create-so-asset-via-yaml]]
 
-- [ ] **Task 4 — `GradeHud`: subscribe, format once, show, fade (AC1, AC2, AC5)**
-  - [ ] Create `Assets/Scripts/UI/GradeHud.cs`, a MonoBehaviour in `CameraGame.UI`. Serialized refs:
+- [x] **Task 4 — `GradeHud`: subscribe, format once, show, fade (AC1, AC2, AC5)**
+  - [x] Create `Assets/Scripts/UI/GradeHud.cs`, a MonoBehaviour in `CameraGame.UI`. Serialized refs:
         `ShotCapturedChannel`, `GradeHudConfig`, the `CanvasGroup` it fades, the `Text` labels, and
         (per Task 1c) the `PhotoModeController` it watches for the lower. Resolve each **independently**
         in `Awake` into its own readiness flag and log once if missing — the independence the 1.4 and
         1.5 reviews both praised and `PhotoModeController.cs:99-110` documents.
-  - [ ] Subscribe in `OnEnable`, unsubscribe in `OnDisable` (architecture §Communication Patterns). A
+  - [x] Subscribe in `OnEnable`, unsubscribe in `OnDisable` (architecture §Communication Patterns). A
         `GradeHud` that is destroyed or disabled must leave no live delegate on the channel asset.
         `EventChannel<T>` already snapshots handlers, isolates per-handler exceptions and clears
         subscribers on domain reload (`EventChannel.cs:30-48`) — **do not re-implement any of that.**
-  - [ ] **Build the strings ONCE, in the handler.** `Update` drives alpha only — the same shape as the
+  - [x] **Build the strings ONCE, in the handler.** `Update` drives alpha only — the same shape as the
         capture flash (`PhotoModeController.cs:237-243`) and the viewfinder fade
         (`PhotoModeController.cs:217-224`). String interpolation in a per-frame path allocates every
         frame for a value that changes once per shutter press.
-  - [ ] **Fade on `Time.unscaledDeltaTime`, not `Time.deltaTime`** — matching the flash
+  - [x] **Fade on `Time.unscaledDeltaTime`, not `Time.deltaTime`** — matching the flash
         (`PhotoModeController.cs:241`). Capture feedback that freezes with `timeScale` would be wrong
         the day a pause menu lands, and a HUD stuck at full alpha over a paused game is worse than one
         that finishes fading.
-  - [ ] Drive `Canvas.enabled` as well as `CanvasGroup.alpha` when hidden, for the same reason
+  - [x] Drive `Canvas.enabled` as well as `CanvasGroup.alpha` when hidden, for the same reason
         `GalleryView.ApplyOpenState` does (`GalleryView.cs:466-483`): an alpha-0 canvas is still
         geometry submitted every frame, including the frame a photograph is taken on.
-  - [ ] **The three shapes AC2 requires**, and they must be visibly different from each other:
+  - [x] **The three shapes AC2 requires**, and they must be visibly different from each other:
         - **counted:** stars, percent, and `composition X% × timing Y%` plus `seen Z%`.
         - **miss:** stars (always 1★), the reason in plain words, and **dashes** where the axes would
           be — the exact discipline the debug overlay was patched into
           (`PhotoModeController.cs:469-478`: *"the overlay must not state more than it knows"*).
         - **placeholder:** "not graded". No percentage, no stars presented as a rating.
-  - [ ] **A second capture while the HUD is still up must restart it cleanly** — new text, hold timer
+  - [x] **A second capture while the HUD is still up must restart it cleanly** — new text, hold timer
         reset, no stale line from the previous shot. This project's bugs live almost exclusively in
         reuse and in the second cycle onward.
-  - [ ] One `GameLog` line at most, at `Awake`. **No logging in the capture handler** — grading already
+  - [x] One `GameLog` line at most, at `Awake`. **No logging in the capture handler** — grading already
         logs the full breakdown there (`PhotoModeController.cs:391-394`) and a second line per shutter
         press is spam.
 
-- [ ] **Task 5 — Build and wire the HUD in the scene (AC1, AC4, AC5)**
-  - [ ] Author the canvas in `SampleScene`, following the project's precedent — every UI here
+- [x] **Task 5 — Build and wire the HUD in the scene (AC1, AC4, AC5)**
+  - [x] Author the canvas in `SampleScene`, following the project's precedent — every UI here
         (`PhotoViewfinder`, `CaptureFlash`, `GalleryCanvas`) is authored in the scene, not as a prefab.
         `Assets/UI/` does not exist and this story does not create it.
-  - [ ] Render mode and sorting per Task 1a. If Overlay, give it an explicit `sortingOrder` relative to
+  - [x] Render mode and sorting per Task 1a. If Overlay, give it an explicit `sortingOrder` relative to
         `CaptureFlash` and `PhotoViewfinder` and **say which you chose and why** — the flash pulses to
         full white for ~0.12 s at the instant the HUD appears, so whether the HUD is washed out for
         that moment or reads over the top of it is a deliberate call, not an accident. Look at it.
-  - [ ] Assign `ShotCapturedChannel.asset` and `GradeHudConfig.asset`. Use the built-in
+  - [x] Assign `ShotCapturedChannel.asset` and `GradeHudConfig.asset`. Use the built-in
         `Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")` fallback if no font asset is set —
         that is a built-in **engine** resource, not a project asset, so it is not the `Resources.Load`
         the architecture rules out for game data (`GalleryView.cs:58-61,263`).
-  - [ ] ⚠️ **If (and only if) the canvas is Screen Space – Camera**, check the camera's culling mask
+  - [x] ⚠️ **If (and only if) the canvas is Screen Space – Camera**, check the camera's culling mask
         against the canvas's layer, as `GalleryView.ConfigureCanvas` does (`GalleryView.cs:246-251`).
         A camera that does not render the layer draws exactly nothing, with a clean console.
-  - [ ] Check `read_console` after every script change (project rule, NFR5).
+  - [x] Check `read_console` after every script change (project rule, NFR5).
 
-- [ ] **Task 6 — Verify by running it, and look at what comes out (AC1, AC2, AC5)**
-  - [ ] **Build a HUD rig on the proven pattern.** Add `Tools > HUD > Grade HUD Shoot (Play)` alongside
+- [x] **Task 6 — Verify by running it, and look at what comes out (AC1, AC2, AC5)**
+  - [x] **Build a HUD rig on the proven pattern.** Add `Tools > HUD > Grade HUD Shoot (Play)` alongside
         the two that exist. Read `GalleryShootRig.cs` / `GalleryShootRunner.cs` and `PhotoShootRig.cs` /
         `PhotoShootRunner.cs` first — the **runner must live in the runtime assembly behind
         `#if UNITY_EDITOR`** (a MonoBehaviour in an Editor-only assembly cannot be resolved on a scene
         object when entering play mode; the rig silently does nothing while the scene runs on around
         it), and the **rig must restore the previously open scene via `SessionState`**
         (`PhotoShootRig.cs:66-72,131`).
-  - [ ] **Drive the real shutter** — `photo.Capture()`, never a re-implementation — and produce **every
+  - [x] **Drive the real shutter** — `photo.Capture()`, never a re-implementation — and produce **every
         HUD state**: a 5★ money shot, a mid counted shot, a **counted-but-0%** late shot (the state that
         makes AC2 matter), and each reachable miss (`NoSubject`, `TooSmall`, `Occluded`,
         `OutsideFrustum`, `BehindCamera`), plus a placeholder capture with grading unconfigured.
-  - [ ] **Capture the screen for each and write the images to `_bmad-output/verification/hud/`**, plus a
+  - [x] **Capture the screen for each and write the images to `_bmad-output/verification/hud/`**, plus a
         `hud.txt` recording what the grade actually was for each shot. Then **open them and look**. The
         questions only a picture answers: can you read it in the time it is up? Does the miss line say
         something a player would act on? Do the debug overlay and the player HUD collide?
@@ -280,44 +284,44 @@ so that I can tell a great shot from a weak one and want to do better.
         - ⚠️ **Caption what the CAMERA did, never what the grade should be.** Story 1.10's captions were
           rewritten after one reading "just inside the gate" came back rejected — a rig that states its
           own expectations produces confident, wrong evidence.
-  - [ ] **Prove the HUD cannot reach a stored photograph (AC5).** Capture repeatedly with the gallery
+  - [x] **Prove the HUD cannot reach a stored photograph (AC5).** Capture repeatedly with the gallery
         recording, then write out the **stored gallery thumbnails** and confirm no HUD pixel is in any
         of them. Do it with the HUD at full alpha and mid-fade. This is the one AC where a structural
         argument ("Overlay canvases are composited after cameras") is not enough — the gallery renders
         *inside* the same frame, so look at the file.
-  - [ ] **Stress it.** Ten captures in rapid succession while the HUD is still up; a capture during the
+  - [x] **Stress it.** Ten captures in rapid succession while the HUD is still up; a capture during the
         fade; the camera lowered mid-hold; the gallery opened mid-hold; two pooled actor respawns so
         the subject id changes underneath. Confirm the readout always describes the **latest** shot and
         never a stale one.
-  - [ ] **Push the boundaries** — every tunable at zero, negative, huge and absent; the config asset
+  - [x] **Push the boundaries** — every tunable at zero, negative, huge and absent; the config asset
         missing entirely; the channel unassigned; a label unassigned; the `CanvasGroup` unassigned; a
         capture with nobody in the world. Each must fail soft, log once, and leave capture, grading,
         flash, shutter and the gallery working.
-  - [ ] **Measure NFR2, do not assert it.** Time the real `Capture()` over many captures with the HUD
+  - [x] **Measure NFR2, do not assert it.** Time the real `Capture()` over many captures with the HUD
         listening and with it disabled, and report both against the 0.2 s budget. 1.11's numbers
         (mean 6.036 ms / worst 7.321 ms with the gallery) are the baseline to compare against — the HUD
         should be lost in the noise, and if it is not, that is the finding.
-  - [ ] **Suspect the rig before the code.** Every shot identical, every capture blank, a suspiciously
+  - [x] **Suspect the rig before the code.** Every shot identical, every capture blank, a suspiciously
         round number, a screenshot that is all white — treat all of these as a broken rig until proven
         otherwise (see Task 1a: a blank overlay capture is a *known* trap here). And check
         `Library/ScriptAssemblies/CameraGame.dll`'s mtime against your sources before trusting a run:
         `refresh_unity` has returned `success: true` **without recompiling**, and a shoot then ran a
         seven-minute-old assembly and produced a complete, plausible, wrong result.
-  - [ ] **Restore the project.** Scene, settings, time scale, any config values the rig touched — put
+  - [x] **Restore the project.** Scene, settings, time scale, any config values the rig touched — put
         everything back automatically on the way out. Never leave the editor sitting in the test world.
         Prefer an in-memory `ScriptableObject.CreateInstance<GradeHudConfig>()` for every boundary
         scenario so the shipped asset is never mutated (the pattern 1.11 used, deviation #6).
-  - [ ] Confirm the console is clean and **1.3–1.11 is unregressed**: a full
+  - [x] Confirm the console is clean and **1.3–1.11 is unregressed**: a full
         `Tools > Grading > Photo Shoot (Play)` run and a full `Tools > Gallery > Gallery Shoot (Play)`
         run, both compared against their recorded evidence. The gallery run is the direct regression
         test for Task 2's `GalleryView` refactor.
 
-- [ ] **Task 7 — Hand the perceptual check to Alexv (AC3, AC4) — name it, do not bury it**
-  - [ ] AC3 is a **human** criterion and AC4 is a taste call. Write the handover as a short, specific
+- [x] **Task 7 — Hand the perceptual check to Alexv (AC3, AC4) — name it, do not bury it**
+  - [x] AC3 is a **human** criterion and AC4 is a taste call. Write the handover as a short, specific
         ask — *"open these six images, tell me whether you can tell the 5★ from the counted-0% at a
         glance, and whether the miss line tells you what to do differently"* — not a list of things for
         him to go and try. Bring him a conclusion and the evidence behind it.
-  - [ ] **Keep the story at `review`, not `done`, until he has looked**, and state plainly in the
+  - [x] **Keep the story at `review`, not `done`, until he has looked**, and state plainly in the
         handover which ACs remain unproven. Twice now the perceptual check has found what every
         structural check missed (Story 1.10's two shots tying at 5★; Story 1.11's window-resize).
 
@@ -529,16 +533,219 @@ shutter.
 
 ### Agent Model Used
 
-_To be filled by the dev agent._
+Claude Opus 5 (1M context) — `claude-opus-5[1m]`, via Claude Code + MCP for Unity.
+
+### Task 1 — the five decisions, and why
+
+Recorded for all five, including the ones that follow the recommendation, so a later reader knows each
+was decided rather than defaulted.
+
+**1a. Render mode: Screen Space – Overlay (followed the recommendation).**
+An Overlay canvas is composited after every camera, so it *cannot* appear in `cam.Render()` output. That
+makes AC5 **structural** rather than a matter of subscriber order — which matters because
+`GalleryService.HandleShotCaptured` renders the camera synchronously inside the same channel raise, on the
+same frame, in an order nobody controls. It also sidesteps the URP trap that cost Story 1.11 a real defect
+(a Screen Space – Camera canvas composites before tonemapping). The HUD sits on its own canvas at
+`sortingOrder 100`, above `PhotoViewfinder`/`CaptureFlash` at 0 — see 1a-bis below.
+
+**The capture technique was settled first, with control shots, before any HUD code was written.**
+`ScreenCapture.CaptureScreenshotAsTexture()` after `yield return new WaitForEndOfFrame()`, with the camera
+left rendering to the **screen** (both existing rigs bind a RenderTexture for the whole run; this one must
+not). `GradeHudShootRunner` Phase 0 proves it every run with three control shots whose answers are already
+known — world-only (must not be uniform or near-white), a full-screen pure-magenta Overlay marker (must
+dominate), marker off again (must return to ~0). Measured on the recorded run: **std-dev 0.132, near-white
+0.0%, marker 100.00%, released 0.00%.** The rig prints `THE TECHNIQUE IS TRUSTWORTHY` only when all three
+pass, and every later phase is labelled with that verdict.
+
+**1a-bis. Sorting order: the HUD draws OVER the capture flash.** `CaptureFlash` lives on the
+`PhotoViewfinder` canvas at `sortingOrder 0`; the HUD canvas is 100. The flash pulses to full white for
+~0.12 s at exactly the instant the readout appears, so this is a deliberate call, not an accident. **I
+looked at it.** The HUD is not *covered* by the flash — but its panel is translucent, so for that eighth of
+a second the white flash shines *through* it and the readout is visibly bleached
+(`*_at_shutter.png`). Over a 2.8 s readout that is 4% of its life, and it reads as part of the shutter pop
+rather than as a fault, so it was left alone. It is called out for Alexv in the handover because it is a
+taste call, not a correctness one.
+
+**1b. The HUD does NOT gain the ability to say "not now" (followed the recommendation).**
+Nothing in `GradeHud` calls anything on `PhotoModeController`; it only *reads* `IsPhotoMode`, which is
+UI → PhotoMode and already sanctioned. `SetRaiseSuppressed` is still a bool with exactly one caller (the
+gallery), so **the deferred refcount stays deferred and this story did not become the second caller.**
+Beyond avoiding that trap, freezing the camera for a transient readout would be wrong on its own terms:
+the player must be able to keep shooting *through* it, because chasing a better grade immediately is the
+loop this readout exists to encourage.
+
+**1c. It goes away on a timed hold + fade, restarted by each capture, plus hide-on-lower (followed the
+recommendation — with one addition).** Hold 2.2 s, fade 0.6 s, both tunables. Hide-on-lower reads
+`IsPhotoMode` only.
+⚠️ **The addition, and why it is not scope creep:** `RaiseCamera` is a *hold* (RMB held), so hide-on-lower
+means releasing the button takes the grade off screen instantly — a player who clicks and lets go may never
+read it, which is squarely against AC3. The overlap it prevents is real too (an Overlay HUD draws over the
+Screen Space – Camera gallery). Both readings are defensible and the difference is a **feel** decision, so
+it is a config switch (`hideOnCameraLowered`, default true) rather than a line of code. Alexv can flip it
+without a recompile; it is named explicitly in the handover.
+
+**1d. `ShotGrade` DOES gain a signed peak offset (followed the recommendation).**
+`Timing01` names the axis that cost the shot but not the direction — 20% is the same number two seconds
+early and two seconds late, and "click sooner" is the actionable half. One primitive `float` carried
+through `ShotGrader` → `ShotGrade.Scored`; `CapturedShot`'s shape is unchanged, so Story 1.11's disk-ready
+seam is untouched. **It is stored raw and does NOT go through `Sane()`** — that helper does NaN → 0 then
+`Clamp01`, which for a signed value in seconds would turn "never measured" into "dead on the peak" and
+clamp a two-second miss to 1. NaN is kept as the never-measured sentinel, and `TimingMeasured` /
+`PeakOffsetText` also check the miss reason so a zeroed `default(ShotGrade)` — whose raw offset really is 0
+— can never be reported as perfect timing. `Scored`'s parameter is **required, not defaulted**: a caller
+that forgot it would silently ship "dead on the peak" on every shot.
+
+**1e. The editor debug overlay stays, and they do not collide (followed the recommendation).**
+`PhotoModeController.OnGUI` shows the grader's *internals* — the projected box, line-of-sight, height vs
+the gate — which the player HUD deliberately does not. It occupies `Rect(12, 12, 640, 120)` (top-left); the
+player HUD is a bottom-centred band. **Confirmed by looking at every Phase A photograph:** the two never
+touch.
 
 ### Debug Log References
 
+- `_bmad-output/verification/hud/hud.txt` — the full run: Phase 0 (capture-technique control shots),
+  Phase A (every readout state), Phase B (AC5), Phase C (stress/reuse), Phase D (boundaries), Phase E (NFR2).
+- `_bmad-output/verification/hud/*.png` — 9 states × 2 moments (settled + at-shutter), 3 control shots,
+  4 stress frames, 3 stored gallery thumbnails.
+- `_bmad-output/verification/gallery/` — re-run of `Tools > Gallery > Gallery Shoot (Play)`, the direct
+  regression test for Task 2's `GalleryView` refactor.
+- `_bmad-output/verification/photo-shoot/` — re-run of `Tools > Grading > Photo Shoot (Play)`.
+
 ### Completion Notes List
 
+**What was built.** `GradeHud` (a MonoBehaviour on a Screen Space – Overlay canvas authored in
+`SampleScene`) subscribes to `ShotCapturedChannel`, formats three lines **once in the handler**, shows them,
+and drives alpha in `Update` on `Time.unscaledDeltaTime` — the same shape as the capture flash. It drives
+`Canvas.enabled` as well as alpha when hidden, so a hidden readout is not geometry submitted on the frame a
+photograph is taken. Tunables live in `GradeHudConfig` (`Assets/Data/UI/GradeHudConfig.asset`, hand-authored
+YAML) behind `Safe*` accessors, with a `TryGetConfigProblem` that reports **every** problem at once (both
+existing configs return on the first, and both carry a standing deferred item saying they should not) and
+**no `OnValidate`**, so the warning can still describe the value the designer actually typed.
+
+**AC1 — satisfied, verified by running.** The readout carries stars, overall percentage and the
+subject/composition/timing breakdown, appears with no further input and goes away on its own. The channel
+type was not widened; `ShotGrade` already carried everything except the peak offset (decision 1d).
+`Subject01` is labelled **"seen"**, never as size — it is line-of-sight, and the size measurement lives only
+in the editor-only `GradeDetail`.
+
+**AC2 — satisfied, and this is the one the pictures settle.** Three visibly different shapes, all
+photographed:
+- `c_counted_but_zero.png` → `★☆☆☆☆ 0 %` in cream, `composition 95 % × timing 0 % · seen 100 %`,
+  `3.6s late — shoot sooner`.
+- `e_too_far.png` → `★☆☆☆☆ MISSED` in **salmon**, `composition — × timing — · seen —`,
+  `too far away — get closer, or zoom in`.
+- `i_not_graded.png` → `NOT GRADED`, dashes, `this shot was never graded`. No percentage, no stars
+  presented as a rating.
+Both counted-0% and every miss read 1★, and they are unmistakably different in the photographs: colour, the
+word MISSED vs a percentage, dashes vs numbers, and different advice. **No miss prints an axis percentage**
+— all three are hard `0f` because grading early-outs before scoring them.
+
+**AC5 — satisfied, verified by looking at the files, not by the structural argument.** For Phase B the
+readout is repainted **pure magenta** (panel and text), which turns "did a HUD pixel reach this thumbnail?"
+into a count. 12 captures, at full alpha and mid-fade: **12/12 thumbnails scanned, 0 contaminated, worst
+magenta fraction 0.000%.** Three thumbnails are written out so the scan can be confirmed to be scanning
+photographs and not blank rectangles. The gallery-overlap case is photographed too
+(`stress_gallery_over_hud.png`): the gallery is open with no readout on it.
+
+**NFR2 — measured, not asserted.** Real `Capture()` × 40, in the real town: **HUD listening mean 39.882 ms
+/ worst 85.127 ms; HUD disabled mean 40.804 ms / worst 84.934 ms.** The HUD is inside the noise (marginally
+*faster* with it on) and the worst sample is identical with it off, so the cost is the town's GPU readback,
+not the readout. Well inside the 0.2 s budget. ⚠️ These are much larger than Story 1.11's 6.036 ms / 7.321 ms
+because **1.11 measured in a private grey-plane world and this measures in the real town** (16k+ colliders,
+a real scene to read back) — the two numbers are not comparable, and the honest comparison is the
+listening-vs-disabled pair above.
+
+**Fail-soft (AC5) — every case exercised, all soft.** Hold at 0 / negative / 9999 / NaN, fade at negative /
+NaN / 9999, all three colours at alpha 0, config asset missing, channel unassigned, labels unassigned,
+CanvasGroup unassigned. Each disabled only its own function, logged **once** at `Awake`, and left capture,
+grading, flash, shutter and the gallery working (the gallery kept storing through every one).
+
+**Console (NFR5) — clean.** After the final regression runs the console holds only the two known
+large-triangle mesh warnings. Every `[GradeHud]`/`[Grading]` line during a rig run is a scenario the rig
+provokes on purpose, and `hud.txt` names them up front so a clean-console check is not confused —
+"any OTHER error is a finding".
+
+**Regressions — none.** `Tools > Grading > Photo Shoot (Play)`: **0 differing lines** against the recorded
+baseline (numbers masked). `Tools > Gallery > Gallery Shoot (Play)`: the only structural difference is the
+`@ peak …` clause deliberately added to `ShotGrade.ToString()`; the gallery's cell captions render
+byte-identically (`ui_open.png` — "missed — out of frame", "missed — blocked", "missed — too far away",
+"missed — nobody there", "0 % · TownDrunk", star glyphs intact, no truncation). 140/140 EditMode tests pass.
+
+**Task 2 housekeeping, both done.** `GalleryView.Stars`/`Describe` extracted to
+`CameraGame.Grading.GradeText` and the private copies deleted; the **short** phrasings are byte-identical
+(pinned by `GradeTextTests` against the exact literals, with the truncation story in the test's comment) and
+a longer `MissLong` set was added for the HUD's full-width line. `ShotGrade.FromPercent` **deleted** — zero
+production callers confirmed across `Assets/` before removal, and its all-zero-breakdown `Counted` grade was
+the exact thing AC2 forbids. The deferred entry is removed.
+
+**Two defects the rig found in itself, both fixed and re-run** (recorded because "suspect the rig before
+the code" earned its place again):
+1. **The rig lied about an empty street.** `manager.enabled = false` disables the manager's `Update`; it
+   does not despawn anything. In the real scene a drunk was already walking, so `d_nobody_there` came back
+   `composition 93% of TownDrunk, seen 100%` under a caption promising nobody was there — Story 1.11's
+   `f_behind_wall` failure exactly, and one sentence from being written up as a HUD defect. Fixed by
+   deactivating every live actor for that shot (which is what `GradeBestSubject` actually keys on) and
+   restoring them; it now genuinely produces `GradeMiss.NoSubject`.
+2. **Every Phase A photograph was taken at the worst possible instant.** The rig grabbed one frame after
+   the shutter, i.e. peak capture-flash, and every picture came back bleached — which I nearly read as a
+   legibility defect. Now both moments are captured: `<name>.png` 0.5 s later (the frame to judge
+   legibility from) and `<name>_at_shutter.png` (the flash moment, kept because the player sees it).
+   Also fixed: `h_behind_you` at 1.2 heights produced `OutsideFrustum`, so there was **no** picture of the
+   `BehindCamera` wording at all; at 0.05 heights it now reaches it.
+
+**One defect in shipped code the rig found:** `GradeHudConfig`'s explanation was one fixed sentence per
+field, so the run printed *"a hold at or below zero is a readout that appears for a single frame"* under a
+hold of **9999** and again under **NaN** — the number was right and the advice described neither mistake.
+Now the explanation follows the mistake (`WhyHold`/`WhyFade`), pinned by a test.
+
+**⚠️ WHAT I COULD NOT PROVE, AND WHAT NEEDS ALEXV (see Task 7).** AC3 and AC4 are perceptual and are
+**open**. Also: the run's Game View was **574×494**, which is small — the canvas scales with the screen so
+the *layout* in the pictures is faithful, but "is the text big enough" cannot be settled from them and
+`hud.txt` says so.
+
+**⚠️ RAISED, NOT FIXED — the town occlusion symptom is now glaring.** `a_money_shot.png` scores **94% / 5★
+with `line-of-sight 100%`** for a photograph in which the drunk is behind a pine tree and not visible; the
+grader's box is drawn over the tree. This is the reproduced-but-undiagnosed symptom logged against Story 1.9
+(24/24 shots read 100% in the town placement study), and `deferred-work.md` says it should be investigated
+"before Story 1.12's HUD ships, because a 5★ awarded for a photograph of a tree is exactly what the player
+will screenshot and complain about". The story instructs me to raise it as a **scope question** rather than
+silently expand this story, so: **not fixed here, and it is now the most visible thing in this story's own
+evidence.** Alexv's call.
+
 ### File List
+
+**New**
+
+- `Assets/Scripts/Grading/GradeText.cs`
+- `Assets/Scripts/UI/GradeHudConfig.cs`
+- `Assets/Scripts/UI/GradeHud.cs`
+- `Assets/Scripts/UI/GradeHudShootRunner.cs`
+- `Assets/Scripts/Editor/GradeHudShootRig.cs`
+- `Assets/Data/UI/GradeHudConfig.asset`
+- `Assets/Tests/EditMode/GradeTextTests.cs`
+- `Assets/Tests/EditMode/GradeHudConfigTests.cs`
+- (and the `.meta` file Unity generated for each of the above, plus `Assets/Scripts/UI.meta` and
+  `Assets/Data/UI.meta`)
+
+**Modified**
+
+- `Assets/Scripts/Grading/ShotGrade.cs` — added `PeakOffset` / `TimingMeasured` / `PeakOffsetText`;
+  `Scored` takes the offset; `FromPercent` deleted; `ToString` reports the peak offset.
+- `Assets/Scripts/Grading/ShotGrader.cs` — passes the measured peak offset into `ShotGrade.Scored`.
+- `Assets/Scripts/Gallery/GalleryView.cs` — calls `GradeText`; private `Stars`/`Describe` deleted.
+- `Assets/Tests/EditMode/GradeStructTests.cs` — `Scored` call sites updated; peak-offset contracts pinned.
+- `Assets/Scenes/SampleScene.unity` — `GradeHudCanvas` (Canvas Overlay `sortingOrder 100`, CanvasScaler
+  ScaleWithScreenSize 1920×1080 match 0.5, CanvasGroup, `GradeHud`) with `Panel` + `RatingLabel` /
+  `AxesLabel` / `WhyLabel`, all references assigned.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `_bmad-output/implementation-artifacts/deferred-work.md`
+- `_bmad-output/implementation-artifacts/1-12-grade-feedback-hud.md`
 
 ### Change Log
 
 | Date | Change |
 |------|--------|
 | 2026-07-31 | Story created (`gds-create-story`). |
+| 2026-08-07 | Implemented. Task 1's five decisions recorded; `GradeText` extracted and `FromPercent` deleted; `GradeHudConfig` + asset; `GradeHud` + scene canvas; `GradeHudShootRig`/`Runner` built and run in the real scene. 140/140 EditMode tests pass; photo-shoot and gallery-shoot regressions clean. Status → review. |
+| 2026-08-07 | Rig self-corrections after the first run: the empty-street scenario was photographing a live subject; every Phase A frame was taken at peak capture-flash; `h_behind_you` never reached `BehindCamera`. Shipped fix: the config's problem text now describes the mistake that was made rather than one fixed sentence per field. Re-run clean. |
+| 2026-08-07 | AC3/AC4 handed to Alexv and left **open** — see Task 7. Town occlusion symptom raised as a scope question, not fixed. |

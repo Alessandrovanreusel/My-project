@@ -78,7 +78,7 @@ namespace CameraGame.Tests
         [TestCase(1.0f, 0.0f, 0.00f)]
         public void Scored_BlendsCompositionTimesTiming(float comp, float timing, float expected)
         {
-            var g = ShotGrade.Scored(1f, comp, timing, StarScale.Default, "TownDrunk");
+            var g = ShotGrade.Scored(1f, comp, timing, StarScale.Default, "TownDrunk", 0f);
             Assert.That(g.Percent01, Is.EqualTo(expected).Within(1e-5f));
         }
 
@@ -87,7 +87,7 @@ namespace CameraGame.Tests
         [Test]
         public void Scored_NaNAxis_DoesNotPropagate()
         {
-            var g = ShotGrade.Scored(float.NaN, float.NaN, float.NaN, StarScale.Default, "TownDrunk");
+            var g = ShotGrade.Scored(float.NaN, float.NaN, float.NaN, StarScale.Default, "TownDrunk", float.NaN);
 
             Assert.IsFalse(float.IsNaN(g.Percent01), "Percent01 must never be NaN");
             Assert.IsFalse(float.IsNaN(g.Subject01), "Subject01 must never be NaN");
@@ -99,7 +99,7 @@ namespace CameraGame.Tests
         [Test]
         public void Scored_OutOfRangeAxes_AreClampedIntoUnitRange()
         {
-            var g = ShotGrade.Scored(9f, 9f, -9f, StarScale.Default, "TownDrunk");
+            var g = ShotGrade.Scored(9f, 9f, -9f, StarScale.Default, "TownDrunk", 0f);
 
             Assert.That(g.Subject01, Is.InRange(0f, 1f));
             Assert.That(g.Composition01, Is.InRange(0f, 1f));
@@ -138,7 +138,7 @@ namespace CameraGame.Tests
         [Test]
         public void WeakButCountedShot_IsNotAMiss()
         {
-            var weak = ShotGrade.Scored(1f, 0.1f, 0.1f, StarScale.Default, "TownDrunk");
+            var weak = ShotGrade.Scored(1f, 0.1f, 0.1f, StarScale.Default, "TownDrunk", -2.5f);
 
             Assert.AreEqual(1, weak.Stars, "a 1% shot reads 1 star, same as a miss");
             Assert.IsFalse(weak.IsMiss, "...but it is not a miss");
@@ -181,7 +181,7 @@ namespace CameraGame.Tests
         [Test]
         public void ConstructedGrade_NullSubjectId_BecomesEmptyNotNull()
         {
-            var g = ShotGrade.Scored(1f, 1f, 1f, StarScale.Default, null);
+            var g = ShotGrade.Scored(1f, 1f, 1f, StarScale.Default, null, 0f);
 
             Assert.IsNotNull(g.SubjectId);
             Assert.AreEqual(string.Empty, g.SubjectId);
@@ -206,9 +206,86 @@ namespace CameraGame.Tests
         public void Stars_AreAlwaysWithinTheLadder()
         {
             var absurd = new StarScale(float.NaN, -3f, 99f, float.NegativeInfinity);
-            var g = ShotGrade.Scored(1f, 1f, 1f, absurd, "TownDrunk");
+            var g = ShotGrade.Scored(1f, 1f, 1f, absurd, "TownDrunk", 0f);
 
             Assert.That(g.Stars, Is.InRange(1, 5));
+        }
+
+        // ---------------------------------------------------------------------------------------------
+        // PeakOffset (Story 1.12) — the one float on this struct that is signed, measured in seconds, and
+        // uses NaN as a sentinel. Every test below pins a sentence the field's own doc-comment states.
+        // ---------------------------------------------------------------------------------------------
+
+        // Contract: "DELIBERATELY NOT RUN THROUGH Sane()... it would clamp a two-second miss to 1."
+        // Both signs, and a magnitude outside [0,1], must survive intact — this is the whole reason the
+        // field bypasses the guard every other float here goes through.
+        [TestCase(2.5f)]
+        [TestCase(-2.5f)]
+        [TestCase(0f)]
+        [TestCase(-0.25f)]
+        public void Scored_PeakOffset_IsStoredRawAndUnclamped(float offset)
+        {
+            var g = ShotGrade.Scored(1f, 1f, 1f, StarScale.Default, "TownDrunk", offset);
+
+            Assert.That(g.PeakOffset, Is.EqualTo(offset).Within(1e-6f));
+            Assert.IsTrue(g.TimingMeasured);
+        }
+
+        // Contract: "NaN kept as the never-measured sentinel." A counted shot whose subject reported no
+        // usable timing must not claim a measurement.
+        [Test]
+        public void Scored_NaNPeakOffset_IsNotAMeasurement()
+        {
+            var g = ShotGrade.Scored(1f, 1f, 0f, StarScale.Default, "TownDrunk", float.NaN);
+
+            Assert.IsFalse(g.TimingMeasured);
+            Assert.AreEqual("n/a", g.PeakOffsetText);
+        }
+
+        // Contract: "grading early-outs at the first failed gate and timing is read LAST... so no rejected
+        // shot has ever had its distance from the peak measured."
+        [Test]
+        public void Missed_NeverReportsATimingMeasurement()
+        {
+            foreach (GradeMiss reason in System.Enum.GetValues(typeof(GradeMiss)))
+            {
+                var miss = ShotGrade.Missed(reason, "TownDrunk");
+                Assert.IsFalse(miss.TimingMeasured, $"{reason} must not claim a timing measurement");
+                Assert.AreEqual("n/a", miss.PeakOffsetText);
+            }
+        }
+
+        // Contract: a placeholder measured nothing, so it cannot report a peak offset either.
+        [Test]
+        public void Placeholder_NeverReportsATimingMeasurement()
+        {
+            Assert.IsFalse(ShotGrade.Placeholder.TimingMeasured);
+            Assert.AreEqual("n/a", ShotGrade.Placeholder.PeakOffsetText);
+        }
+
+        // ⚠️ THE TRAP THIS ACCESSOR EXISTS FOR, pinned. "A zeroed default(ShotGrade) has 0 here and would
+        // read as perfect timing." The raw field really IS 0 — that is the point — so TimingMeasured has to
+        // reject it on the miss reason, exactly as GradeDetail.OcclusionTested does.
+        [Test]
+        public void DefaultGrade_ZeroPeakOffset_IsNotReadAsPerfectTiming()
+        {
+            ShotGrade zeroed = default;
+
+            Assert.That(zeroed.PeakOffset, Is.EqualTo(0f), "the raw field really is zero-initialised");
+            Assert.IsFalse(zeroed.TimingMeasured, "...and that zero must never be reported as a measurement");
+            Assert.AreEqual("n/a", zeroed.PeakOffsetText);
+        }
+
+        // Contract: infinity is what ISubject.PeakOffset reports for a subject not in a lifecycle at all.
+        // It is a real value the grader can receive, and it is not a measurement worth printing.
+        [TestCase(float.PositiveInfinity)]
+        [TestCase(float.NegativeInfinity)]
+        public void Scored_InfinitePeakOffset_IsNotAMeasurement(float offset)
+        {
+            var g = ShotGrade.Scored(1f, 1f, 0f, StarScale.Default, "TownDrunk", offset);
+
+            Assert.IsFalse(g.TimingMeasured);
+            Assert.AreEqual("n/a", g.PeakOffsetText);
         }
     }
 }

@@ -748,50 +748,25 @@ namespace CameraGame.Gallery
             string who = shot.HasSubject ? shot.SubjectId : "nobody";
 
             if (grade.IsPlaceholder)
-                return $"{Stars(grade.Stars)}\nnot graded";
+                return $"{GradeText.Stars(grade.Stars)}\nnot graded";
 
             // ⚠️ THE MISS REASON SURVIVES COMPACTION AND THE SUBJECT NAME DOES NOT. Telling a miss from a
             // merely late shot IS the acceptance criterion (both read 1★); naming who was in the frame is a
             // nicety. When space runs out, the nicety goes.
+            // ⚠️ MissShort, NOT MissLong. The cell is narrow and gets narrower with every photograph taken;
+            // the HUD's fuller sentences would truncate here, which is the exact regression the short set
+            // was written against (GradeText.MissShort).
             if (grade.IsMiss)
-                return $"{Stars(grade.Stars)}\nmissed — {Describe(grade.MissReason)}";
+                return $"{GradeText.Stars(grade.Stars)}\nmissed — {GradeText.MissShort(grade.MissReason)}";
 
             return compact
-                ? $"{Stars(grade.Stars)}\n{grade.Percent01:P0}"
-                : $"{Stars(grade.Stars)}\n{grade.Percent01:P0}  ·  {who}";
+                ? $"{GradeText.Stars(grade.Stars)}\n{grade.Percent01:P0}"
+                : $"{GradeText.Stars(grade.Stars)}\n{grade.Percent01:P0}  ·  {who}";
         }
 
-        /// <summary>Five glyphs, always — filled up to the rating. A fixed width so the ratings line up down
-        /// the grid and can be compared at a glance, which three characters of "3/5" cannot.</summary>
-        private static string Stars(int stars)
-        {
-            int filled = Mathf.Clamp(stars, 0, 5);
-            return new string('★', filled) + new string('☆', 5 - filled);
-        }
-
-        /// <summary>Plain words for a miss reason. The enum names are written for developers reading a log;
-        /// a player looking at their own photograph should be told what went wrong, in the terms they were
-        /// thinking in when they took it.</summary>
-        private static string Describe(GradeMiss miss)
-        {
-            switch (miss)
-            {
-                // ⚠️ KEEP THESE SHORT. They are printed inside a thumbnail cell, and the cell gets narrower
-                // the more photographs the player has taken. "something in the way" came back from the
-                // verification run truncated to "missed — something in the", which tells the player less
-                // than nothing — it looks like the gallery itself is broken.
-                case GradeMiss.NoSubject:        return "nobody there";
-                case GradeMiss.TooSmall:         return "too far away";
-                case GradeMiss.Occluded:         return "blocked";
-                case GradeMiss.OutsideFrustum:   return "out of frame";
-                case GradeMiss.BehindCamera:     return "behind you";
-                case GradeMiss.DegenerateBounds: return "nothing there";
-                case GradeMiss.NoCamera:         return "no camera";
-                case GradeMiss.NoConfig:         return "grading not set up";
-                case GradeMiss.NoViewport:       return "no viewport";
-                case GradeMiss.Unevaluated:      return "not graded";
-                default:                         return miss.ToString();
-            }
-        }
+        // The star glyphs and the miss vocabulary used to live here as two private statics. Story 1.12 moved
+        // them to CameraGame.Grading.GradeText so the gallery and the grade-feedback HUD cannot drift into
+        // describing the same photograph two different ways. The SHORT phrasings are byte-identical to what
+        // shipped — they are load-bearing and were chosen against a truncation this grid actually produced.
     }
 }
