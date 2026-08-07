@@ -16,10 +16,40 @@ def _video_from_argv() -> str:
     frame — verify that before calling. Feeding a long recording with empty stretches
     produced confident [OBSERVED] findings about a character who was not on screen."""
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    # Drop the --prompt VALUE, or it would be mistaken for the clip when the clip is
+    # given second.
+    if "--prompt" in sys.argv:
+        i = sys.argv.index("--prompt")
+        if i + 1 < len(sys.argv):
+            args = [a for a in args if a != sys.argv[i + 1]]
     if not args:
-        print("usage: gemini_motion_review.py <clip.mp4> [--purge]")
+        print("usage: gemini_motion_review.py <clip.mp4> [--prompt <file.txt>] [--purge]")
         raise SystemExit(2)
     return args[0]
+
+
+def _prompt_from_argv(default: str) -> str:
+    """An optional replacement question, read from a file.
+
+    The default below asks about a walking character, because that is what the first clip
+    was. Story 1.12 needed a different temporal question about the same KIND of thing —
+    something a still frame cannot settle — and rewriting the shared default for a one-off
+    would have broken the tool for its original purpose.
+
+    ⚠️ A REPLACEMENT PROMPT MUST STILL FOLLOW THE RULES IN README.md. They are not style:
+    supplying timestamps or naming the defect you expect makes this model manufacture
+    findings to fit, measured on the same model, video and timestamp. Keep the clip short
+    with the subject present throughout, ask descriptively, and say out loud that
+    "nothing" and "I cannot tell" are correct answers.
+    """
+    if "--prompt" not in sys.argv:
+        return default
+
+    i = sys.argv.index("--prompt")
+    if i + 1 >= len(sys.argv):
+        print("--prompt needs a file path")
+        raise SystemExit(2)
+    return open(sys.argv[i + 1], encoding="utf-8").read()
 # Tried in order; first one that answers wins. Two models are deliberately excluded:
 #   gemini-2.5-pro   — free-tier quota is literally 0 (no allowance, not a rate limit)
 #   gemini-2.5-flash — 404 "no longer available to new users" on a fresh API key
@@ -81,6 +111,7 @@ def main() -> int:
         return 0
 
     video = _video_from_argv()
+    prompt = _prompt_from_argv(PROMPT)
 
     # Reuse an already-uploaded copy rather than re-sending 40MB on every retry.
     f = None
@@ -110,7 +141,7 @@ def main() -> int:
         for model in MODELS:
             print(f"asking {model} ...", flush=True)
             try:
-                resp = client.models.generate_content(model=model, contents=[f, PROMPT])
+                resp = client.models.generate_content(model=model, contents=[f, prompt])
                 print(f"  -> {model} answered\n", flush=True)
                 break
             except Exception as e:

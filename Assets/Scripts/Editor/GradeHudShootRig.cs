@@ -98,8 +98,21 @@ namespace CameraGame.EditorTools
             }
         }
 
+        /// <summary>
+        /// Records the readout's whole life as a frame sequence, for the questions a still cannot settle —
+        /// is the fade smooth, and is it on screen long enough to read?
+        ///
+        /// A separate menu item rather than another phase of the shoot, for two reasons: it writes to its
+        /// own folder so it cannot clobber the stills, and it is the one thing here worth re-running on its
+        /// own every time the hold or fade is retuned.
+        /// </summary>
+        [MenuItem("Tools/HUD/Grade HUD — Record the readout (Play)")]
+        public static void Record() => Run(OutputDir + "-motion", recordOnly: true);
+
         [MenuItem("Tools/HUD/Grade HUD Shoot (Play)")]
-        public static void Build()
+        public static void Build() => Run(OutputDir, recordOnly: false);
+
+        private static void Run(string outputDir, bool recordOnly)
         {
             if (EditorApplication.isPlaying)
             {
@@ -142,7 +155,7 @@ namespace CameraGame.EditorTools
                 return;
             }
 
-            ResetDir(OutputDir);
+            ResetDir(outputDir);
             SessionState.SetString(ReturnSceneKey, previousScene);
 
             if (SceneManager.GetActiveScene().path != ScenePath)
@@ -150,7 +163,7 @@ namespace CameraGame.EditorTools
 
             try
             {
-                AddRunnerAndPlay();
+                AddRunnerAndPlay(outputDir, recordOnly);
             }
             catch (System.Exception e)
             {
@@ -159,7 +172,7 @@ namespace CameraGame.EditorTools
             }
         }
 
-        private static void AddRunnerAndPlay()
+        private static void AddRunnerAndPlay(string outputDir, bool recordOnly)
         {
             // ⚠️ EVERY REFERENCE BELOW COMES OUT OF THE SHIPPED SCENE, not out of a world the rig built.
             // That is the whole point: if the scene is mis-wired, this throws HERE, loudly, instead of the
@@ -206,10 +219,11 @@ namespace CameraGame.EditorTools
             runner.gradingConfig = AssetDatabase.LoadAssetAtPath<GradingConfig>(GradingCfgPath);
             runner.shippedHudConfig = AssetDatabase.LoadAssetAtPath<GradeHudConfig>(HudCfgPath);
             runner.channel = AssetDatabase.LoadAssetAtPath<ShotCapturedChannel>(ChannelPath);
-            runner.outputDir = OutputDir;
+            runner.outputDir = outputDir;
+            runner.recordOnly = recordOnly;
 
-            Debug.Log("[GradeHudShoot] Runner added to SampleScene. Entering play mode — output lands in "
-                      + OutputDir);
+            Debug.Log($"[GradeHudShoot] Runner added to SampleScene ({(recordOnly ? "recording" : "shoot")}). "
+                      + $"Entering play mode — output lands in {outputDir}");
             EditorApplication.EnterPlaymode();
         }
 

@@ -53,6 +53,18 @@ namespace CameraGame.UI
         [HideInInspector] public ShotCapturedChannel channel;
         [HideInInspector] public string outputDir = "_bmad-output/verification/hud";
 
+        /// <summary>When true, skip the still-photograph phases and record the readout's whole life as a
+        /// numbered frame sequence instead. Set by the "Record the readout" menu item.</summary>
+        [HideInInspector] public bool recordOnly;
+
+        /// <summary>Frames per second the recording is locked to. Also the timebase ffmpeg is told about,
+        /// so the clip plays at the speed the game actually ran at rather than at capture speed.</summary>
+        private const int RecordFps = 30;
+
+        /// <summary>The rate the recorded frames must be ENCODED at for the clip to run at game speed.
+        /// Measured from the fade's own clock, not assumed from <see cref="RecordFps"/> — see Phase R.</summary>
+        private float _captureFps = RecordFps;
+
         /// <summary>A colour nothing in this town produces, used as a MARKER when the question is "did any
         /// HUD pixel reach this image?". Scanning for a distinctive colour turns a judgement call about a
         /// dark panel into a count.</summary>
@@ -132,7 +144,18 @@ namespace CameraGame.UI
 
             Header();
 
+            // ⚠️ PHASE 0 RUNS IN BOTH MODES. The recording uses exactly the same capture call, so it needs
+            // exactly the same proof — and the first version skipped it, which left the run's own footer
+            // announcing "the capture technique could NOT be proven" over a perfectly good recording. A rig
+            // that cries wolf about itself is the same failure as one that logs its own errors.
             yield return Phase0_SettleTheCaptureTechnique();
+
+            if (recordOnly)
+            {
+                yield return PhaseR_RecordTheReadoutsWholeLife();
+                yield break;
+            }
+
             yield return PhaseA_EveryHudState();
             yield return PhaseB_TheHudMustNeverReachAPhotograph();
             yield return PhaseC_StressAndReuse();
@@ -308,6 +331,205 @@ namespace CameraGame.UI
                 if (marked != null) Destroy(marked);
                 if (cleared != null) Destroy(cleared);
             }
+        }
+
+        // =====================================================================
+        // PHASE R — record the readout's whole life, for the temporal questions
+        // =====================================================================
+
+        /// <summary>
+        /// Records the screen for the whole life of ONE readout, as a numbered frame sequence that ffmpeg
+        /// turns into a clip.
+        ///
+        /// ⚠️ WHY THIS EXISTS SEPARATELY FROM <c>RigVideoFeed</c>. The two existing rigs publish their bound
+        /// <c>RenderTexture</c> to that seam and Unity Recorder films it — which is right for them, because
+        /// the texture literally IS the frames that were graded. It cannot work here: an Overlay canvas is
+        /// composited after every camera, so the readout is absent from that texture by construction. This
+        /// is the same inversion that forced the still-capture technique, one dimension along.
+        ///
+        /// ⚠️ AND WHY <c>Time.captureFramerate</c> IS THE LOAD-BEARING LINE. Grabbing and PNG-encoding the
+        /// backbuffer every frame is far slower than the game runs, so a naive recording would play back at
+        /// the speed of the CAPTURE rather than the speed of the GAME — and the one thing this clip exists
+        /// to answer is "is it on screen long enough to read?". Setting captureFramerate makes Unity advance
+        /// its clock by exactly 1/N per frame regardless of wall time, so N frames really are one second of
+        /// game time.
+        ///
+        /// That is a claim about the engine, so the phase MEASURES it rather than trusting it: every frame
+        /// records `Time.unscaledDeltaTime` (which is the clock the fade actually runs on) alongside the
+        /// readout's alpha, and the log prints the observed fade length in frames next to the length the
+        /// config asks for. If those disagree, the clip's timebase is wrong and nothing temporal may be
+        /// concluded from it.
+        /// </summary>
+        private IEnumerator PhaseR_RecordTheReadoutsWholeLife()
+        {
+            Section("PHASE R — the readout's whole life, recorded frame by frame");
+
+            string frameDir = Path.Combine(outputDir, "frames");
+            Directory.CreateDirectory(frameDir);
+
+            // A representative shot: framed properly, so the readout carries a real breakdown rather than a
+            // miss. Whatever the lifecycle happens to be at is what it is — the grade is recorded, not chosen.
+            float w = 0f;
+            EventActor actor = null;
+            while (!TryGetActor(out actor) && w < 60f) { w += Time.deltaTime; yield return null; }
+            if (actor == null)
+            {
+                _log.AppendLine("Nobody in the world to photograph — nothing recorded. SUSPECT THE RIG.");
+                yield break;
+            }
+
+            PlaceCamera(new State("rec", "", 2.2f), actor.Bounds);
+            photo.SetPhotoMode(true);
+            yield return null;
+            yield return null;
+
+            float hold = shippedHudConfig != null ? shippedHudConfig.SafeHoldSeconds : 2.2f;
+            float fade = shippedHudConfig != null ? shippedHudConfig.SafeFadeSeconds : 0.6f;
+
+            // Lead-in so the clip does not start on the shutter, plus a tail so the reader can see it end.
+            const float LeadIn = 0.5f;
+            const float Tail = 0.8f;
+            int totalFrames = Mathf.CeilToInt((LeadIn + hold + fade + Tail) * RecordFps);
+            int shutterFrame = Mathf.RoundToInt(LeadIn * RecordFps);
+
+            _log.AppendLine($"Recording {totalFrames} frames at {RecordFps} fps " +
+                            $"({totalFrames / (float)RecordFps:0.00}s of game time).");
+            _log.AppendLine($"Shutter fires on frame {shutterFrame}. Config: hold {hold}s + fade {fade}s.");
+            _log.AppendLine();
+
+            var alphas = new List<float>(totalFrames);
+            var deltas = new List<float>(totalFrames);
+            int firstShowingFrame = -1, lastShowingFrame = -1;
+
+            int prevCapture = Time.captureFramerate;
+            Time.captureFramerate = RecordFps;
+
+            try
+            {
+                for (int f = 0; f < totalFrames; f++)
+                {
+                    if (f == shutterFrame)
+                    {
+                        // Re-read the actor: he is pooled and the lead-in gave him time to walk on.
+                        if (TryGetActor(out EventActor a))
+                            PlaceCamera(new State("rec", "", 2.2f), a.Bounds);
+                        photo.Capture();                       // the real shutter
+                    }
+
+                    yield return new WaitForEndOfFrame();
+
+                    Texture2D frame = ScreenCapture.CaptureScreenshotAsTexture();
+                    try
+                    {
+                        File.WriteAllBytes(Path.Combine(frameDir, $"f_{f:D4}.png"), frame.EncodeToPNG());
+                    }
+                    finally
+                    {
+                        Destroy(frame);
+                    }
+
+                    alphas.Add(hudGroup != null ? hudGroup.alpha : (hud.IsShowing ? 1f : 0f));
+                    deltas.Add(Time.unscaledDeltaTime);
+
+                    if (hud.IsShowing)
+                    {
+                        if (firstShowingFrame < 0) firstShowingFrame = f;
+                        lastShowingFrame = f;
+                    }
+                }
+            }
+            finally
+            {
+                Time.captureFramerate = prevCapture;
+            }
+
+            // --- What rate must the clip be encoded at, for a second of clip to be a second of game? ----
+            //
+            // ⚠️ `Time.captureFramerate` DOES NOT LOCK `Time.unscaledDeltaTime`, MEASURED 2026-08-07.
+            // It pins Time.time/deltaTime, and the docs are read as pinning "the clock" — but the UNSCALED
+            // clock keeps reporting real elapsed wall time, and unscaled is exactly what capture feedback
+            // runs on (the flash and this fade both, deliberately, so a pause menu cannot freeze them).
+            // Observed 0.0378 s/frame against the 0.0333 requested, i.e. the readout used up its life in
+            // fewer frames than assumed and a clip encoded at 30 fps played ~11% fast. On the one question
+            // this recording exists to answer — "is it up long enough to read?" — playing fast is precisely
+            // the wrong way to be wrong.
+            //
+            // So the rig does not assume, and does not "fix" the engine either. It measures what the fade's
+            // own clock actually did and reports the encode rate that makes the clip honest.
+            float meanDelta = 0f, minDelta = float.MaxValue, maxDelta = 0f;
+            for (int i = 0; i < deltas.Count; i++)
+            {
+                meanDelta += deltas[i];
+                if (deltas[i] < minDelta) minDelta = deltas[i];
+                if (deltas[i] > maxDelta) maxDelta = deltas[i];
+            }
+            meanDelta /= Mathf.Max(1, deltas.Count);
+
+            float jitter = 0f;
+            for (int i = 0; i < deltas.Count; i++) jitter += (deltas[i] - meanDelta) * (deltas[i] - meanDelta);
+            jitter = Mathf.Sqrt(jitter / Mathf.Max(1, deltas.Count));
+
+            float effectiveFps = meanDelta > 0f ? 1f / meanDelta : RecordFps;
+
+            _log.AppendLine($"Time.unscaledDeltaTime while recording — the clock the fade actually runs on:");
+            _log.AppendLine($"    mean {meanDelta:0.0000}s   min {minDelta:0.0000}s   max {maxDelta:0.0000}s" +
+                            $"   std-dev {jitter:0.0000}s");
+            _log.AppendLine($"    requested by Time.captureFramerate: {1f / RecordFps:0.0000}s " +
+                            $"(1/{RecordFps})");
+            _log.AppendLine();
+            _log.AppendLine($"    ⚠ captureFramerate pins deltaTime but NOT unscaledDeltaTime, so the frames");
+            _log.AppendLine($"      are NOT {RecordFps} fps of game time. ENCODE AT {effectiveFps:0.00} fps —");
+            _log.AppendLine($"      at that rate one second of clip is one second of game.");
+
+            _captureFps = effectiveFps;
+
+            // Jitter matters because a constant-rate encode is only honest if the frames were evenly spaced.
+            _log.AppendLine(jitter < meanDelta * 0.25f
+                ? $"      Frame spacing was even (std-dev {jitter / meanDelta:P0} of the mean), so a constant-rate " +
+                  "encode is faithful."
+                : $"      ⚠ Frame spacing was UNEVEN (std-dev {jitter / meanDelta:P0} of the mean). A constant-rate " +
+                  "encode smooths that out; treat fine timing in the clip as approximate.");
+            _log.AppendLine();
+
+            // --- What the readout actually did, measured from the frames ------------------------------
+            _log.AppendLine($"readout visible from frame {firstShowingFrame} to {lastShowingFrame} " +
+                            $"= {(lastShowingFrame - firstShowingFrame + 1) / _captureFps:0.00}s " +
+                            $"(config asks for {hold + fade:0.00}s)");
+
+            int fullAlphaFrames = 0, fadingFrames = 0;
+            for (int i = 0; i < alphas.Count; i++)
+            {
+                if (alphas[i] > 0.995f) fullAlphaFrames++;
+                else if (alphas[i] > 0.001f) fadingFrames++;
+            }
+
+            _log.AppendLine($"  at FULL opacity for {fullAlphaFrames} frames = " +
+                            $"{fullAlphaFrames / _captureFps:0.00}s   (config hold {hold:0.00}s)");
+            _log.AppendLine($"  fading for        {fadingFrames} frames = " +
+                            $"{fadingFrames / _captureFps:0.00}s   (config fade {fade:0.00}s)");
+            _log.AppendLine("  (frames converted to seconds at the MEASURED rate above, not at the"
+                            + " requested one)");
+            _log.AppendLine();
+
+            _log.AppendLine("alpha, frame by frame (this is the fade curve; it should descend smoothly and");
+            _log.AppendLine("monotonically once it starts, with no step or stall):");
+            var line = new StringBuilder("    ");
+            for (int i = 0; i < alphas.Count; i++)
+            {
+                line.Append(alphas[i].ToString("0.00")).Append(' ');
+                if ((i + 1) % 15 == 0) { _log.AppendLine(line.ToString()); line = new StringBuilder("    "); }
+            }
+            if (line.Length > 4) _log.AppendLine(line.ToString());
+            _log.AppendLine();
+
+            _log.AppendLine($"grade recorded on this shot: {photo.LastGrade}");
+            _log.AppendLine($"    1| {ReadLabel("ratingLabel")}");
+            _log.AppendLine($"    2| {ReadLabel("axesLabel")}");
+            _log.AppendLine($"    3| {ReadLabel("whyLabel")}");
+            _log.AppendLine();
+            _log.AppendLine($"Frames are in {frameDir}/f_%04d.png — encode with:");
+            _log.AppendLine($"    ffmpeg -y -framerate {_captureFps:0.00} -i f_%04d.png -c:v libx264 "
+                            + "-pix_fmt yuv420p -vf format=yuv420p clip.mp4");
         }
 
         // =====================================================================

@@ -607,6 +607,9 @@ touch.
   Phase A (every readout state), Phase B (AC5), Phase C (stress/reuse), Phase D (boundaries), Phase E (NFR2).
 - `_bmad-output/verification/hud/*.png` — 9 states × 2 moments (settled + at-shutter), 3 control shots,
   4 stress frames, 3 stored gallery thumbnails.
+- `_bmad-output/verification/hud-motion/motion-review.md` — the temporal half: frame analysis of the
+  recorded readout, the Gemini video review, and a claim-by-claim verification of it.
+  `hud_readout.mp4` + `frames/` are the recording itself.
 - `_bmad-output/verification/gallery/` — re-run of `Tools > Gallery > Gallery Shoot (Play)`, the direct
   regression test for Task 2's `GalleryView` refactor.
 - `_bmad-output/verification/photo-shoot/` — re-run of `Tools > Grading > Photo Shoot (Play)`.
@@ -698,8 +701,29 @@ field, so the run printed *"a hold at or below zero is a readout that appears fo
 hold of **9999** and again under **NaN** — the number was right and the advice described neither mistake.
 Now the explanation follows the mistake (`WhyHold`/`WhyFade`), pinned by a test.
 
+**Motion verification (`tools/verification/`) — frame analysis first, then video.** A still cannot answer
+"does it arrive and leave cleanly" or "is it up long enough". `Tools > HUD > Grade HUD — Record the readout
+(Play)` records the screen frame by frame (the existing `RigVideoFeed` films a `RenderTexture` and therefore
+cannot see an Overlay canvas — the same inversion as the stills, one dimension along).
+**Measured:** onset **1 frame**; steady for ~2.1 s with no flicker (flat 0.253 plateau); exit **monotonic and
+linear** over 0.54 s; present **2.62 s** in total. Panel-band darkening +0.159 while up vs +0.007
+before/after, measured against a control band above it so the moving town cancels out.
+⚠️ **A trap paid for here:** `Time.captureFramerate` does **not** lock `Time.unscaledDeltaTime`, which is the
+clock the fade runs on — the first recording played ~11% fast. The rig now measures the fade's own clock and
+prints the honest encode rate (29.78 fps).
+**Gemini** (`gemini-3-flash-preview`, no timestamps supplied, no defect named): its headline claim — *"visible
+for approximately one second"* — is **disproven by measurement (2.62 s, off by 2.6×)**, and the readability
+conclusion resting on it is therefore not usable. Everything descriptive it said *was* confirmed: instant
+onset, smooth linear stutter-free exit, stable UI, good contrast over the bright trees. It also **corrected
+me**: the shutter flash washes the panel for only **2 frames (~0.07 s)** and the text stays legible through
+them — my earlier "bleached for 0.12 s" overstated it, because every still had been taken on exactly that
+frame. Most useful result: asked with no context what the panel communicates, it read stars → 0% → breakdown
+→ reason, in that order, and called it a rating for a captured photo. Full claim-by-claim verification in
+`motion-review.md`.
+
 **⚠️ WHAT I COULD NOT PROVE, AND WHAT NEEDS ALEXV (see Task 7).** AC3 and AC4 are perceptual and are
-**open**. Also: the run's Game View was **574×494**, which is small — the canvas scales with the screen so
+**open**. Motion analysis settles that nothing stutters and that the readout is up for 2.6 s; it cannot
+settle whether 2.6 s is long enough for someone playing rather than analysing. Also: the run's Game View was **574×494**, which is small — the canvas scales with the screen so
 the *layout* in the pictures is faithful, but "is the text big enough" cannot be settled from them and
 `hud.txt` says so.
 
@@ -720,7 +744,7 @@ evidence.** Alexv's call.
 - `Assets/Scripts/UI/GradeHudConfig.cs`
 - `Assets/Scripts/UI/GradeHud.cs`
 - `Assets/Scripts/UI/GradeHudShootRunner.cs`
-- `Assets/Scripts/Editor/GradeHudShootRig.cs`
+- `Assets/Scripts/Editor/GradeHudShootRig.cs` (two menu items: the shoot, and the motion recording)
 - `Assets/Data/UI/GradeHudConfig.asset`
 - `Assets/Tests/EditMode/GradeTextTests.cs`
 - `Assets/Tests/EditMode/GradeHudConfigTests.cs`
@@ -739,6 +763,10 @@ evidence.** Alexv's call.
   `AxesLabel` / `WhyLabel`, all references assigned.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/deferred-work.md`
+- `tools/verification/gemini_motion_review.py` — now takes an optional `--prompt <file>` so a temporal
+  question other than the walk-cycle one can be asked; the default is unchanged.
+- `CLAUDE.md` — the traps this story paid for (Overlay vs `cam.Render()`, the capture-flash instant,
+  `manager.enabled` not emptying the world).
 - `_bmad-output/implementation-artifacts/1-12-grade-feedback-hud.md`
 
 ### Change Log
@@ -748,4 +776,5 @@ evidence.** Alexv's call.
 | 2026-07-31 | Story created (`gds-create-story`). |
 | 2026-08-07 | Implemented. Task 1's five decisions recorded; `GradeText` extracted and `FromPercent` deleted; `GradeHudConfig` + asset; `GradeHud` + scene canvas; `GradeHudShootRig`/`Runner` built and run in the real scene. 140/140 EditMode tests pass; photo-shoot and gallery-shoot regressions clean. Status → review. |
 | 2026-08-07 | Rig self-corrections after the first run: the empty-street scenario was photographing a live subject; every Phase A frame was taken at peak capture-flash; `h_behind_you` never reached `BehindCamera`. Shipped fix: the config's problem text now describes the mistake that was made rather than one fixed sentence per field. Re-run clean. |
+| 2026-08-07 | Motion verification added (`Tools > HUD > Grade HUD — Record the readout`): frame analysis of the recorded readout plus a Gemini video review, every claim of which was verified — its headline duration claim was disproven by measurement, and it corrected my own overstatement about the capture flash. `Time.captureFramerate` does not lock `unscaledDeltaTime`; the rig now measures and reports the honest encode rate. |
 | 2026-08-07 | AC3/AC4 handed to Alexv and left **open** — see Task 7. Town occlusion symptom raised as a scope question, not fixed. |
