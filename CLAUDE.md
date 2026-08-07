@@ -133,7 +133,23 @@ the difference between findings and fiction, and each was measured. The short ve
 - A debug readout that outlives the instant it describes will be read against a later frame. Bound its
   lifetime and label it a snapshot — a 4-second overlay produced a confident, wrong bug diagnosis from a
   screenshot taken two seconds after the shot.
-- A rig that logs its own errors trains you to ignore errors — keep its console clean too.
+- A rig that logs its own errors trains you to ignore errors — keep its console clean too. When a rig must
+  provoke errors on purpose (fail-soft scenarios), say so at the top of its output and name them, so a
+  clean-console check can tell them from findings.
+- **A Screen Space – Overlay canvas is invisible to `cam.Render()`, so this project's standard verification
+  technique cannot see it.** Use `ScreenCapture.CaptureScreenshotAsTexture()` after
+  `yield return new WaitForEndOfFrame()` — and **leave the camera rendering to the screen** (no
+  `targetTexture` bound, which is what both older rigs do for the whole run, and which leaves the
+  backbuffer empty). Prove it with control shots before trusting one image: a frame with known 3D content
+  (must not be uniform or near-white) and a full-screen marker on an Overlay canvas (must dominate, then
+  return to zero when switched off). Story 1.12 measured 100.00% / 0.00% on that pair.
+- **Capture feedback is photographed at the wrong instant by default.** Grabbing one frame after
+  `Capture()` catches the shutter flash at full white, and it shines through anything translucent — every
+  photograph comes back bleached and reads as a legibility defect that is not there. Capture the settled
+  frame (~0.5 s later) for legibility and keep the flash frame separately if the moment matters.
+- **Disabling a manager does not empty its world.** `manager.enabled = false` stops the manager's `Update`;
+  it despawns nothing. A rig scenario captioned "nobody there" photographed a live subject and graded it
+  94%. If a scenario needs an empty street, deactivate the live actors and put them back.
 
 ## Jira Sync (BMad epics & stories) — REQUIRED
 
