@@ -260,13 +260,28 @@ namespace CameraGame.Grading
         /// "nobody". See <see cref="SubjectId"/>.
         ///
         /// (This list said NoViewport was empty while the code passed the id. The 2026-07-30 review caught
-        /// the contradiction; the CODE was right, so the doc moved.)</summary>
+        /// the contradiction; the CODE was right, so the doc moved.)
         ///
         /// The peak offset is NaN for every miss without exception: grading early-outs at the first failed
         /// gate and timing is read LAST, after the size and occlusion gates, so no rejected shot has ever
-        /// had its distance from the peak measured.
+        /// had its distance from the peak measured. (These three lines used to sit OUTSIDE the closed
+        /// summary tag, so they reached neither IntelliSense nor a hover tooltip — the only places a caller
+        /// of this method would look. Caught by the 2026-08-07 code review.)
+        ///
+        /// ⚠️ <see cref="GradeMiss.None"/> IS NOT A REJECTION, AND PASSING IT HERE IS A CALLER BUG.
+        /// It used to be accepted verbatim, which built a grade with <c>MissReason == None</c> and
+        /// <c>IsPlaceholder == false</c> — i.e. <c>Counted == true</c> — carrying an all-zero breakdown.
+        /// That is precisely the shape <c>FromPercent</c> was deleted for a few lines above, reachable
+        /// through an unguarded argument on the surviving factory, and the HUD rendered it as a counted shot
+        /// asserting three measurements nobody took. Mapped to <see cref="GradeMiss.Unevaluated"/> instead,
+        /// which is what it actually means ("no grade was ever computed") and which every reader already
+        /// handles: not <see cref="Counted"/>, not <see cref="IsMiss"/>, and worded "not graded".
+        /// Remapped rather than logged, because this runs inside a struct factory that the EditMode tests
+        /// call across every enum member.</summary>
         public static ShotGrade Missed(GradeMiss reason, string subjectId = null) =>
-            new ShotGrade(0f, isPlaceholder: false, reason, 0f, 0f, 0f, 1, subjectId, float.NaN);
+            new ShotGrade(0f, isPlaceholder: false,
+                          reason == GradeMiss.None ? GradeMiss.Unevaluated : reason,
+                          0f, 0f, 0f, 1, subjectId, float.NaN);
 
         /// <summary>A clearly-temporary grade used by Story 1.5 when grading is not configured. Nothing was
         /// measured, so the peak offset is NaN like every other axis is zero — and

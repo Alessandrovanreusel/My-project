@@ -110,6 +110,30 @@ namespace CameraGame.UI
         {
             _canvas = GetComponent<Canvas>();
 
+            // ⚠️ THE ONE PROPERTY THIS WHOLE STORY RESTS ON, AND IT USED TO BE THE ONLY ONE NOT CHECKED.
+            //
+            // [RequireComponent(typeof(Canvas))] guarantees a Canvas EXISTS. It guarantees nothing about its
+            // render mode — and the class header above explains at length that Overlay is what makes "the
+            // HUD can never reach a stored photograph" structural rather than a matter of subscriber order.
+            // Flip this canvas to Screen Space - Camera in the Inspector (chasing a sorting-order problem, a
+            // prefab merge, a new scene authored from memory) and the grade text bakes into every thumbnail
+            // GalleryService stores, with a completely clean console. All three layers of the 2026-08-07
+            // code review flagged this independently, including the one with no project access.
+            //
+            // Repaired as well as reported, exactly as the sibling class does it (GalleryView.cs:230 sets
+            // its own render mode rather than trusting the scene): the acceptance criterion is not
+            // negotiable, so the code owns the property rather than the scene asset. The Error is what stops
+            // the repair being silent — "fail-soft must not mean invisible".
+            if (_canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+            {
+                GameLog.Error("GradeHud",
+                    $"Canvas render mode is {_canvas.renderMode}, but the grade readout MUST be " +
+                    "Screen Space - Overlay: any other mode can be captured by photoCamera.Render() and " +
+                    "baked into the stored photograph. Forcing it back to Overlay — fix the scene asset.",
+                    this);
+                _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            }
+
             // Each reference on its own line into its own flag. A missing channel must not be reported as a
             // missing config, and a missing label must disable only that line.
             bool haveChannel = shotCapturedChannel != null;
@@ -134,6 +158,17 @@ namespace CameraGame.UI
                 // Info, not Error: a HUD that appears and disappears without a fade is a supported, legible
                 // state, not a broken one. Keeps the console clean (NFR5).
                 GameLog.Info("GradeHud", "No CanvasGroup — the readout will show and hide without fading.");
+
+            // photoMode is genuinely optional, but a null here SILENTLY DROPS A GUARD rather than merely
+            // doing less: the hide-on-lowered test short-circuits on `photoMode != null`, so the readout
+            // runs its full hold over the gallery grid — the exact thing hideOnCameraLowered exists to
+            // prevent — while the switch still reads ON in the Inspector. Every sibling reference in this
+            // class fails loudly; this one used to fail with no line at all. Warn rather than Error: the
+            // readout itself still works perfectly.
+            if (photoMode == null && haveConfig && config.hideOnCameraLowered)
+                GameLog.Warn("GradeHud",
+                    "No PhotoModeController assigned while hideOnCameraLowered is ON — the guard cannot " +
+                    "fire, so the readout will run its full hold and can sit over the gallery.");
 
             if (ratingLabel == null || axesLabel == null || whyLabel == null)
                 GameLog.Error("GradeHud",
@@ -160,14 +195,25 @@ namespace CameraGame.UI
         // clears its subscribers on domain reload, but that is a backstop, not a substitute: a GradeHud that
         // is merely DISABLED must leave no live delegate on the channel asset, or a hidden HUD goes on
         // formatting strings once per shutter press for a canvas nobody can see.
+        //
+        // ⚠️ THE CHANNEL SUBSCRIBED TO IS CACHED, NOT RE-READ FROM THE FIELD. Both halves used to
+        // dereference the CURRENT field value, so reassigning the channel in the Inspector during play —
+        // which is how this project tunes and verifies — unsubscribed from the NEW asset (a no-op) and left
+        // the OLD one holding a live delegate to a disabled GradeHud and its whole GameObject. The symptom
+        // is the one this comment already warned about, plus a Canvas switching itself back on that the
+        // developer believes is off.
+        private ShotCapturedChannel _subscribedChannel;
+
         private void OnEnable()
         {
-            if (shotCapturedChannel != null) shotCapturedChannel.Raised += HandleShotCaptured;
+            _subscribedChannel = shotCapturedChannel;
+            if (_subscribedChannel != null) _subscribedChannel.Raised += HandleShotCaptured;
         }
 
         private void OnDisable()
         {
-            if (shotCapturedChannel != null) shotCapturedChannel.Raised -= HandleShotCaptured;
+            if (_subscribedChannel != null) _subscribedChannel.Raised -= HandleShotCaptured;
+            _subscribedChannel = null;
 
             // Leave nothing on screen. Without this, disabling mid-hold and re-enabling later would bring
             // back a readout describing a capture from before — a stale verdict is worse than none.
@@ -209,11 +255,27 @@ namespace CameraGame.UI
             // capture sit under the current one — a miss reason beneath a counted shot's percentage, which
             // is a readout that is wrong rather than merely incomplete.
 
-            if (grade.IsPlaceholder)
+            // ⚠️ FOUR STATES, NOT THREE — AND THE FOURTH USED TO LAND IN THE WRONG BRANCH.
+            //
+            // Counted / miss / placeholder do NOT partition ShotGrade. A grade whose MissReason is
+            // GradeMiss.Unevaluated but which is not a placeholder belongs to none of them: Unevaluated is
+            // deliberately the enum's ZERO value (ShotGrader.cs:10-15) and IsMiss excludes it, so
+            // default(ShotGrade) — from new ShotGrade[n], an unassigned struct field, a failed TryGetValue —
+            // is neither Counted nor IsMiss nor IsPlaceholder. It fell through both guards below into the
+            // COUNTED branch and printed "composition 0% × timing 0% · seen 0%" in the counted colour: the
+            // exact all-zero Counted shape ShotGrade.FromPercent was deleted for in this same story, on the
+            // one readout the player sees. Found by the 2026-08-07 code review.
+            //
+            // No production path raises it today (PhotoModeController.cs:379 raises only Placeholder,
+            // Scored, or Missed with a real reason) — this branch is what keeps it that way, and it costs
+            // one comparison. Branch on Counted, which is POSITIVE, rather than on two negatives that a
+            // fourth state can slip between.
+            if (!grade.Counted && !grade.IsMiss)
             {
                 // ⚠️ NOT "1★ · 0%". A placeholder is 0%, 1 star and GradeMiss.Unevaluated because nothing
                 // was ever measured — rendering that as a rating tells the player they took a terrible
-                // photograph when the game never graded one.
+                // photograph when the game never graded one. Identical wording for the zeroed fourth state,
+                // because it means the same thing: nobody graded this.
                 SetText(ratingLabel, "NOT GRADED");
                 SetText(axesLabel, NotMeasuredAxes);
                 SetText(whyLabel, GradeText.MissLong(GradeMiss.Unevaluated));

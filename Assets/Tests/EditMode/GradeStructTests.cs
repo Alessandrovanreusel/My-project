@@ -255,6 +255,42 @@ namespace CameraGame.Tests
             }
         }
 
+        // ⚠️ THE FOURTH STATE, PINNED (2026-08-07 code review).
+        //
+        // Counted / miss / placeholder do NOT partition ShotGrade. GradeMiss.Unevaluated is deliberately the
+        // enum's ZERO value, and IsMiss excludes it — so a zeroed default(ShotGrade), or a grade built with
+        // Unevaluated, is none of the three. The HUD branched on the two negatives and let that shape fall
+        // into the COUNTED branch, printing "composition 0% × timing 0% × seen 0%": an all-zero grade
+        // asserting three measurements nobody took, which is the exact shape FromPercent was deleted for.
+        //
+        // What is pinned is the classification, not the wording: any reader that asks "is this Counted?"
+        // must get `false` for every shape that was never actually scored.
+        [Test]
+        public void ShapesThatWereNeverScored_AreNeverCounted()
+        {
+            Assert.IsFalse(default(ShotGrade).Counted, "a zeroed default must never read as a counted shot");
+            Assert.IsFalse(ShotGrade.Placeholder.Counted, "a placeholder was never graded");
+            Assert.IsFalse(ShotGrade.Missed(GradeMiss.Unevaluated, "TownDrunk").Counted,
+                "Unevaluated means no grade was ever computed");
+
+            // GradeMiss.None is not a rejection; passing it to Missed is a caller bug. It used to build a
+            // grade with Counted == true carrying an all-zero breakdown — the one remaining way to construct
+            // the state AC2 forbids. It is now mapped to Unevaluated.
+            Assert.IsFalse(ShotGrade.Missed(GradeMiss.None, "TownDrunk").Counted,
+                "Missed(None) must not produce a counted shot with an all-zero breakdown");
+        }
+
+        // The other half: a shot that really was scored must still read as counted, including the common
+        // off-peak case that scores a hard 0% and is NOT a miss.
+        [Test]
+        public void AGenuinelyScoredShot_IsStillCounted_EvenAtZeroPercent()
+        {
+            var offPeak = ShotGrade.Scored(1f, 0.95f, 0f, StarScale.Default, "TownDrunk", -3.6f);
+
+            Assert.IsTrue(offPeak.Counted, "an off-peak shot is a real, counted shot that scored 0%");
+            Assert.IsFalse(offPeak.IsMiss, "a counted 0% shot must be distinguishable from a miss");
+        }
+
         // Contract: a placeholder measured nothing, so it cannot report a peak offset either.
         [Test]
         public void Placeholder_NeverReportsATimingMeasurement()

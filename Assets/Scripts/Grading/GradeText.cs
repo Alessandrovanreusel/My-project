@@ -108,11 +108,31 @@ namespace CameraGame.Grading
         {
             if (!grade.TimingMeasured) return string.Empty;
 
+            // ⚠️ THE SCORE DECIDES WHETHER THERE IS ANYTHING TO FIX — NOT THE RAW OFFSET.
+            //
+            // This used to test `Abs(offset) < 0.1f` first, with a hardcoded tenth of a second that knew
+            // nothing about GradingConfig.timingFullSeconds. The shipped config awards a flat Timing01 = 1
+            // anywhere inside ±0.5s (ShotGrader.Timing: `if (distance <= fullSeconds) return 1f`), so across
+            // 80% of the full-marks band the readout printed "timing 100%" on the axes line and
+            // "0.2s early — wait for it" on the line directly beneath it: the player was told to change the
+            // one thing that cost them nothing. Found by the 2026-08-07 code review and reproduced against
+            // the real config — 7 of 12 sampled offsets contradicted themselves, and the run data had
+            // already recorded one (hud.txt:345, `timing 100 % @ peak +0.15s`) without anyone photographing
+            // that band.
+            //
+            // Gating on Timing01 instead ties the advice to the number actually shown, so the two lines
+            // cannot disagree however the designer retunes the window — including the mirror case, a
+            // timingFullSeconds smaller than the old deadband, where "right on the moment" used to be
+            // printed over a timing score of 26%.
+            if (grade.Timing01 >= 1f) return "right on the moment";
+
             float offset = grade.PeakOffset;
 
-            // Inside a tenth of a second of the peak window there is nothing useful to say — and rounding
-            // would print "0.0s early", which reads as a criticism of a shot that was perfectly timed.
-            if (Mathf.Abs(offset) < 0.1f) return "right on the moment";
+            // Below a tenth of a second there is no advice worth printing: `{0.0}` rounds to "0.0s early",
+            // which is a criticism with no magnitude behind it. Say NOTHING rather than that — and note
+            // this can only be reached when timing scored less than full marks, so "right on the moment"
+            // would be a lie here rather than a compliment.
+            if (Mathf.Abs(offset) < 0.1f) return string.Empty;
 
             // Positive is EARLY and negative is LATE (ISubject.PeakOffset). Stated as the player's mistake
             // rather than as a signed number: "-1.4s" is a debug value, "1.4s late" is feedback.

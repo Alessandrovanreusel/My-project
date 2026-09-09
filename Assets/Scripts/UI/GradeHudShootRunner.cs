@@ -8,6 +8,7 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using CameraGame.Core;
 using CameraGame.Events;
 using CameraGame.Gallery;
 using CameraGame.Grading;
@@ -664,6 +665,9 @@ namespace CameraGame.UI
 
         private IEnumerator ShootState(State s, bool requireActor)
         {
+            // A new scenario gets a fresh vantage search; every PlaceCamera within it reuses the result.
+            _vantageFresh = false;
+
             EventActor actor = null;
 
             if (requireActor)
@@ -802,6 +806,8 @@ namespace CameraGame.UI
                 Save(settled, name + ".png");
 
                 _log.AppendLine($"{name}  —  {whatTheCameraDid}");
+                if (!string.IsNullOrEmpty(_lastVantageNote))
+                    _log.AppendLine($"    {_lastVantageNote}");
                 _log.AppendLine($"    grade at shutter:   {shutter.LastGrade}");
                 _log.AppendLine($"    detail:             {shutter.LastDetail}");
                 _log.AppendLine($"    live subject id / PeakOffset at shutter: '{liveId}' / " +
@@ -1550,13 +1556,189 @@ namespace CameraGame.UI
             yield return null;
         }
 
+        /// <summary>Set when a scenario has just chosen a vantage, so the line-of-sight probe below runs
+        /// once for that scenario rather than on every frame of the tracking loop.</summary>
+        private bool _pendingLineOfSightProbe;
+
+        /// <summary>
+        /// What is ACTUALLY between the camera and the subject, dumped rather than inferred.
+        ///
+        /// ⚠️ THIS EXISTS BECAUSE TWO SOUND-LOOKING EXPLANATIONS BOTH TURNED OUT TO BE WRONG. The 5★
+        /// exemplar photographs a pine tree with the drunk behind it while the grader reports
+        /// `line-of-sight 100%`. The first explanation — "the foliage has no collider, because
+        /// `Tools > Add MeshColliders to World` only walks a named root" — was disproven by counting:
+        /// 16738 of 16738 renderers under `game map` have one. The second — "the rig stands in the wrong
+        /// place" — was disproven by measuring: nine rays spanning the subject's silhouette all report the
+        /// line clear from the very vantage whose photograph is full of tree.
+        ///
+        /// `deferred-work.md` names this exact probe as the cheapest decisive one and nobody had run it, so
+        /// the rig now runs it every time and prints the answer beside the picture it explains. It costs one
+        /// RaycastAll per scenario and it settles by evidence what two rounds of reasoning could not.
+        /// </summary>
+        private string DescribeLineOfSight(Vector3 camPos, Bounds b)
+        {
+            Vector3 to = b.center - camPos;
+            float dist = to.magnitude;
+            if (dist < 1e-4f) return "line of sight: camera is on top of the subject.";
+
+            var sb = new StringBuilder();
+            sb.Append($"line of sight: {dist:0.00}m to subject centre; ");
+
+            // Everything on the segment, whatever layer it is on — the question is what is THERE, not what
+            // the grader has been told to count.
+            RaycastHit[] hits = Physics.RaycastAll(camPos, to.normalized, dist, ~0, QueryTriggerInteraction.Ignore);
+            System.Array.Sort(hits, (x, y) => x.distance.CompareTo(y.distance));
+
+            if (hits.Length == 0) sb.Append("RaycastAll hits NOTHING at all.");
+            else
+            {
+                sb.Append($"RaycastAll hits {hits.Length}: ");
+                for (int i = 0; i < hits.Length && i < 6; i++)
+                    sb.Append($"[{hits[i].distance:0.00}m '{hits[i].collider.gameObject.name}' layer {hits[i].collider.gameObject.layer}] ");
+            }
+
+            // A camera standing INSIDE a mesh sees its back faces, and Unity does not report back-face hits
+            // by default (Physics.queriesHitBackfaces is false here) — so "nothing in the way" and "buried
+            // in a tree" look identical to a raycast. Name the difference.
+            Collider[] around = Physics.OverlapSphere(camPos, 0.05f, ~0, QueryTriggerInteraction.Ignore);
+            sb.Append(around.Length == 0
+                ? "  camera is in open space."
+                : $"  ⚠ camera is INSIDE {around.Length} collider(s): '{around[0].gameObject.name}'.");
+
+            sb.Append($"  (queriesHitBackfaces={Physics.queriesHitBackfaces})");
+            return sb.ToString();
+        }
+
+        /// <summary>What the last vantage search actually did. Printed beside the shot it produced, because
+        /// a search that quietly gives up is indistinguishable in the picture from one that succeeded —
+        /// which is exactly how the 2026-08-07 exemplar came to be a 5★ photograph of a pine tree.</summary>
+        private string _lastVantageNote = "";
+
+        /// <summary>The vantage chosen for the scenario currently being shot, and whether it has been chosen
+        /// yet. Reset by <c>ShootState</c> so each scenario searches exactly once — see PlaceCamera.</summary>
+        private Vector3 _vantageDir = Vector3.forward;
+        private bool _vantageFresh;
+
+        /// <summary>
+        /// A direction to stand in that can actually SEE the subject.
+        ///
+        /// ⚠️ THIS RIG USED TO ALWAYS SHOOT DOWN WORLD +Z, AND IT PRODUCED A MISLEADING EXEMPLAR.
+        /// `a_money_shot.png` from the 2026-08-07 run scored 94% / 5★ over a photograph of a pine tree with
+        /// the drunk hidden behind it. The grade was not wrong about the SHOT — that is the separate,
+        /// deferred town-occlusion defect (the grader reported line-of-sight 100% through a tree) — but it
+        /// made the picture useless for the job AC3 needs it to do. Alexv is asked "can you tell a great
+        /// shot from a weak one, and understand why"; he cannot answer that from a 5★ photograph of a tree,
+        /// because the honest answer is about the grader rather than about the readout.
+        ///
+        /// ⚠️ AND THE FIRST ATTEMPT AT THE FIX DID NOT WORK — IT WAS WRITTEN AND NEVER RUN. It sampled ONE
+        /// ray, to the bounds CENTRE, against `gradingConfig.occluderMask`. Two things were wrong with that.
+        /// The mask is the grader's own, and the grader is the component under suspicion here, so the search
+        /// inherited whatever the grader gets wrong. And a single ray to a centre point is not a visibility
+        /// test: it clears a direction in which the subject's head and body are both behind a trunk, as long
+        /// as the trunk happens to be narrow at that one height. The 2026-09-09 re-run photographed the same
+        /// tree, and the failure was invisible in the picture — which is what the note below is for.
+        ///
+        /// So: sample the subject's whole silhouette, not one point; test against EVERYTHING except the
+        /// subject's own layer rather than the grader's mask; and when no direction is clean, keep the best
+        /// one and SAY SO in the log rather than falling back to +Z in silence.
+        ///
+        /// This does not fix or hide the occlusion defect — it stops the exemplar depending on where a tree
+        /// happens to be.
+        /// </summary>
+        private Vector3 ClearDirectionFor(Bounds b, float distance)
+        {
+            // Deliberately NOT gradingConfig.occluderMask. Everything except the subject himself blocks a
+            // photograph, whether or not the grader has been told to count it.
+            int subjectLayer = LayerMask.NameToLayer(GameConstants.Layers.Subject);
+            int mask = subjectLayer >= 0 ? ~(1 << subjectLayer) : ~0;
+
+            const int Directions = 24;
+            Vector3 best = Vector3.forward;
+            int bestClear = -1;
+            float bestDeg = 0f;
+            int total = 0;
+
+            for (int i = 0; i < Directions; i++)
+            {
+                // Start at +Z so a scene with nothing in the way keeps the framing every previous run used.
+                float deg = i * (360f / Directions);
+                Vector3 dir = Quaternion.Euler(0f, deg, 0f) * Vector3.forward;
+                int clear = ClearSampleCount(b.center + dir * distance, b, mask, out total);
+
+                if (clear > bestClear) { bestClear = clear; best = dir; bestDeg = deg; }
+                if (clear == total)
+                {
+                    _lastVantageNote = deg == 0f
+                        ? $"vantage: +Z, unobstructed ({clear}/{total} sample rays clear)."
+                        : $"vantage: rotated {deg:0}° off +Z to clear the line ({clear}/{total} sample rays clear).";
+                    return dir;
+                }
+            }
+
+            // ⚠️ NOT SILENT. A rig that gives up quietly produces a confident, wrong exemplar.
+            _lastVantageNote =
+                $"⚠ vantage: NO clear line found in {Directions} directions at {distance:0.0}m — best was " +
+                $"{bestDeg:0}° with {bestClear}/{total} sample rays clear. The subject is boxed in; this " +
+                "photograph may show foliage rather than him, and should NOT be used to judge AC3.";
+            return best;
+        }
+
+        /// <summary>How much of the subject's silhouette a camera at <paramref name="from"/> can actually
+        /// see, sampled across the bounds rather than at the single centre point that let a whole tree
+        /// through. Nine rays: the centre, and eight points inset from the corners and edge midpoints of the
+        /// bounds — inset so a ray does not graze the very edge of a capsule and report a miss.</summary>
+        private static int ClearSampleCount(Vector3 from, Bounds b, int mask, out int total)
+        {
+            Vector3 e = b.extents * 0.7f;
+            var points = new Vector3[]
+            {
+                b.center,
+                b.center + new Vector3(-e.x, e.y, 0f), b.center + new Vector3(0f, e.y, 0f), b.center + new Vector3(e.x, e.y, 0f),
+                b.center + new Vector3(-e.x, 0f, 0f),                                        b.center + new Vector3(e.x, 0f, 0f),
+                b.center + new Vector3(-e.x, -e.y, 0f), b.center + new Vector3(0f, -e.y, 0f), b.center + new Vector3(e.x, -e.y, 0f),
+            };
+
+            total = points.Length;
+            int clear = 0;
+            for (int i = 0; i < points.Length; i++)
+                if (!Physics.Linecast(from, points[i], mask, QueryTriggerInteraction.Ignore)) clear++;
+
+            return clear;
+        }
+
         /// <summary>Positions and aims the camera so the subject's centre lands in the middle of the frame.
         /// Lifted from PhotoShootRunner/GalleryShootRunner — same geometry, same reasoning.</summary>
         private void PlaceCamera(State s, Bounds b)
         {
             float height = Mathf.Max(0.01f, b.size.y);
+            float distance = Mathf.Max(0.2f, s.Distance) * height;
 
-            cam.transform.position = b.center + Vector3.forward * (Mathf.Max(0.2f, s.Distance) * height);
+            // `Wall` scenarios put their OWN occluder in the way on purpose — finding a clear line for those
+            // would defeat the scenario. Only the unobstructed states get a clear vantage point.
+            // ⚠️ SEARCH ONCE PER SCENARIO, NOT ONCE PER FRAME. PlaceCamera is called every frame by the
+            // tracking loop that waits for the peak (up to 90 s of them), so anything expensive in here is
+            // multiplied by the frame count. The first version of the search did 24 x 9 linecasts on every
+            // one of those frames and turned a 2.5-minute run into one that did not finish — measured, not
+            // guessed. The vantage is a property of the scenario, so it is chosen when the scenario starts
+            // and reused until the next one begins.
+            Vector3 dir;
+            if (s.Wall)
+            {
+                dir = Vector3.forward;
+                _lastVantageNote = "vantage: +Z, deliberately obstructed — this scenario supplies its own wall.";
+            }
+            else
+            {
+                if (!_vantageFresh)
+                {
+                    _vantageDir = ClearDirectionFor(b, distance);
+                    _vantageFresh = true;
+                    _pendingLineOfSightProbe = true;
+                }
+                dir = _vantageDir;
+            }
+
+            cam.transform.position = b.center + dir * distance;
 
             Vector3 camPos = cam.transform.position;
             Vector3 toSubject = b.center - camPos;
@@ -1571,6 +1753,12 @@ namespace CameraGame.UI
                 _wall.transform.position = Vector3.Lerp(camPos, b.center, 0.45f);
                 _wall.transform.localScale = new Vector3(height * 5f, height * 5f, 0.4f);
                 _wall.transform.rotation = Quaternion.LookRotation(b.center - camPos, Vector3.up);
+            }
+
+            if (_pendingLineOfSightProbe)
+            {
+                _pendingLineOfSightProbe = false;
+                _lastVantageNote += "  " + DescribeLineOfSight(camPos, b);
             }
 
             Physics.SyncTransforms();

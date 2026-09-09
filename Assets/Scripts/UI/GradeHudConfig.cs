@@ -129,8 +129,28 @@ namespace CameraGame.UI
             return Mathf.Clamp(value, min, max);
         }
 
+        /// <summary>
+        /// A colour guaranteed to be drawable, however the asset was authored.
+        ///
+        /// ⚠️ WRITTEN AS <c>!(a >= min)</c>, NOT <c>(a &lt; min)</c> — AND THAT IS THE WHOLE POINT.
+        /// <c>NaN &lt; 0.05f</c> is <b>false</b>, so the original comparison waved a NaN alpha straight
+        /// through unrepaired, and <see cref="ReportInvisible"/> used the identical comparison so the
+        /// validator said nothing either. The Color32 conversion of NaN yields 0, i.e. invisible or black
+        /// text with a completely clean console — the silent-nothing shape this file's header enumerates
+        /// five prior instances of, in the one member of the set that had not been given the
+        /// <see cref="ClampFinite"/> treatment two members up. Found by the 2026-08-07 code review.
+        ///
+        /// The negated form is true for NaN, so a non-finite alpha is repaired like any other unusable one.
+        /// RGB goes through the same finite-clamp: a NaN in a colour channel is just as unrenderable as one
+        /// in the alpha, and clamping preserves the hue a designer chose for every value that is sane.
+        /// </summary>
         private static Color Visible(Color c) =>
-            c.a < MinVisibleAlpha ? new Color(c.r, c.g, c.b, 1f) : c;
+            new Color(Channel(c.r), Channel(c.g), Channel(c.b),
+                      !(c.a >= MinVisibleAlpha) ? 1f : Mathf.Clamp01(c.a));
+
+        /// <summary>One colour channel, guaranteed finite and in range. NaN becomes 0 rather than
+        /// propagating, for the same reason <see cref="ClampFinite"/> exists.</summary>
+        private static float Channel(float v) => float.IsNaN(v) ? 0f : Mathf.Clamp01(v);
 
         /// <summary>
         /// Reports authoring mistakes that would break the HUD SILENTLY rather than loudly — the project's
@@ -207,12 +227,24 @@ namespace CameraGame.UI
         }
 
         /// <summary>A colour authored at alpha 0 is text that is not there, and it looks completely normal
-        /// in the Inspector. Exactly the silent-nothing class, one channel over from the numbers.</summary>
+        /// in the Inspector. Exactly the silent-nothing class, one channel over from the numbers.
+        ///
+        /// ⚠️ THE NEGATED COMPARISON IS LOAD-BEARING HERE TOO — see <see cref="Visible"/>. With
+        /// <c>c.a &lt; MinVisibleAlpha</c> a NaN alpha reported nothing, so the one authoring mistake that
+        /// defeated the repair was also the one the validator stayed silent about.</summary>
         private static string ReportInvisible(string all, Color c, string field) =>
-            c.a < MinVisibleAlpha
-                ? Add(all, $"{field} has alpha {c.a}, so that line would be invisible on screen while " +
-                           "reading as a perfectly valid colour in the Inspector — forcing it opaque.")
+            !(c.a >= MinVisibleAlpha) || float.IsNaN(c.r) || float.IsNaN(c.g) || float.IsNaN(c.b)
+                ? Add(all, $"{field} is {ColorText(c)}, so that line would be invisible or mis-coloured on " +
+                           "screen while reading as a perfectly valid colour in the Inspector — repairing it.")
                 : all;
+
+        /// <summary>Names what is actually wrong with a colour, rather than always blaming the alpha — the
+        /// same rule <see cref="WhyHold"/> follows. A validator whose explanation is wrong costs more than
+        /// one that only states the value.</summary>
+        private static string ColorText(Color c) =>
+            float.IsNaN(c.r) || float.IsNaN(c.g) || float.IsNaN(c.b)
+                ? $"({c.r}, {c.g}, {c.b}, {c.a}) — a non-finite colour channel"
+                : float.IsNaN(c.a) ? "alpha NaN" : $"alpha {c.a}";
 
         private static string Add(string all, string next) =>
             string.IsNullOrEmpty(all) ? next : all + "  " + next;

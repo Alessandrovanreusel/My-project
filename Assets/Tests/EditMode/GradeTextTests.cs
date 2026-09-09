@@ -130,6 +130,48 @@ namespace CameraGame.Tests
             Assert.AreNotEqual(early, late);
         }
 
+        // ⚠️ THE CONTRADICTION THE 2026-08-07 CODE REVIEW FOUND, PINNED.
+        //
+        // TimingAdvice used to test `Abs(offset) < 0.1f` with a hardcoded tenth of a second that knew nothing
+        // about GradingConfig.timingFullSeconds. The shipped config awards a flat Timing01 = 1 anywhere
+        // inside ±0.5s, so the readout printed "timing 100%" on one line and "0.2s early — wait for it" on
+        // the next: the player was told to fix the axis that cost them nothing. Reproduced against the real
+        // config at the time — 7 of 12 sampled offsets contradicted themselves.
+        //
+        // Written across the whole band rather than at one offset, because the bug was invisible at 0.0
+        // (where every previous test and every rig scenario sat) and appeared everywhere else inside it.
+        [TestCase(0.10f)]
+        [TestCase(0.15f)]
+        [TestCase(0.25f)]
+        [TestCase(0.50f)]
+        [TestCase(-0.15f)]
+        [TestCase(-0.49f)]
+        public void TimingAdvice_NeverTellsThePlayerToFixATimingThatScoredFullMarks(float offset)
+        {
+            // Timing01 = 1 is what the grader hands over for any offset inside timingFullSeconds.
+            string advice = GradeText.TimingAdvice(
+                ShotGrade.Scored(1f, 0.94f, 1f, StarScale.Default, "TownDrunk", offset));
+
+            Assert.IsFalse(advice.Contains("early"),
+                $"'{advice}' tells the player to wait, beneath a line reading 'timing 100%'");
+            Assert.IsFalse(advice.Contains("late"),
+                $"'{advice}' tells the player to shoot sooner, beneath a line reading 'timing 100%'");
+        }
+
+        // The other half of the same contract: the fix must not have silenced genuinely useful advice.
+        // An offset OUTSIDE the full-marks band still has to name the direction the player was wrong.
+        [TestCase(0.6f, 0.99f, "early")]
+        [TestCase(1.4f, 0.35f, "early")]
+        [TestCase(-1.4f, 0.35f, "late")]
+        public void TimingAdvice_StillNamesTheDirection_WhenTimingDidNotScoreFullMarks(
+            float offset, float timing01, string expectedWord)
+        {
+            string advice = GradeText.TimingAdvice(
+                ShotGrade.Scored(1f, 0.94f, timing01, StarScale.Default, "TownDrunk", offset));
+
+            StringAssert.Contains(expectedWord, advice);
+        }
+
         // Contract: "Inside a tenth of a second of the peak window there is nothing useful to say — and
         // rounding would print '0.0s early', which reads as a criticism of a shot that was perfectly timed."
         [TestCase(0f)]

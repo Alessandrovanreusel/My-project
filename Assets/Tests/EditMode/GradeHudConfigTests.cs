@@ -103,6 +103,44 @@ namespace CameraGame.Tests
             Assert.That(_cfg.SafeMissColor.g, Is.EqualTo(0f).Within(1e-5f));
         }
 
+        // ⚠️ THE ONE AUTHORING MISTAKE THAT DEFEATED BOTH THE REPAIR AND THE VALIDATOR (2026-08-07 review).
+        //
+        // `Visible` tested `c.a < MinVisibleAlpha`, and `NaN < 0.05f` is FALSE — so a non-finite alpha was
+        // waved through unrepaired while `ReportInvisible`, using the identical comparison, stayed silent.
+        // Color32 converts NaN to 0, so the text rendered invisible or black with a completely clean
+        // console: the silent-nothing shape this file exists to prevent, in the one member that had not
+        // been given the `ClampFinite` treatment.
+        //
+        // This pins the BEHAVIOUR, not the spelling — but the only way to pass it is a comparison that is
+        // true for NaN, i.e. the negated form. Reverting to `c.a < MinVisibleAlpha` fails here.
+        [Test]
+        public void SafeColours_RepairANonFiniteChannel()
+        {
+            _cfg.countedColor = new Color(1f, 1f, 1f, float.NaN);
+            _cfg.missColor = new Color(float.NaN, 0.5f, 0.4f, 1f);
+            _cfg.placeholderColor = new Color(float.NaN, float.NaN, float.NaN, float.NaN);
+
+            foreach (var (name, c) in new[]
+                     {
+                         ("countedColor", _cfg.SafeCountedColor),
+                         ("missColor", _cfg.SafeMissColor),
+                         ("placeholderColor", _cfg.SafePlaceholderColor),
+                     })
+            {
+                Assert.IsFalse(float.IsNaN(c.r), $"{name}.r is NaN — Color32 renders that as 0");
+                Assert.IsFalse(float.IsNaN(c.g), $"{name}.g is NaN — Color32 renders that as 0");
+                Assert.IsFalse(float.IsNaN(c.b), $"{name}.b is NaN — Color32 renders that as 0");
+                Assert.IsFalse(float.IsNaN(c.a), $"{name}.a is NaN — the text would not be drawn at all");
+                Assert.That(c.a, Is.GreaterThanOrEqualTo(GradeHudConfig.MinVisibleAlpha),
+                    $"{name} is still invisible after repair");
+            }
+
+            // A finite channel beside a broken one keeps the hue the designer chose, exactly as the
+            // alpha-0 repair above does.
+            Assert.That(_cfg.SafeMissColor.g, Is.EqualTo(0.5f).Within(1e-5f));
+            Assert.That(_cfg.SafeMissColor.b, Is.EqualTo(0.4f).Within(1e-5f));
+        }
+
         // Contract: the shipped defaults are sane, so a freshly created asset warns about nothing. If this
         // fails, every play session starts with a warning nobody can act on — which is how a console full
         // of noise begins (NFR5).
@@ -185,6 +223,24 @@ namespace CameraGame.Tests
 
             Assert.IsTrue(_cfg.TryGetConfigProblem(out string problem));
             StringAssert.Contains("missColor", problem);
+        }
+
+        // The validator half of the same defect: the repair was silent because the report was silent. A
+        // designer who types a non-finite channel must be told which field, whichever channel it landed in.
+        [Test]
+        public void TryGetConfigProblem_ReportsANonFiniteTextColour()
+        {
+            _cfg.missColor = new Color(1f, 0.5f, 0.4f, float.NaN);
+
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string nanAlpha),
+                "a NaN alpha is invisible text and the validator said nothing about it");
+            StringAssert.Contains("missColor", nanAlpha);
+
+            _cfg.missColor = new Color(float.NaN, 0.5f, 0.4f, 1f);
+
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string nanChannel),
+                "a NaN colour channel renders as 0 and the validator said nothing about it");
+            StringAssert.Contains("missColor", nanChannel);
         }
 
         // ⚠️ THE 1.11 LESSON, PINNED. GalleryConfig's validator returned on the FIRST problem, so a designer

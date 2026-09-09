@@ -325,6 +325,147 @@ so that I can tell a great shot from a weak one and want to do better.
         handover which ACs remain unproven. Twice now the perceptual check has found what every
         structural check missed (Story 1.10's two shots tying at 5★; Story 1.11's window-resize).
 
+### Review Findings
+
+Code review 2026-08-07 (`94ed946..HEAD`). Three parallel layers: Blind Hunter (diff only, no project
+access), Edge Case Hunter (diff + project), Acceptance Auditor (diff + spec + GDD/epics). 20 raw findings
+→ 3 decisions, 8 patches, 4 deferred, 5 dismissed as disproven or noise.
+
+Two findings were reproduced by running rather than by reading, and two were **disproven** by running —
+which is the point of doing it.
+
+**Decisions (need Alexv — the code cannot be correctly patched without his intent):**
+
+- [x] [Review][Decision] **RESOLVED 2026-08-07 — leave it.** *The "why" line has no composition voice.*
+      `whyLabel` is fed only by `GradeText.TimingAdvice`, so composition can never be the reason given
+      however dominant it is. A shot at `composition 5% × timing 100%` scores 5% and its only actionable
+      sentence is *"right on the moment"* — a compliment on a bad photograph. **Alexv's call: leave it.**
+      The axes line already prints `composition 5%`, so the information is on screen; inventing new
+      player-facing wording during a code review is the wrong moment for it. **Moved to deferred**, not
+      dismissed — the NFR10 "understand why" gap is real and belongs to a story that can design the wording
+      properly. `[GradeHud.cs:258]`
+- [x] [Review][Decision] **RESOLVED 2026-08-07 — re-shoot the exemplar, do not expand scope.** *The town
+      occlusion symptom is the most visible thing in this story's evidence.* `a_money_shot.png` awards
+      **94% / 5★ with `line-of-sight 100%`** for a photograph in which the drunk is behind a pine tree and
+      the grader's box is drawn over the tree (confirmed by eye during review). Pre-existing Story 1.9
+      deferred item, correctly raised rather than silently fixed. **Alexv's call: Story 1.12 does not expand
+      to fix occlusion; instead capture a fresh unoccluded 5★ exemplar so AC3 is judged on a fair example.**
+      Tracked as a patch item below. The occlusion defect itself stays deferred as its own future story.
+- [ ] [Review][Decision] **AC3 and AC4 remain unproven and only Alexv can close them — and as of 2026-09-09
+      they are BLOCKED, not merely waiting.** The exemplars are all framed 4.11 m above the subject (see the
+      re-shoot item below), so judging them would answer a different question. Original note follows.** — structural review
+      cannot settle whether the readout is legible at a glance or whether a weak grade makes someone want to
+      try again. See the handover ask below (patch item), which did not exist. **Correction to the record:**
+      the completion notes say text size "cannot be settled" from the 574×494 captures. It partly can —
+      `CanvasScaler` is `ScaleWithScreenSize` (ref 1920×1080, match 0.5), so the text is a fixed *fraction*
+      of screen height. Reproducing Unity's own reported `scaleFactor` of `0.3832` confirms the model, and
+      it says the text is **19% larger relative to the screen at 1080p** than in the captures. The pictures
+      therefore *understate* legibility and can be judged conservatively.
+
+**Patches (fix is unambiguous):**
+
+- [x] [Review][Patch] `Canvas.renderMode` is never validated, so AC5's whole guarantee rests on one line of
+      scene YAML — **flagged independently by all three layers, including the blind one**.
+      `[RequireComponent(typeof(Canvas))]` guarantees a Canvas exists and nothing about its render mode. Flip
+      `GradeHudCanvas` to Screen Space – Camera and the grade text bakes into every stored thumbnail with a
+      clean console. This class guards every *other* silent-authoring hazard it owns (config ranges, missing
+      font, missing labels) and leaves unguarded the one the acceptance criterion depends on. The sibling
+      class sets its own (`GalleryView.cs:230`). `[GradeHud.cs:109-157]`
+- [x] [Review][Patch] **The readout tells the player to fix the axis that scored full marks** —
+      `GradeText.TimingAdvice` uses a hardcoded `0.1s` deadband while the shipped `GradingConfig` awards
+      `timing 100%` anywhere within `timingFullSeconds: 0.5`. **Reproduced against the real function and the
+      real config: 7 of 12 sampled offsets self-contradict**, e.g. `+0.15s` → axes line *"timing 100%"*,
+      why line *"0.2s early — wait for it"*. Already present in the story's own run data
+      (`hud.txt:345`), never photographed because the rig only targeted offsets `0`, `-1.25`, `-3.5`. Fix:
+      gate on the score, not the raw offset — `if (grade.Timing01 >= 1f) return "right on the moment";`
+      `[GradeText.cs:115]`
+- [x] [Review][Patch] A grade with `MissReason == Unevaluated` (or `Missed(GradeMiss.None)`) is neither
+      `Counted` nor `IsMiss` nor `IsPlaceholder`, so it falls through both guards into the **counted**
+      branch and prints `composition 0% × timing 0% · seen 0%` in the counted colour — the exact all-zero
+      `Counted` shape `FromPercent` was deleted for in this same diff. Latent, not live: `PhotoModeController.cs:379`
+      only raises `Placeholder`/`Scored`/`Missed(real reason)`. `Missed_NeverReportsATimingMeasurement`
+      iterates every enum member including `None` and passes, because it only checks `TimingMeasured`. Fix:
+      make the fallthrough safe (branch on `grade.Counted`, not on the two negatives) and/or reject
+      `None`/`Unevaluated` in `Missed`. `[GradeHud.cs:212-246, ShotGrade.cs:268]`
+- [x] [Review][Patch] A **NaN colour channel** defeats both the safe accessor and the validator — `NaN < 0.05f`
+      is `false`, so `Visible()` passes it through unrepaired and `ReportInvisible()` stays silent. The
+      Color32 conversion of NaN yields 0, i.e. invisible or black text with a clean console. Ironic given
+      `ClampFinite` two members up handles NaN explicitly and documents exactly why `Mathf.Clamp` is not
+      enough. `[GradeHudConfig.cs:132-133, 211-213]`
+- [x] [Review][Patch] `photoMode` unassigned silently drops the `hideOnCameraLowered` guard with **no log at
+      all**, unlike every sibling reference in this class. The Overlay readout then draws over the gallery
+      grid for the full hold. `[GradeHud.cs:109-157, 315]`
+- [x] [Review][Patch] Reassigning `shotCapturedChannel` in the Inspector during play leaks a live delegate:
+      both handlers dereference the *current* field, so unsubscribe runs against the new channel and the old
+      one keeps a strong reference to a disabled `GradeHud`. Cache the subscribed channel in `OnEnable`.
+      `[GradeHud.cs:163-175]`
+- [x] [Review][Patch] Three lines of `Missed`'s documentation sit **outside** the closed `</summary>`, so the
+      invariant they record (every miss carries NaN, and why) never reaches IntelliSense or a hover tooltip —
+      the three places a future caller would look. `[ShotGrade.cs:264-267]`
+- [x] [Review][Patch] **Task 7's handover ask was never written.** The task is checked off and an honest
+      "⚠️ WHAT I COULD NOT PROVE" block exists (line 724), but not the short specific ask Task 7 required —
+      *"open these six images, tell me whether you can tell the 5★ from the counted-0% at a glance"*. The
+      three things the record says will be "called out in the handover" are scattered across the Dev Agent
+      Record instead. This is the mechanism AC3 closes through. `[this file]`
+- [ ] [Review][Patch] **Re-shoot the 5★ exemplar with an unoccluded subject** — **ATTEMPTED TWICE ON
+      2026-09-09 AND BLOCKED. Needs Alexv's decision; see the handover below.** The re-shoot cannot succeed,
+      and finding out why disproved the premise the whole item rests on.
+      - **Attempt 1** (the patch written on 2026-08-07 and never run): one ray, to the bounds centre, against
+        `gradingConfig.occluderMask`. Ran it — identical photograph of the same tree. Two things wrong with
+        it: the mask is the grader's own, so the search inherits whatever the grader gets wrong; and one ray
+        to one point is not a visibility test.
+      - **Attempt 2**: a real search — 24 directions, nine rays each spanning the subject's silhouette,
+        against every layer except `Subject`. Still the same tree, and it reported **9/9 rays clear**.
+      - **Diagnosis** (the `RaycastAll` probe `deferred-work.md` had recommended for two months, now built
+        into the rig as `DescribeLineOfSight` and printed beside every scenario):
+        `line of sight: 18.74m to subject centre; RaycastAll hits NOTHING at all. camera is in open space.`
+        A "two heights back" shot standing 18.74 m away means the subject's `Bounds` are ~8.25 m tall.
+        Measured on the prefab: the drunk's single `SkinnedMeshRenderer` has `rootBone` lossyScale
+        `(0.01, 0.01, 0.01)` against a renderer transform of `(0.20, 0.07, 0.08)` — non-uniform and
+        mismatched — giving `localBounds` of `917 × 825 × 229` and a world box of
+        **9.18 × 8.25 × 2.30 m centred 4.11 m above the ground**.
+      - **Consequence:** the rig aims 4.11 m over his head, the grader's size gate and occlusion rays use the
+        same inflated box, and `line-of-sight 100 %` is literally correct — there is nothing four metres up
+        in the air. **The town-occlusion theory is disproven**; so is "the foliage has no collider"
+        (16738/16738 renderers under `game map` have one). Both recorded in `deferred-work.md` so no future
+        review re-derives them.
+      - **Not fixed here:** the defect is in `EventActor`/the actor prefab (Story 1.6) and moves every
+        grading number in 1.9/1.10. Fixing it inside a HUD story is exactly the scope expansion the
+        2026-08-07 decision ruled against. Evidence preserved in
+        `_bmad-output/verification/subject-bounds-defect/`. `[Assets/Scripts/Events/EventActor.cs:66 ·
+        Assets/Prefabs/Events/EventActor_Drunk.prefab]`
+
+**Deferred (real, not worth acting on now):**
+
+- [x] [Review][Defer] **The "why" line has no composition voice** — resolved as a decision above; Alexv
+      chose to leave it. A shot at `composition 5% × timing 100%` gets *"right on the moment"* as its only
+      advice. The axes line carries the number, so nothing on screen is false — but the actionable sentence
+      never speaks to the axis that actually cost the shot. `[GradeHud.cs:258]` — deferred, reason: the
+      information is already on screen and new player-facing wording should be designed by a story, not
+      invented during a code review
+
+- [x] [Review][Defer] `P0` rounding lets `Percent01 = 0.996` render as `100%` — states a perfect photograph
+      for one that is not. Cosmetic, and the same `P0` convention shipped in the gallery in 1.11, so changing
+      it here alone would make the two views disagree. `[GradeHud.cs:246]` — deferred, pre-existing convention
+- [x] [Review][Defer] A hand-authored `holdSeconds: 0` repairs to `0.3s` — which `MinHoldSeconds`' own doc
+      calls "a flicker rather than something a person reads" — while the rarer `NaN` repairs to the readable
+      `2.2s` default. The comment promises a `0` "fails into something readable"; it does not. The warning
+      still fires, so it is loud rather than silent. `[GradeHudConfig.cs:96]` — deferred, warning fires
+- [x] [Review][Defer] `IsShowing` is a single bool but its doc claims it distinguishes "up, mid-fade, or
+      already gone". It separates gone from not-gone only. Doc overclaim on a rig-facing hook.
+      `[GradeHud.cs:107]` — deferred, affects only rig ergonomics
+- [x] [Review][Defer] `ShotGrade.ToString()` gained `@ peak {PeakOffsetText}`, moving the recorded baseline
+      three rigs diff against. Disclosed by the dev; anyone re-running an older comparison sees a diff.
+      `[ShotGrade.cs:291]` — deferred, disclosed and benign
+
+**Dismissed (5)** — recorded so a future review does not re-derive them:
+`.meta` files absent (disproven: all ten are in `31edf89`); `TimingMeasured` depends on an undocumented
+`GradeMiss` ordering (disproven: `ShotGrader.cs:10-15` documents `Unevaluated = 0` and why);
+`hideOnCameraLowered` read raw violates the "every value through `Safe*`" rule (a bool has no unsafe
+values); `GradeText.TimingAdvice` is unsanctioned new wording (sanctioned by decision 1d);
+`TryGetConfigProblem` deviates from the one-problem-at-a-time idiom (deviates *toward* two standing
+deferred items, and is disclosed).
+
 ## Dev Notes
 
 ### What already exists — read these before writing anything
@@ -736,6 +877,160 @@ will screenshot and complain about". The story instructs me to raise it as a **s
 silently expand this story, so: **not fixed here, and it is now the most visible thing in this story's own
 evidence.** Alexv's call.
 
+### Completion note — 2026-09-09 session (closing the code review)
+
+**8 of the 9 review items are closed; the ninth is blocked on a decision, not on work.**
+
+The seven code patches existed in the working tree but had **never been compiled, tested or committed** —
+the previous session wrote them and stopped. Compiling them surfaced two documentation defects introduced
+along with them: a duplicated `<summary>` on `GradeHudConfig.ReportInvisible`, and `PlaceCamera`'s summary
+orphaned onto the newly-inserted `ClearDirectionFor`, leaving `PlaceCamera` undocumented. Both repaired.
+
+**The NaN-colour patch shipped unpinned.** `GradeHudConfigTests` covered alpha-0 and non-finite *floats* but
+never a non-finite colour *channel* — the exact thing the patch fixed — so a revert of `!(a >= min)` to
+`(a < min)` would have gone green. Added `SafeColours_RepairANonFiniteChannel` and
+`TryGetConfigProblem_ReportsANonFiniteTextColour`, then **proved they bite** by reverting the fix and
+re-running: exactly those two failed, with the right diagnosis, and nothing else did. Restored, 153/153 pass.
+
+**What the re-shoot found instead of a clear vantage.** Three rig runs. The 2026-08-07 patch was a single ray
+to the bounds centre against the grader's own mask; replacing it with 24 directions × 9 silhouette rays
+against every layer but `Subject` changed nothing — it reported 9/9 clear over a photograph full of pine.
+Adding the `RaycastAll` probe `deferred-work.md` had recommended since 2026-07-26 settled it in one line:
+`18.74m to subject centre; RaycastAll hits NOTHING at all`. The drunk's `Bounds` are **9.18 × 8.25 × 2.30 m
+centred 4.11 m up** — a `SkinnedMeshRenderer` scale-chain fault. The grader is not seeing through trees; it
+is measuring a box floating above him, and reporting `line-of-sight 100 %` about empty sky. Two standing
+theories died with it: the occlusion theory, and "the foliage has no collider" (16738/16738 renderers under
+`game map` have one). Both recorded in `deferred-work.md`.
+
+**Mistakes made in this session, recorded so they are not repeated.** The first vantage search was placed in
+`PlaceCamera`, which the peak-tracking loop calls *every frame* — 216 linecasts per frame for up to 90 s,
+which stalled a run badly enough that the editor sat in a play-mode transition until it was polled out of it.
+Fixed by searching once per scenario. And triggering the gallery rig wiped `_bmad-output/verification/gallery/`
+before I had checked it was gitignored and untracked; the run regenerated it and the caption baseline lives in
+this file and in `GradeTextTests`, so nothing was lost — but the check belonged first.
+
+**Not done:** the 5★ re-shoot, and therefore AC3/AC4. See the handover immediately below — it needs one
+decision from Alexv and no further investigation.
+
+## Handover — the perceptual check (AC3, AC4)
+
+*Written 2026-08-07 during code review. Task 7 required this and it was missing: the record correctly said
+AC3/AC4 were open, but never asked the actual question. This is the ask.*
+
+**Status: AC1, AC2 and AC5 are proven. AC3 and AC4 are open and only you can close them.**
+
+### What I need from you — about 5 minutes
+
+Open these six images from `_bmad-output/verification/hud/` **in this order** and answer the three
+questions below. Look at the bottom of each frame — that panel is the whole feature. Ignore the dark
+readout in the top-left; that is the editor-only debug overlay the player never sees.
+
+| # | Image | What it is |
+|---|---|---|
+| 1 | `a_money_shot.png` | a great shot — 5★ |
+| 2 | `b_mid_counted.png` | a middling shot |
+| 3 | `c_counted_but_zero.png` | a shot that counted but scored 0% (you were late) |
+| 4 | `e_too_far.png` | a MISS — too far away |
+| 5 | `f_blocked.png` | a MISS — something in the way |
+| 6 | `i_not_graded.png` | grading not configured — nothing was scored |
+
+**Q1 (AC3, the GDD's slice criterion).** Comparing #1 and #3: can you tell the great shot from the weak one
+**at a glance**, without reading carefully? They both matter because they are the two a player will actually
+see most.
+
+**Q2 (AC3, NFR10 — "understand why").** Looking at #3, #4 and #5: does each one tell you what to do
+differently next time, in words you would act on? Is a MISS (#4, #5) obviously a different thing from a
+weak-but-counted shot (#3)?
+
+**Q3 (AC4, polish — not a pass/fail gate).** Does it read like a 2000s camcorder/digicam? This one is taste
+and it is explicitly *polish-acceptable*, so "good enough for now" is a perfectly good answer.
+
+### Three things you should know before you look
+
+1. **The readout is on screen for 2.8 s** (2.2 s hold + 0.6 s fade). The stills cannot tell you whether that
+   is long enough for someone *playing* rather than studying a picture. If you want to feel it, press Play in
+   `SampleScene`, raise the camera and take a shot. That is the only part of AC3 a picture genuinely cannot
+   answer.
+2. **Text size in the captures is conservative, not misleading.** The run's Game View was 574×494, which is
+   small, and the completion notes said text size therefore could not be judged. That is *too* pessimistic:
+   the canvas is `ScaleWithScreenSize` (ref 1920×1080, match 0.5), so the text is a fixed fraction of screen
+   height. Reproducing Unity's own reported `scaleFactor` of `0.3832` confirms it — the text is **19% larger
+   relative to the screen at 1080p** than in these pictures. If it reads for you here, it reads in the game.
+3. **`hideOnCameraLowered` is a feel decision nobody has played yet.** It is ON. Because raising the camera is
+   a *hold*, letting go of the button takes the grade off screen immediately — so a player who clicks and
+   releases may never read it. Turn it OFF in `Assets/Data/UI/GradeHudConfig.asset` and the readout finishes
+   its hold, but it can then sit over the gallery. Both are defensible; playing it is what decides.
+
+### ⚠️ STOP — READ THIS BEFORE YOU OPEN THE PICTURES (2026-09-09)
+
+**The exemplars above are not fit to judge AC3 on, and the re-shoot you asked for cannot fix them.** Please
+do not spend the five minutes yet. Here is what changed and the one decision I need from you.
+
+On 2026-08-07 you ruled: *do not expand Story 1.12 to fix the town-occlusion problem; re-shoot the exemplar so
+the judgement is fair.* That ruling was correct on what was known then. Carrying it out disproved its own
+premise, so it is back with you.
+
+**What I did.** I gave the rig a real vantage search (nine rays across the subject's silhouette, tested
+against every layer except his own, twenty-four directions) and re-ran it. Same photograph of a tree. So I
+added the probe `deferred-work.md` had been recommending for two months — dump what a ray from the camera to
+the subject *actually* hits — and ran it again. It printed:
+
+```
+line of sight: 18.74m to subject centre; RaycastAll hits NOTHING at all.  camera is in open space.
+```
+
+**18.74 m.** That scenario is "two heights back" — about 3.6 m for a person. And nothing is in the way,
+which is why the search kept saying the line was clear: it was telling the truth.
+
+**The actual defect, measured.** `EventActor.Bounds` is the union of the actor's renderers, and the drunk has
+exactly one: a `SkinnedMeshRenderer` whose scale chain is broken — its root bone `mixamorig:Hips` has
+`lossyScale (0.01, 0.01, 0.01)` while the renderer's own transform is `(0.20, 0.07, 0.08)`, non-uniform and
+mismatched. Its `localBounds` are `917 × 825 × 229`. The world box that falls out is
+
+> **9.18 m × 8.25 m × 2.30 m, centred 4.11 m above the ground** — for a man who *renders* at normal size.
+
+Everything follows from that one number, and none of it is about trees:
+
+- The rig stands `2 × 8.25 m` back and **aims 4.11 m above his head** — at open sky over the treeline. That
+  is why the crosshair and the grader's box sit on a pine and he is a small figure off to the side.
+- The grader measures `height 43.2 % (gate 20 %)` from the same inflated box, so a man who really occupies
+  ~8 % of the frame at 18.7 m sails through the size gate instead of being rejected as `TooSmall`.
+- Its occlusion rays run to points on that box, four metres up in clear air — hence `line-of-sight 100 %`,
+  and hence `RaycastAll` hitting nothing. **The grader is not seeing through trees. It is measuring a
+  different, much larger object floating above him.**
+
+This also explains the two-month-old symptom nobody could pin down: the 2026-07-26 placement study's *24 of
+24 shots reading `line-of-sight 100 %`*. That was never an occlusion bug.
+
+**Why this blocks AC3 rather than being someone else's problem.** Every exemplar photograph — 5★, mid,
+counted-0 %, and the misses — is framed on a point four metres above the subject. Asking you "can you tell a
+great shot from a weak one" from those pictures asks you to judge the readout using photographs the game
+would never produce once this is fixed. The readout itself is fine; the shots it is describing are not.
+
+**Evidence kept for you**, outside the folder the rig wipes each run:
+`_bmad-output/verification/subject-bounds-defect/` — the 5★ frame, the same frame at the shutter, and a
+magnified crop of the grader's box with the tree inside it.
+
+**The decision I need.** The fix is one or two lines and it is not in this story's code — it is
+`EventActor`/the actor prefab (Story 1.6 territory), and it changes grading numbers everywhere, so it is not
+mine to slip in quietly:
+
+- **(a)** Let me fix the bounds now inside 1.12 — smallest real change, but it moves every grading number in
+  Stories 1.9/1.10 and their recorded evidence, inside a story that is supposed to be a HUD story.
+- **(b)** Open it as its own story, fix it there, then re-shoot 1.12's exemplars and close AC3/AC4. 1.12 stays
+  at `review` meanwhile. **This is what I would do** — it keeps 1.12 honest and gives the grading change its
+  own regression pass.
+- **(c)** Judge AC3 on the pictures as they are, knowing the framing is wrong.
+
+Everything else in this story is finished and proven; this is the only thing standing between it and `done`.
+
+### What happens after you answer
+
+- **All three Q's fine** → AC3/AC4 close, story goes `done`.
+- **Q1 or Q2 weak** → that is a real finding and the readout changes; this is exactly what the perceptual
+  check has caught twice before (Story 1.10's two shots tying at 5★, Story 1.11's window resize).
+- **Only Q3 weak** → note it and ship anyway; AC4 is polish-acceptable by the epic's own wording.
+
 ### File List
 
 **New**
@@ -778,3 +1073,7 @@ evidence.** Alexv's call.
 | 2026-08-07 | Rig self-corrections after the first run: the empty-street scenario was photographing a live subject; every Phase A frame was taken at peak capture-flash; `h_behind_you` never reached `BehindCamera`. Shipped fix: the config's problem text now describes the mistake that was made rather than one fixed sentence per field. Re-run clean. |
 | 2026-08-07 | Motion verification added (`Tools > HUD > Grade HUD — Record the readout`): frame analysis of the recorded readout plus a Gemini video review, every claim of which was verified — its headline duration claim was disproven by measurement, and it corrected my own overstatement about the capture flash. `Time.captureFramerate` does not lock `unscaledDeltaTime`; the rig now measures and reports the honest encode rate. |
 | 2026-08-07 | AC3/AC4 handed to Alexv and left **open** — see Task 7. Town occlusion symptom raised as a scope question, not fixed. |
+| 2026-09-09 | Resumed to close the 2026-08-07 review. 8 of 9 items closed: the 7 code patches were verified by compiling and running (they had been written but never compiled, tested or committed), and two documentation defects introduced with them were repaired (a duplicated `<summary>` on `ReportInvisible`, and `PlaceCamera`'s summary orphaned onto a new method). |
+| 2026-09-09 | Added the missing regression tests for the NaN-colour patch, which was shipped unpinned — nothing would have caught a revert of `!(a >= min)` to `(a < min)`. Proved they bite: reverted the fix, watched exactly those two tests fail with the right diagnosis and nothing else, restored it. **153/153 EditMode tests pass** (was 140 before the review, 151 after the patches, 153 now). |
+| 2026-09-09 | **The 5★ re-shoot is blocked and the town-occlusion theory is disproven.** Ran it three times. `EventActor.Bounds` returns a box **9.18 × 8.25 × 2.30 m centred 4.11 m above the ground** for the drunk — a `SkinnedMeshRenderer` scale-chain fault (root bone lossyScale `0.01` vs renderer transform `(0.20, 0.07, 0.08)`, `localBounds` `917 × 825 × 229`). The rig therefore stands 18.74 m back and aims four metres over his head; the grader's size gate and occlusion rays use the same box, which is why every shot reads `line-of-sight 100 %` and `RaycastAll` hits nothing. Not fixed — it is `EventActor`/prefab (Story 1.6) and moves every 1.9/1.10 grading number. **AC3/AC4 escalated to Alexv with three options.** |
+| 2026-09-09 | Rig hardened while diagnosing: the vantage search now runs **once per scenario** rather than once per frame (the first version ran 216 linecasts on every frame of a 90 s tracking loop and stalled the run), it can no longer fall back silently, and `DescribeLineOfSight` dumps what a camera-to-subject ray actually hits beside every scenario. Regressions re-run: `Tools > Gallery > Gallery Shoot (Play)` clean end to end including the Tab-wiring phase, captions and star glyphs intact, no truncation. |
