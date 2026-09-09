@@ -3,12 +3,21 @@
     "UnityMCP": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--from", "mcpforunityserver==10.1.0", "mcp-for-unity"]
+      "args": [
+        "--from",
+        "mcpforunityserver==10.2.0",
+        "mcp-for-unity"
+      ],
+      "env": {
+        "UNITY_MCP_SKIP_STARTUP_CONNECT": "1"
+      }
     },
     "blender": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["blender-mcp"]
+      "args": [
+        "blender-mcp"
+      ]
     },
     "atlassian": {
       "type": "http",
