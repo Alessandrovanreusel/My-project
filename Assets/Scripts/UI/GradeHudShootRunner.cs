@@ -703,6 +703,28 @@ namespace CameraGame.UI
             photo.SetPhotoMode(true);
             yield return null;
 
+            // ⚠️ CHOOSE THE VANTAGE AT THE SHUTTER, NOT AT THE START OF THE SCENARIO.
+            //
+            // The subject WALKS. The vantage was picked when the scenario began, then the rig spent up to
+            // 90 s tracking him to his peak — by which time he can be somewhere else entirely, with a tree
+            // between him and a camera that had a clear line when it was placed. That is exactly what
+            // produced the 2026-08-07 and 2026-09-09 exemplars: a 5★ photograph of a pine.
+            //
+            // It also produced a wrong DIAGNOSIS, which is the more expensive half. The line-of-sight probe
+            // ran at the same early instant and honestly reported "RaycastAll hits NOTHING at all", so the
+            // occlusion looked impossible and I went looking for a cause that did not exist — a whole
+            // theory about EventActor.Bounds being broken, written up and committed, when the bounds were
+            // correct all along (c_counted_but_zero.png shows him dead centre in the grader's box).
+            // Measure the instant you are actually asking about.
+            //
+            // One search per capture, not per frame — see PlaceCamera.
+            if (requireActor && !s.Wall && TryGetActor(out EventActor atShutter))
+            {
+                _vantageFresh = false;
+                PlaceCamera(s, atShutter.Bounds);
+                yield return null;
+            }
+
             string liveId = actor != null ? actor.SubjectId : "(nobody)";
             float liveOffset = actor != null ? actor.PeakOffset : float.NaN;
 
@@ -1647,64 +1669,164 @@ namespace CameraGame.UI
         /// </summary>
         private Vector3 ClearDirectionFor(Bounds b, float distance)
         {
-            // Deliberately NOT gradingConfig.occluderMask. Everything except the subject himself blocks a
-            // photograph, whether or not the grader has been told to count it.
-            int subjectLayer = LayerMask.NameToLayer(GameConstants.Layers.Subject);
-            int mask = subjectLayer >= 0 ? ~(1 << subjectLayer) : ~0;
+            // The subject's own renderers are what "visible" means. No actor, nothing to measure.
+            Renderer[] subject = TryGetActor(out EventActor a)
+                ? a.GetComponentsInChildren<Renderer>(true)
+                : null;
 
-            const int Directions = 24;
-            Vector3 best = Vector3.forward;
-            int bestClear = -1;
-            float bestDeg = 0f;
-            int total = 0;
-
-            for (int i = 0; i < Directions; i++)
+            if (subject == null || subject.Length == 0)
             {
-                // Start at +Z so a scene with nothing in the way keeps the framing every previous run used.
-                float deg = i * (360f / Directions);
-                Vector3 dir = Quaternion.Euler(0f, deg, 0f) * Vector3.forward;
-                int clear = ClearSampleCount(b.center + dir * distance, b, mask, out total);
-
-                if (clear > bestClear) { bestClear = clear; best = dir; bestDeg = deg; }
-                if (clear == total)
-                {
-                    _lastVantageNote = deg == 0f
-                        ? $"vantage: +Z, unobstructed ({clear}/{total} sample rays clear)."
-                        : $"vantage: rotated {deg:0}° off +Z to clear the line ({clear}/{total} sample rays clear).";
-                    return dir;
-                }
+                _lastVantageNote = "vantage: +Z (no subject renderers to measure against).";
+                return Vector3.forward;
             }
 
-            // ⚠️ NOT SILENT. A rig that gives up quietly produces a confident, wrong exemplar.
-            _lastVantageNote =
-                $"⚠ vantage: NO clear line found in {Directions} directions at {distance:0.0}m — best was " +
-                $"{bestDeg:0}° with {bestClear}/{total} sample rays clear. The subject is boxed in; this " +
-                "photograph may show foliage rather than him, and should NOT be used to judge AC3.";
+            // A THROWAWAY camera, never the rig's own. `cam` must keep rendering to the screen for the
+            // whole run — binding a targetTexture to it is what leaves the backbuffer empty and breaks
+            // ScreenCapture, which is this rig's only way to photograph an Overlay canvas.
+            var probeGo = new GameObject("RigVantageProbe");
+            var probe = probeGo.AddComponent<Camera>();
+            probe.CopyFrom(cam);
+            probe.enabled = false;
+
+            var rt = new RenderTexture(ProbeSize, ProbeSize, 16);
+            probe.targetTexture = rt;
+            var shot = new Texture2D(ProbeSize, ProbeSize, TextureFormat.RGBA32, false);
+
+            const int Directions = 12;
+            Vector3 best = Vector3.forward;
+            float bestSeen = -1f, bestDeg = 0f, plusZseen = 0f;
+
+            // Read the optics now — the probe is destroyed in the finally below, before the note is built.
+            float probeFov = probe.fieldOfView, probeAspect = probe.aspect;
+
+            try
+            {
+                for (int i = 0; i < Directions; i++)
+                {
+                    // Start at +Z so a clear scene keeps the framing every previous run used.
+                    float deg = i * (360f / Directions);
+                    Vector3 dir = Quaternion.Euler(0f, deg, 0f) * Vector3.forward;
+
+                    float seen = VisiblePixelFraction(probe, rt, shot, b.center + dir * distance, b, subject);
+                    if (i == 0) plusZseen = seen;
+                    if (seen > bestSeen) { bestSeen = seen; best = dir; bestDeg = deg; }
+                }
+            }
+            finally
+            {
+                probe.targetTexture = null;
+                RenderTexture.active = null;
+                UnityEngine.Object.DestroyImmediate(shot);
+                rt.Release();
+                UnityEngine.Object.DestroyImmediate(rt);
+                UnityEngine.Object.DestroyImmediate(probeGo);
+            }
+
+            _lastVantageNote = bestDeg == 0f
+                ? $"vantage: +Z, {bestSeen * 100f:0.0}% of the frame is subject (best of {Directions} directions measured by rendering)."
+                : $"vantage: rotated {bestDeg:0}° off +Z — {bestSeen * 100f:0.0}% of the frame is subject there versus " +
+                  $"{plusZseen * 100f:0.0}% down +Z.";
+
+            // ⚠️ COMPARE AGAINST WHAT HE WOULD OCCUPY WITH NOTHING IN THE WAY, NOT AGAINST A FIXED NUMBER.
+            //
+            // A flat "< 0.5% of frame = he is hidden" threshold fires on `e_too_far`, whose entire point is
+            // that he is sixteen heights away and therefore tiny. That is a rig crying wolf on the one
+            // scenario where the small number is the finding — and a rig that logs false alarms teaches you
+            // to skim its warnings, which is how a real one gets missed.
+            //
+            // So derive the expected silhouette from geometry (bounds, distance, FOV) and only warn when the
+            // measurement falls well SHORT of it, i.e. something is actually in the way. And say nothing at
+            // all when he is too small for the probe to resolve — that is a limit of the measurement, not a
+            // fact about the photograph.
+            float halfExtent = distance * Mathf.Tan(probeFov * 0.5f * Mathf.Deg2Rad);
+            float expected = 0f;
+            if (halfExtent > 1e-4f)
+            {
+                float hFrac = Mathf.Clamp01(b.size.y / (2f * halfExtent));
+                float wFrac = Mathf.Clamp01(b.size.x / (2f * halfExtent * Mathf.Max(0.01f, probeAspect)));
+                expected = hFrac * wFrac * 0.45f;   // a standing figure fills roughly half its bounding rect
+            }
+
+            const float ResolvablePixels = 25f;
+            float resolvable = ResolvablePixels / (ProbeSize * ProbeSize);
+
+            if (expected < resolvable)
+                _lastVantageNote += $"  (he projects to under {ResolvablePixels:0} probe pixels at {distance:0.0}m, " +
+                                    "so visibility is not measurable here — that is the distance, not an occluder.)";
+            else if (bestSeen < 0.4f * expected)
+                _lastVantageNote += $"  ⚠ SOMETHING IS IN THE WAY: he should cover about {expected * 100f:0.0}% of the " +
+                                    $"frame from {distance:0.0}m and the best direction shows {bestSeen * 100f:0.0}%. " +
+                                    "This photograph should NOT be used to judge AC3.";
+
             return best;
         }
 
-        /// <summary>How much of the subject's silhouette a camera at <paramref name="from"/> can actually
-        /// see, sampled across the bounds rather than at the single centre point that let a whole tree
-        /// through. Nine rays: the centre, and eight points inset from the corners and edge midpoints of the
-        /// bounds — inset so a ray does not graze the very edge of a capsule and report a miss.</summary>
-        private static int ClearSampleCount(Vector3 from, Bounds b, int mask, out int total)
+        /// <summary>Resolution of the throwaway vantage probe. Small on purpose: it is counting silhouette
+        /// pixels, not being looked at, and 24 readbacks happen per capture.</summary>
+        private const int ProbeSize = 160;
+
+        /// <summary>
+        /// How much of the frame the subject actually occupies from <paramref name="from"/>, measured by
+        /// rendering him twice and diffing — once as the scene is, once with his renderers switched off.
+        ///
+        /// ⚠️ RAYCASTS CANNOT ANSWER THIS QUESTION IN THIS SCENE, AND BELIEVING THEY COULD COST A WHOLE
+        /// WRONG DIAGNOSIS. The rig stands at the subject's centre height and he is ~8 m tall, so every
+        /// sample ray runs at 1–7 m above the ground over 18 m. The pines that fill these photographs are
+        /// ~4.9 m tall and stand ~4.5 m from the camera: at that range the rays cross them near the APEX,
+        /// where the cone is centimetres wide, while the wide base a metre lower fills the entire view.
+        /// Nine rays reported 9/9 clear and `RaycastAll` reported nothing at all — both were TRUE, and both
+        /// were answering "is the line clear?" when the question is "can the camera SEE him?".
+        ///
+        /// I chased that gap into a fabricated theory about EventActor.Bounds being broken (it is not —
+        /// c_counted_but_zero.png shows him dead centre in the grader's own box) before measuring the thing
+        /// I actually cared about. Pixels are that thing.
+        ///
+        /// Note this is also the mechanism behind the long-standing "line-of-sight 100%" symptom: the
+        /// grader samples a handful of rays the same way, and they thread past a near occluder just as
+        /// these did. That is a real defect and it stays deferred — but it is now explained.
+        /// </summary>
+        private float VisiblePixelFraction(Camera probe, RenderTexture rt, Texture2D shot,
+                                           Vector3 from, Bounds b, Renderer[] subject)
         {
-            Vector3 e = b.extents * 0.7f;
-            var points = new Vector3[]
+            probe.transform.position = from;
+            Vector3 to = b.center - from;
+            probe.transform.rotation =
+                Quaternion.LookRotation(to.sqrMagnitude < 1e-6f ? Vector3.forward : to, Vector3.up);
+
+            Color32[] withSubject = GrabProbe(probe, rt, shot);
+
+            var wasEnabled = new bool[subject.Length];
+            for (int i = 0; i < subject.Length; i++)
+                if (subject[i] != null) { wasEnabled[i] = subject[i].enabled; subject[i].enabled = false; }
+
+            Color32[] withoutSubject = GrabProbe(probe, rt, shot);
+
+            for (int i = 0; i < subject.Length; i++)
+                if (subject[i] != null) subject[i].enabled = wasEnabled[i];
+
+            int differing = 0;
+            for (int i = 0; i < withSubject.Length; i++)
             {
-                b.center,
-                b.center + new Vector3(-e.x, e.y, 0f), b.center + new Vector3(0f, e.y, 0f), b.center + new Vector3(e.x, e.y, 0f),
-                b.center + new Vector3(-e.x, 0f, 0f),                                        b.center + new Vector3(e.x, 0f, 0f),
-                b.center + new Vector3(-e.x, -e.y, 0f), b.center + new Vector3(0f, -e.y, 0f), b.center + new Vector3(e.x, -e.y, 0f),
-            };
-
-            total = points.Length;
-            int clear = 0;
-            for (int i = 0; i < points.Length; i++)
-                if (!Physics.Linecast(from, points[i], mask, QueryTriggerInteraction.Ignore)) clear++;
-
-            return clear;
+                int dr = withSubject[i].r - withoutSubject[i].r,
+                    dg = withSubject[i].g - withoutSubject[i].g,
+                    db = withSubject[i].b - withoutSubject[i].b;
+                if (dr * dr + dg * dg + db * db > 900) differing++;      // ~30 per channel, past dithering
+            }
+            return withSubject.Length == 0 ? 0f : (float)differing / withSubject.Length;
         }
+
+        /// <summary>One immediate render of the probe camera, read back to a Color32 array.</summary>
+        private static Color32[] GrabProbe(Camera probe, RenderTexture rt, Texture2D shot)
+        {
+            probe.Render();
+            RenderTexture prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            shot.ReadPixels(new Rect(0f, 0f, rt.width, rt.height), 0, 0);
+            shot.Apply(false);
+            RenderTexture.active = prev;
+            return shot.GetPixels32();
+        }
+
 
         /// <summary>Positions and aims the camera so the subject's centre lands in the middle of the frame.
         /// Lifted from PhotoShootRunner/GalleryShootRunner — same geometry, same reasoning.</summary>

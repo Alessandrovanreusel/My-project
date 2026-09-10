@@ -351,16 +351,9 @@ which is the point of doing it.
       deferred item, correctly raised rather than silently fixed. **Alexv's call: Story 1.12 does not expand
       to fix occlusion; instead capture a fresh unoccluded 5★ exemplar so AC3 is judged on a fair example.**
       Tracked as a patch item below. The occlusion defect itself stays deferred as its own future story.
-- [ ] [Review][Decision] **AC3 and AC4 remain unproven and only Alexv can close them — and as of 2026-09-09
-      they are BLOCKED, not merely waiting.** The exemplars are all framed 4.11 m above the subject (see the
-      re-shoot item below), so judging them would answer a different question. Original note follows.** — structural review
-      cannot settle whether the readout is legible at a glance or whether a weak grade makes someone want to
-      try again. See the handover ask below (patch item), which did not exist. **Correction to the record:**
-      the completion notes say text size "cannot be settled" from the 574×494 captures. It partly can —
-      `CanvasScaler` is `ScaleWithScreenSize` (ref 1920×1080, match 0.5), so the text is a fixed *fraction*
-      of screen height. Reproducing Unity's own reported `scaleFactor` of `0.3832` confirms the model, and
-      it says the text is **19% larger relative to the screen at 1080p** than in the captures. The pictures
-      therefore *understate* legibility and can be judged conservatively.
+- [ ] [Review][Decision] **AC3 and AC4 remain unproven and only Alexv can close them — UNBLOCKED
+      2026-09-10.** The exemplars are re-shot and fair; nothing structural is left. This waits only on
+      Alexv looking at six pictures. Original note follows.**
 
 **Patches (fix is unambiguous):**
 
@@ -407,33 +400,26 @@ which is the point of doing it.
       *"open these six images, tell me whether you can tell the 5★ from the counted-0% at a glance"*. The
       three things the record says will be "called out in the handover" are scattered across the Dev Agent
       Record instead. This is the mechanism AC3 closes through. `[this file]`
-- [ ] [Review][Patch] **Re-shoot the 5★ exemplar with an unoccluded subject** — **ATTEMPTED TWICE ON
-      2026-09-09 AND BLOCKED. Needs Alexv's decision; see the handover below.** The re-shoot cannot succeed,
-      and finding out why disproved the premise the whole item rests on.
-      - **Attempt 1** (the patch written on 2026-08-07 and never run): one ray, to the bounds centre, against
-        `gradingConfig.occluderMask`. Ran it — identical photograph of the same tree. Two things wrong with
-        it: the mask is the grader's own, so the search inherits whatever the grader gets wrong; and one ray
-        to one point is not a visibility test.
-      - **Attempt 2**: a real search — 24 directions, nine rays each spanning the subject's silhouette,
-        against every layer except `Subject`. Still the same tree, and it reported **9/9 rays clear**.
-      - **Diagnosis** (the `RaycastAll` probe `deferred-work.md` had recommended for two months, now built
-        into the rig as `DescribeLineOfSight` and printed beside every scenario):
-        `line of sight: 18.74m to subject centre; RaycastAll hits NOTHING at all. camera is in open space.`
-        A "two heights back" shot standing 18.74 m away means the subject's `Bounds` are ~8.25 m tall.
-        Measured on the prefab: the drunk's single `SkinnedMeshRenderer` has `rootBone` lossyScale
-        `(0.01, 0.01, 0.01)` against a renderer transform of `(0.20, 0.07, 0.08)` — non-uniform and
-        mismatched — giving `localBounds` of `917 × 825 × 229` and a world box of
-        **9.18 × 8.25 × 2.30 m centred 4.11 m above the ground**.
-      - **Consequence:** the rig aims 4.11 m over his head, the grader's size gate and occlusion rays use the
-        same inflated box, and `line-of-sight 100 %` is literally correct — there is nothing four metres up
-        in the air. **The town-occlusion theory is disproven**; so is "the foliage has no collider"
-        (16738/16738 renderers under `game map` have one). Both recorded in `deferred-work.md` so no future
-        review re-derives them.
-      - **Not fixed here:** the defect is in `EventActor`/the actor prefab (Story 1.6) and moves every
-        grading number in 1.9/1.10. Fixing it inside a HUD story is exactly the scope expansion the
-        2026-08-07 decision ruled against. Evidence preserved in
-        `_bmad-output/verification/subject-bounds-defect/`. `[Assets/Scripts/Events/EventActor.cs:66 ·
-        Assets/Prefabs/Events/EventActor_Drunk.prefab]`
+- [x] [Review][Patch] **Re-shoot the 5★ exemplar with an unoccluded subject** — **DONE 2026-09-10.**
+      `a_money_shot.png` is now `100 % · 5★ · right on the moment` with the drunk centred, unoccluded and
+      clearly readable; `b_mid_counted` (20 %, 2★) and `c_counted_but_zero` (0 %, 1★) likewise. No shot in
+      the set carries an occlusion warning.
+      - **Why the first two attempts failed.** The vantage was chosen when the scenario STARTED, but the rig
+        then tracks him to his peak for up to 90 s — and he walks. By the shutter he could be behind a tree
+        the camera had a clear line to when it was placed. The line-of-sight probe ran at that same early
+        instant, so it truthfully reported "nothing in the way" about a moment nobody photographed.
+      - **Why no raycast could have caught it.** Characters are ~8.8 m tall, pines 4.9–7.6 m, and the camera
+        shoots from the subject's centre height — so rays run 1–7 m up across ~18 m and cross a near pine
+        near its APEX, centimetres wide, while its base fills the frame. 9/9 rays clear and `RaycastAll`
+        empty were both TRUE and both answered the wrong question.
+      - **Fix:** choose the vantage at the SHUTTER, and measure visibility by RENDERING — twelve directions,
+        subject renderers on then off, diffed (`VisiblePixelFraction`). Old spot showed him at 0.9 % of the
+        frame; the chosen one 4.1 %, against ~3.8 % predicted from geometry. The "he is hidden" warning is
+        geometric too, so `e_too_far` is no longer falsely flagged.
+      - ⚠️ **Retraction:** the 2026-09-09 claim that `EventActor.Bounds` was broken is **false** and was
+        committed before being checked. Feet at Y≈0.00, head bone at Y=6.77, bone cloud 8.09 × 8.76 matching
+        the renderer bounds. Full retraction in `deferred-work.md`.
+        `[Assets/Scripts/UI/GradeHudShootRunner.cs]`
 
 **Deferred (real, not worth acting on now):**
 
@@ -877,6 +863,40 @@ will screenshot and complain about". The story instructs me to raise it as a **s
 silently expand this story, so: **not fixed here, and it is now the most visible thing in this story's own
 evidence.** Alexv's call.
 
+### Completion note — 2026-09-10 (the re-shoot, and a retraction)
+
+**All nine review items are now closed. The only thing left in this story is Alexv looking at six pictures.**
+
+**I got the diagnosis wrong yesterday and want that on the record plainly.** I reported that
+`EventActor.Bounds` returned a box floating 4 m above the drunk from a `SkinnedMeshRenderer` scale-chain
+fault, wrote it into this file, into `deferred-work.md` and into a commit message, and escalated it to Alexv
+as a decision. He approved fixing the bounds. **The bounds were never broken** — his feet are at Y≈0.00, his
+head bone at Y=6.77, and the bone cloud matches the renderer box; `c_counted_but_zero.png` had been showing
+him dead centre in the grader's own box the whole time. The fix he approved would have broken working code,
+so it was not made and he was told why before anything was changed.
+
+**What produced the phantom.** Two of my own mistakes compounding: the vantage was chosen when a scenario
+started rather than at the shutter (and he walks, for up to 90 s of tracking), and the line-of-sight probe
+measured that same early instant. It reported "nothing in the way" perfectly honestly — about a moment
+nobody was photographing. Rather than measure the instant I cared about, I invented a mechanism that would
+explain an impossible occlusion.
+
+**The genuine reason no raycast could have caught it**, which is worth keeping: characters are ~8.8 m tall
+and pines 4.9–7.6 m, so shooting from the subject's centre height sends every ray 1–7 m above the ground.
+A pine ~4.5 m from the lens is crossed near its apex, centimetres wide, while its base fills the entire
+frame. `9/9 rays clear` and an empty `RaycastAll` were both TRUE. They answer "is the line clear?"; the
+question is "can the camera SEE him?".
+
+**So the rig now measures pixels.** Twelve directions, the subject's renderers rendered on then off and
+diffed, best silhouette wins — and the vantage is picked at the shutter, not at the start. The old spot
+showed him at 0.9 % of the frame; the chosen one at 4.1 %, against ~3.8 % predicted from geometry with
+nothing in the way. The "he is hidden" warning is geometric now too, so a deliberately-distant shot is not
+falsely flagged. No shipped code changed — 153/153 EditMode tests still pass.
+
+**Still deferred, now explained rather than mysterious:** the grader samples its occlusion rays the same
+sparse way, so `line-of-sight 100 %` can still be reported past a near, wide occluder. And separately, the
+characters are ~5× the environment's scale — consistent, not broken, but an art question for its own story.
+
 ### Completion note — 2026-09-09 session (closing the code review)
 
 **8 of the 9 review items are closed; the ninth is blocked on a decision, not on work.**
@@ -961,68 +981,43 @@ and it is explicitly *polish-acceptable*, so "good enough for now" is a perfectl
    releases may never read it. Turn it OFF in `Assets/Data/UI/GradeHudConfig.asset` and the readout finishes
    its hold, but it can then sit over the gallery. Both are defensible; playing it is what decides.
 
-### ⚠️ STOP — READ THIS BEFORE YOU OPEN THE PICTURES (2026-09-09)
+### One correction to the record, and one thing to ignore (2026-09-10)
 
-**The exemplars above are not fit to judge AC3 on, and the re-shoot you asked for cannot fix them.** Please
-do not spend the five minutes yet. Here is what changed and the one decision I need from you.
+**Retracting yesterday's diagnosis.** The 2026-09-09 handover told you the exemplars were unusable because
+`EventActor.Bounds` returned a box floating four metres above the drunk, from a `SkinnedMeshRenderer`
+scale-chain fault. **That was wrong, and it was written up and committed before it was checked.** The bounds
+are correct: his feet sit at Y≈0.00, his head bone at Y=6.77, and the bone cloud (8.09 × 8.76) matches the
+renderer bounds. `c_counted_but_zero.png` shows him dead centre inside the grader's own box. Nothing needed
+fixing there, and the fix you approved would have broken working code — which is why it was not made.
 
-On 2026-08-07 you ruled: *do not expand Story 1.12 to fix the town-occlusion problem; re-shoot the exemplar so
-the judgement is fair.* That ruling was correct on what was known then. Carrying it out disproved its own
-premise, so it is back with you.
+**What was actually happening.** Two mistakes of mine, compounding:
 
-**What I did.** I gave the rig a real vantage search (nine rays across the subject's silhouette, tested
-against every layer except his own, twenty-four directions) and re-ran it. Same photograph of a tree. So I
-added the probe `deferred-work.md` had been recommending for two months — dump what a ray from the camera to
-the subject *actually* hits — and ran it again. It printed:
+1. The vantage was chosen when the scenario *started*, then the rig spent up to 90 s tracking him to his
+   peak. He walks. By the shutter he could be behind a tree the camera had a clear line to when it was placed.
+2. The line-of-sight probe ran at that same early instant, so it honestly reported "nothing in the way" about
+   a moment nobody was photographing — and I went looking for a cause of an impossible occlusion instead of
+   measuring the instant I actually cared about.
 
-```
-line of sight: 18.74m to subject centre; RaycastAll hits NOTHING at all.  camera is in open space.
-```
+**And why no raycast could ever have caught it.** The characters stand ~8.8 m tall and the pines are
+4.9–7.6 m, so the camera shoots from ~4 m up and every sample ray runs 1–7 m above the ground. A pine ~4.5 m
+from the lens is crossed near its **apex**, where the cone is centimetres wide, while its wide base a metre
+lower fills the whole frame. Nine silhouette-spanning rays said *9/9 clear* and `RaycastAll` said *nothing at
+all* — both true, both answering "is the line clear?" when the question is "can the camera **see** him?".
 
-**18.74 m.** That scenario is "two heights back" — about 3.6 m for a person. And nothing is in the way,
-which is why the search kept saying the line was clear: it was telling the truth.
+The rig now answers the real question: it renders the subject twice from each of twelve directions, once
+with his renderers on and once off, and picks the vantage with the most subject pixels. From the old spot he
+covered **0.9 %** of the frame; the chosen one gives **4.1 %**, against ~3.8 % predicted by geometry with
+nothing in the way. Every exemplar below is re-shot that way and **none carries an occlusion warning**.
 
-**The actual defect, measured.** `EventActor.Bounds` is the union of the actor's renderers, and the drunk has
-exactly one: a `SkinnedMeshRenderer` whose scale chain is broken — its root bone `mixamorig:Hips` has
-`lossyScale (0.01, 0.01, 0.01)` while the renderer's own transform is `(0.20, 0.07, 0.08)`, non-uniform and
-mismatched. Its `localBounds` are `917 × 825 × 229`. The world box that falls out is
+**The one thing to ignore while judging:** the characters are about five times the scale of the world —
+8.86 m tall against 4.9–7.6 m trees and a 1.97 m car. It is internally consistent (both characters agree,
+the grader's gates were tuned against it) so nothing misbehaves, but it is why he towers over the treeline.
+That is an art-scale question for its own story, logged in `deferred-work.md`, and it is **not** something
+the readout can be blamed for.
 
-> **9.18 m × 8.25 m × 2.30 m, centred 4.11 m above the ground** — for a man who *renders* at normal size.
-
-Everything follows from that one number, and none of it is about trees:
-
-- The rig stands `2 × 8.25 m` back and **aims 4.11 m above his head** — at open sky over the treeline. That
-  is why the crosshair and the grader's box sit on a pine and he is a small figure off to the side.
-- The grader measures `height 43.2 % (gate 20 %)` from the same inflated box, so a man who really occupies
-  ~8 % of the frame at 18.7 m sails through the size gate instead of being rejected as `TooSmall`.
-- Its occlusion rays run to points on that box, four metres up in clear air — hence `line-of-sight 100 %`,
-  and hence `RaycastAll` hitting nothing. **The grader is not seeing through trees. It is measuring a
-  different, much larger object floating above him.**
-
-This also explains the two-month-old symptom nobody could pin down: the 2026-07-26 placement study's *24 of
-24 shots reading `line-of-sight 100 %`*. That was never an occlusion bug.
-
-**Why this blocks AC3 rather than being someone else's problem.** Every exemplar photograph — 5★, mid,
-counted-0 %, and the misses — is framed on a point four metres above the subject. Asking you "can you tell a
-great shot from a weak one" from those pictures asks you to judge the readout using photographs the game
-would never produce once this is fixed. The readout itself is fine; the shots it is describing are not.
-
-**Evidence kept for you**, outside the folder the rig wipes each run:
-`_bmad-output/verification/subject-bounds-defect/` — the 5★ frame, the same frame at the shutter, and a
-magnified crop of the grader's box with the tree inside it.
-
-**The decision I need.** The fix is one or two lines and it is not in this story's code — it is
-`EventActor`/the actor prefab (Story 1.6 territory), and it changes grading numbers everywhere, so it is not
-mine to slip in quietly:
-
-- **(a)** Let me fix the bounds now inside 1.12 — smallest real change, but it moves every grading number in
-  Stories 1.9/1.10 and their recorded evidence, inside a story that is supposed to be a HUD story.
-- **(b)** Open it as its own story, fix it there, then re-shoot 1.12's exemplars and close AC3/AC4. 1.12 stays
-  at `review` meanwhile. **This is what I would do** — it keeps 1.12 honest and gives the grading change its
-  own regression pass.
-- **(c)** Judge AC3 on the pictures as they are, knowing the framing is wrong.
-
-Everything else in this story is finished and proven; this is the only thing standing between it and `done`.
+**Still genuinely deferred:** the grader's own occlusion test samples rays the same sparse way, so
+`line-of-sight 100 %` can still be reported past a near, wide occluder. Now explained rather than mysterious,
+with a working reference implementation of the honest measurement sitting in the rig.
 
 ### What happens after you answer
 
@@ -1077,3 +1072,6 @@ Everything else in this story is finished and proven; this is the only thing sta
 | 2026-09-09 | Added the missing regression tests for the NaN-colour patch, which was shipped unpinned — nothing would have caught a revert of `!(a >= min)` to `(a < min)`. Proved they bite: reverted the fix, watched exactly those two tests fail with the right diagnosis and nothing else, restored it. **153/153 EditMode tests pass** (was 140 before the review, 151 after the patches, 153 now). |
 | 2026-09-09 | **The 5★ re-shoot is blocked and the town-occlusion theory is disproven.** Ran it three times. `EventActor.Bounds` returns a box **9.18 × 8.25 × 2.30 m centred 4.11 m above the ground** for the drunk — a `SkinnedMeshRenderer` scale-chain fault (root bone lossyScale `0.01` vs renderer transform `(0.20, 0.07, 0.08)`, `localBounds` `917 × 825 × 229`). The rig therefore stands 18.74 m back and aims four metres over his head; the grader's size gate and occlusion rays use the same box, which is why every shot reads `line-of-sight 100 %` and `RaycastAll` hits nothing. Not fixed — it is `EventActor`/prefab (Story 1.6) and moves every 1.9/1.10 grading number. **AC3/AC4 escalated to Alexv with three options.** |
 | 2026-09-09 | Rig hardened while diagnosing: the vantage search now runs **once per scenario** rather than once per frame (the first version ran 216 linecasts on every frame of a 90 s tracking loop and stalled the run), it can no longer fall back silently, and `DescribeLineOfSight` dumps what a camera-to-subject ray actually hits beside every scenario. Regressions re-run: `Tools > Gallery > Gallery Shoot (Play)` clean end to end including the Tab-wiring phase, captions and star glyphs intact, no truncation. |
+| 2026-09-10 | **Retracted the 2026-09-09 `EventActor.Bounds` diagnosis — it was wrong and had been committed before being checked.** The bounds are correct (feet Y≈0.00, head bone Y=6.77, bone cloud 8.09 × 8.76 matching the renderer box). Alexv had approved fixing them; the fix was NOT made because it would have broken working code, and he was told so. Real cause: the vantage was chosen at scenario start while the rig then tracked the subject for up to 90 s, and the probe measured that same early instant — so it truthfully reported "nothing in the way" about a moment nobody photographed. |
+| 2026-09-10 | **The 5★ re-shoot is done.** Vantage is now chosen at the shutter, and visibility is measured by RENDERING (twelve directions, subject renderers on then off, diffed) rather than by raycast — because no raycast can answer it here: at ~4 m camera height the rays cross a near 4.9 m pine at its apex while its base fills the frame, so 9/9 clear and an empty `RaycastAll` were both true and both wrong. Old vantage showed him at 0.9 % of the frame; the chosen one 4.1 %, versus ~3.8 % predicted from geometry. `a_money_shot` is now `100 % · 5★ · right on the moment`, subject centred and unoccluded; no shot carries an occlusion warning. 153/153 EditMode tests still pass; no shipped code changed. |
+| 2026-09-10 | The rig's "he is hidden" warning is now geometric (expected silhouette from bounds, distance and FOV) instead of a flat threshold, so `e_too_far` — whose whole point is distance — is no longer falsely flagged. A rig that cries wolf teaches you to skim its warnings. |

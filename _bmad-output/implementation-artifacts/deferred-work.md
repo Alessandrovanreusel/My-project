@@ -161,11 +161,44 @@ Story 1.12 defect; both are raised because 1.12's own evidence is where they bec
 
 - **The town occlusion symptom is now the most visible thing in the player's own feedback** [Assets/Scripts/Grading/ShotGrader.cs · `VisibleFraction` · Assets/Data/Grading/GradingConfig.asset · `occluderMask`] — `_bmad-output/verification/hud/a_money_shot.png` shows the readout stating **`★★★★★ 94 %`, `seen 100 %`, `right on the moment`** over a photograph in which the drunk is behind a pine tree and not visible at all; the grader's box is drawn on the tree. This is the same reproduced-but-undiagnosed symptom already logged twice (2026-07-26 placement study: 24 of 24 shots read `line-of-sight 100%`; corroborated by the 1.10 review), and the existing entry says outright it should be investigated "before Story 1.12's HUD ships, because a 5★ awarded for a photograph of a tree is exactly what the player will screenshot and complain about". **Story 1.12 was instructed to raise this as a scope question rather than silently expand to include it, so it is NOT fixed.** What has changed is the blast radius: until now the wrong verdict lived in a log line and a gallery caption; it is now a full-width readout telling the player, in words, that they took a great photograph of a tree. **Action: Alexv's call whether this becomes its own story before Epic 2.** The cheapest decisive probe is unchanged — log `Physics.RaycastAll` from camera to subject at each vantage point and print what it actually hits; **`GradeHudShootRunner.DescribeLineOfSight` now does exactly this on every scenario**, so the next run prints the answer beside the picture.
 
-  **Two leads were DISPROVEN by measurement on 2026-09-09 — do not spend time on them again:**
-  1. *"The foliage has no collider, because `Tools > Add MeshColliders to World` only walks `MeshFilter`s beneath a root named `"game map"` or `"World"`."* **False.** Counted in the live scene: **16738 of 16738** `MeshRenderer`s under the `game map` root have a `Collider` on the same GameObject, and **zero** tree/pine/foliage-named renderers lack one. The trees are on layer 0 (`Default`), which is exactly the single bit `GradingConfig.occluderMask` is set to.
-  2. *"The rig simply stood in a bad spot."* **False.** The HUD rig was given a vantage search that fires nine rays spanning the subject's silhouette against every layer except `Subject`. From the very vantage whose photograph is filled by a pine tree it reports **9/9 rays clear** — so physics and the renderer disagree about what is in front of the camera, and the grader is believing physics. That disagreement, not a missing collider and not the camera position, is the defect.
+  **DIAGNOSED 2026-09-10 — the mechanism is now known, and two wrong theories are retracted.**
 
-  Note also `Physics.queriesHitBackfaces` is **false** in this project, so a camera standing *inside* a mesh sees its back faces while every raycast out of it reports open space — one candidate mechanism for the disagreement, and the reason the new probe also reports whether the camera is inside a collider.
+  **What it actually is:** the occlusion test samples too few rays, and they thread past a near occluder
+  that fills the view. The characters stand ~8.8 m tall while the pines are 4.9–7.6 m, and the rig shoots
+  from the subject's centre height — so every sample ray runs 1–7 m above the ground across ~18 m. A pine
+  ~4.5 m from the camera is crossed near its APEX, where the cone is centimetres wide, while its wide base
+  a metre lower fills the entire frame. Nine rays spanning the subject's silhouette reported **9/9 clear**
+  and `RaycastAll` reported **nothing at all** — both true, and both answering *"is the line clear?"* when
+  the question is *"can the camera SEE him?"*. Measured decisively by rendering the subject twice (his
+  renderers on, then off) and diffing: from that vantage he covered **0.9 %** of the frame; rotating to a
+  genuinely clear one gave **4.1 %**, against ~3.8 % predicted from geometry with nothing in the way.
+
+  **Action:** the fix is more sample points and better-chosen ones (silhouette-spanning rays are not enough
+  when the occluder is near and wide), or a coverage test that is not ray-based at all. The HUD rig now
+  chooses its vantage by rendered pixels — `GradeHudShootRunner.VisiblePixelFraction` — which is a working
+  reference implementation of the honest measurement.
+
+  **Three theories DISPROVEN by measurement — do not spend time on them again:**
+  1. *"The foliage has no collider."* **False.** **16738 of 16738** `MeshRenderer`s under the `game map`
+     root have a `Collider` on the same GameObject; zero tree/pine/foliage-named renderers lack one. They
+     are on layer 0 (`Default`), exactly the bit `occluderMask` is set to. Renderer-vs-collider AABBs differ
+     by 0.15–1.09 m on 17 of 40 sampled trees, which is ordinary AABB-vs-mesh difference, not misplacement.
+  2. *"The rig simply stood in a bad spot."* **Half true, and not the defect.** It did stand badly — but no
+     ray-based search could tell, which is the point.
+  3. ⚠️ *"`EventActor.Bounds` is broken — it returns a 9.18 × 8.25 × 2.30 m box centred 4.11 m above the
+     drunk because of a `SkinnedMeshRenderer` scale-chain fault."* **FALSE, AND IT WAS WRITTEN UP AND
+     COMMITTED ON 2026-09-09 BEFORE BEING CHECKED.** The bounds are correct: bone positions put his feet at
+     Y≈0.00 and his head bone at Y=6.77, and the bone cloud (8.09 × 8.76) matches the renderer bounds. He
+     really is that size — as is the player (`CharacterController.height = 8.86`). `c_counted_but_zero.png`
+     shows him dead centre inside the grader's own box. The theory came from placing the line-of-sight probe
+     at the START of the scenario instead of at the shutter, so it measured an instant before he had walked
+     anywhere, and from trusting rays over pixels. Retracted in full.
+
+  **Separately noted, not a defect on its own:** the characters are ~5× the scale of the environment —
+  8.86 m tall against 4.9–7.6 m trees and a 1.97 m car. Everything is internally consistent (both characters
+  agree, the grader's gates were tuned against it), so nothing is *broken*, but it is why "two subject-heights
+  back" is 18.7 m and why a person towers over the treeline. **Action: Alexv's call whether the art scale is
+  worth normalising before Epic 2** — it would move every distance-tuned number in grading and movement.
 - **`hideOnCameraLowered` is a feel decision nobody has played yet** [Assets/Scripts/UI/GradeHudConfig.cs · Assets/Data/UI/GradeHudConfig.asset] — `RaiseCamera` is a *hold*, so with this on (the default) releasing the button takes the grade off screen instantly and a player who clicks and lets go may never read it. With it off, an Overlay readout can linger over the Screen Space – Camera gallery for up to 2.8 s. Story 1.12 shipped it as a switch precisely because both readings are defensible and only playing settles it; the structural consequences of both are photographed (`stress_camera_lowered.png`, `stress_gallery_over_hud.png`). **Action: fold the answer into the config default once Alexv has played it.** If "off" wins, the gallery overlap needs a different fix and `GalleryView.Open` is the natural place — it already suppresses the camera and the player, and one more thing to suppress is the same shape.
 
 ## Deferred from: code review of story-1-12 (2026-08-07)
