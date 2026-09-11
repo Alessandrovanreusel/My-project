@@ -50,6 +50,14 @@ namespace CameraGame.UI
         [Tooltip("Text colour for a COUNTED shot — one that passed every gate and carries a real score.")]
         public Color countedColor = new Color(0.94f, 0.94f, 0.90f);
 
+        [Tooltip("Text colour for a STRONG counted shot (4-5 stars). See countedColor for why the counted " +
+                 "readout is banded by grade at all.")]
+        public Color strongColor = new Color(0.55f, 0.93f, 0.62f);
+
+        [Tooltip("Text colour for a WEAK counted shot (1-2 stars). Must not be confusable with missColor: " +
+                 "a weak shot and a miss are different outcomes and that is the whole point of the banding.")]
+        public Color weakColor = new Color(0.95f, 0.80f, 0.42f);
+
         [Tooltip("Text colour for a MISSED shot. Distinct from the counted colour on purpose: a miss and " +
                  "an off-peak counted shot both read 1 star, so colour is one of the few things that can " +
                  "separate them at a glance.")]
@@ -107,8 +115,31 @@ namespace CameraGame.UI
         /// zero is forced back to opaque rather than left as an invisible readout — and
         /// <see cref="TryGetConfigProblem"/> says so, so the repair is never silent.</summary>
         public Color SafeCountedColor => Visible(countedColor);
+        public Color SafeStrongColor => Visible(strongColor);
+        public Color SafeWeakColor => Visible(weakColor);
         public Color SafeMissColor => Visible(missColor);
         public Color SafePlaceholderColor => Visible(placeholderColor);
+
+        /// <summary>
+        /// The colour for a counted shot of <paramref name="stars"/> stars.
+        ///
+        /// ⚠️ THIS EXISTS BECAUSE ALEXV COULD NOT TELL A 5★ READOUT FROM A 0% ONE AT A GLANCE (AC3,
+        /// 2026-09-11). Shown the three panels with the world cropped away he said the MISS was "obvious"
+        /// but "for the timing and the not timed ones, it's not obvious which one is which". The reason is
+        /// visible in his own answer: the miss changes COLOUR, swaps the number for the word MISSED and
+        /// prints dashes, while both counted shots shared one cream colour and differed only by small star
+        /// glyphs and a percentage. Colour was already doing the heavy lifting for the miss; it simply was
+        /// not doing any for the grade.
+        ///
+        /// Banded rather than continuously lerped, so the readout says "this was good / this was weak"
+        /// instead of asking the player to judge a hue. The bands follow the star scale the player already
+        /// sees, so nothing new has to be learned — and 3★ keeps the original neutral cream, which means a
+        /// middling shot looks exactly as it always did.
+        /// </summary>
+        public Color CountedColorFor(int stars) =>
+            stars >= 4 ? SafeStrongColor :
+            stars <= 2 ? SafeWeakColor :
+                         SafeCountedColor;
 
         /// <summary>
         /// Clamp that handles NaN and infinity EXPLICITLY rather than trusting <c>Mathf.Clamp</c>.
@@ -186,6 +217,8 @@ namespace CameraGame.UI
                                "so a hold this long will still be up when the next shot is taken.");
 
             all = ReportInvisible(all, countedColor, nameof(countedColor));
+            all = ReportInvisible(all, strongColor, nameof(strongColor));
+            all = ReportInvisible(all, weakColor, nameof(weakColor));
             all = ReportInvisible(all, missColor, nameof(missColor));
             all = ReportInvisible(all, placeholderColor, nameof(placeholderColor));
 

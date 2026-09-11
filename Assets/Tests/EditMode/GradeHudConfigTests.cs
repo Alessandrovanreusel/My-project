@@ -141,6 +141,45 @@ namespace CameraGame.Tests
             Assert.That(_cfg.SafeMissColor.b, Is.EqualTo(0.4f).Within(1e-5f));
         }
 
+        // ⚠️ AC3, PINNED AT THE COLOUR LAYER (2026-09-11). Shown the three readouts with the world cropped
+        // away, Alexv called the MISS "obvious" but said of the 5★ and the 0% pair: "it's not obvious which
+        // one is which". Both counted shots were one cream colour. Colour was already what made the miss
+        // unmistakable; banding gives the grade the same help.
+        //
+        // What is pinned is that the three bands are actually TELLABLE APART — from each other and from a
+        // miss. A banding whose colours are near-identical would pass a "does it band?" test and fail the
+        // player, which is the failure this whole check exists to catch.
+        [Test]
+        public void CountedColour_IsBandedByGrade_AndEveryBandIsDistinguishable()
+        {
+            Color strong = _cfg.CountedColorFor(5);
+            Color mid    = _cfg.CountedColorFor(3);
+            Color weak   = _cfg.CountedColorFor(1);
+
+            Assert.AreEqual(strong, _cfg.CountedColorFor(4), "4 and 5 stars share the strong band");
+            Assert.AreEqual(weak, _cfg.CountedColorFor(2), "1 and 2 stars share the weak band");
+            Assert.AreEqual(_cfg.SafeCountedColor, mid, "3 stars keeps the original neutral colour");
+
+            // Far enough apart to read at a glance on a translucent panel, not merely non-equal.
+            const float MinSeparation = 0.25f;
+            AssertApart(strong, weak, MinSeparation, "strong", "weak");
+            AssertApart(strong, mid, MinSeparation, "strong", "mid");
+            AssertApart(weak, mid, MinSeparation, "weak", "mid");
+
+            // And a weak COUNTED shot must not read as a MISS — they are different outcomes, and that
+            // distinction is the one Alexv confirmed already works.
+            AssertApart(weak, _cfg.SafeMissColor, MinSeparation, "weak", "miss");
+        }
+
+        private static void AssertApart(Color a, Color b, float min, string an, string bn)
+        {
+            float d = Mathf.Sqrt((a.r - b.r) * (a.r - b.r) +
+                                 (a.g - b.g) * (a.g - b.g) +
+                                 (a.b - b.b) * (a.b - b.b));
+            Assert.That(d, Is.GreaterThan(min),
+                $"{an} {a} and {bn} {b} are only {d:0.00} apart — too close to tell at a glance");
+        }
+
         // Contract: the shipped defaults are sane, so a freshly created asset warns about nothing. If this
         // fails, every play session starts with a warning nobody can act on — which is how a console full
         // of noise begins (NFR5).

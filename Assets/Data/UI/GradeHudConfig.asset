@@ -16,5 +16,7 @@ MonoBehaviour:
   fadeSeconds: 0.6
   hideOnCameraLowered: 1
   countedColor: {r: 0.94, g: 0.94, b: 0.9, a: 1}
+  strongColor: {r: 0.55, g: 0.93, b: 0.62, a: 1}
+  weakColor: {r: 0.95, g: 0.8, b: 0.42, a: 1}
   missColor: {r: 1, g: 0.55, b: 0.45, a: 1}
   placeholderColor: {r: 0.62, g: 0.62, b: 0.66, a: 1}

@@ -318,7 +318,11 @@ namespace CameraGame.UI
             // Empty when the subject reported no usable timing — the line simply says nothing rather than
             // inventing "0.0s late". GradeText.TimingAdvice guards that.
             SetText(whyLabel, GradeText.TimingAdvice(grade));
-            SetColor(config.SafeCountedColor);
+
+            // ⚠️ BANDED BY GRADE, NOT ONE COLOUR FOR EVERY COUNTED SHOT. Alexv's AC3 check (2026-09-11)
+            // found the miss "obvious" and the 5★-versus-0% pair "not obvious which one is which" — because
+            // the miss changed colour and the two counted shots did not. See GradeHudConfig.CountedColorFor.
+            SetColor(config.CountedColorFor(grade.Stars));
         }
 
         /// <summary>The axis line for a shot whose axes were never scored. Dashes, not zeroes — "the
