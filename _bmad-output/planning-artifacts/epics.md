@@ -32,6 +32,7 @@ jiraSync:
     - { name: "Story 1.10", key: KAN-21 }
     - { name: "Story 1.11", key: KAN-22 }
     - { name: "Story 1.12", key: KAN-23 }
+    - { name: "Story 1.13", key: PENDING }  # Jira token expired 2026-09-10 — sync when re-authenticated
   subtasks:  # story Tasks/Subtasks mirrored as Jira Subtasks (parent = the story)
     # Story 1.1 (parent KAN-12) — created 2026-06-04
     - { name: "1.1 Task 1 — Create folder structure", key: KAN-24, parent: KAN-12 }
@@ -540,6 +541,33 @@ So that I can tell a great shot from a weak one and want to do better.
 **Given** the viewfinder/HUD styling,
 **When** rendered,
 **Then** it reads like a 2000s camcorder/digicam to match the GDD art direction (informational; polish-acceptable).
+
+---
+
+### Story 1.13: Soften the timing multiplier
+
+As a player,
+I want a well-composed photograph taken slightly too late to still be worth something,
+So that good framing is never annihilated by one mistimed press.
+
+*Added 2026-09-12 from Alexv's AC3 perceptual check of Story 1.12: "it should not be a big deal the timing
+for me. I think it's too extreme to give 0 to the c_counted_but_zero.png picture."*
+
+**Acceptance Criteria:**
+
+**Given** a shot that passed every gate,
+**When** its timing score is zero,
+**Then** it still scores above zero if its composition did — via a designer-set floor on the timing factor
+(`percent = composition × (floor + (1 − floor) × timing)`), not a change to the pillars.
+
+**Given** the same change,
+**When** two shots of equal composition are compared,
+**Then** the well-timed one still wins by a wide margin — timing remains the dominant axis.
+
+**Given** the floor,
+**When** grading runs,
+**Then** the "counted but 0 %" state becomes unreachable in normal play, and every rig caption, test and
+record that asserted it is updated rather than left claiming a state the game can no longer produce.
 
 ---
 
