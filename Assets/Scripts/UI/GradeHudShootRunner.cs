@@ -1545,7 +1545,40 @@ namespace CameraGame.UI
                 if (!TryGetActor(out EventActor a)) yield break;
 
                 PlaceCamera(s, a.Bounds);
-                if (a.PeakOffset <= target) yield break;
+                if (a.PeakOffset <= target)
+                {
+                    // ⚠️ INSIDE THE WINDOW IS NOT THE SAME AS "AT THE MOMENT", AND THE DIFFERENCE IS THE
+                    // WHOLE EXEMPLAR.
+                    //
+                    // PeakOffset reads 0 ANYWHERE in the 1.5 s peak, so `<= 0` fires on its very FIRST
+                    // frame — and the stagger is CrossFadeInFixedTime'd in over 0.2 s (EventActor.cs:499),
+                    // so at that instant he is still standing in the walk pose. The 2026-09-11 exemplar
+                    // scored 100% on a photograph in which nothing was visibly happening, and Alexv could
+                    // not tell it from the 0% shot: "I don't see the difference ... which one is staggering".
+                    // He was right, and the fault was here rather than in the readout or the animation.
+                    //
+                    // So dwell into the window before firing. This is the rig photographing the moment the
+                    // score is actually about.
+                    //
+                    // ⚠️ NOTE WHAT THIS DOES NOT FIX. The GAME still awards a flat 100% from the window's
+                    // first frame, so a player who shoots on the leading edge earns full marks for exactly
+                    // the picture Alexv rejected. That is a real design finding and it is deferred, not
+                    // hidden — see deferred-work.md. The rig must not paper over it by only ever
+                    // photographing the flattering instant, which is why the dwell is logged.
+                    if (s.When == Timing.InsidePeak && _peakDwell > 0f)
+                    {
+                        float dwelt = 0f;
+                        while (dwelt < _peakDwell && TryGetActor(out EventActor d) && d.IsAtPeak)
+                        {
+                            PlaceCamera(s, d.Bounds);
+                            dwelt += Time.deltaTime;
+                            yield return null;
+                        }
+                        _lastVantageNote += $"  (shutter pulled {dwelt:0.00}s into the peak window, not on its " +
+                                            "first frame — the stagger needs 0.2s to blend in.)";
+                    }
+                    yield break;
+                }
 
                 tracked += Time.deltaTime;
                 yield return null;
@@ -1581,6 +1614,11 @@ namespace CameraGame.UI
         /// <summary>Set when a scenario has just chosen a vantage, so the line-of-sight probe below runs
         /// once for that scenario rather than on every frame of the tracking loop.</summary>
         private bool _pendingLineOfSightProbe;
+
+        /// <summary>How far into the 1.5 s peak window the money shot's shutter falls. Past the 0.2 s
+        /// animation blend and comfortably short of the window's end, so the pose photographed is a stagger
+        /// rather than the walk he is still crossfading out of.</summary>
+        private readonly float _peakDwell = 0.6f;
 
         /// <summary>
         /// What is ACTUALLY between the camera and the subject, dumped rather than inferred.

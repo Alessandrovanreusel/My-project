@@ -251,3 +251,20 @@ with a `Safe*` accessor, defaulting low enough that it shaves rather than domina
    would produce a `MISSED` readout for a picture the player can plainly see.
 3. It moves every recorded grading number again (photo-shoot, gallery-shoot and HUD rig evidence), so it
    wants its own story with its own regression pass — the same reason 1.12 did not absorb it.
+
+## Deferred from: Alexv's AC3 perceptual check of story-1-12 (2026-09-11)
+
+_He was shown the 5★ and the counted-0% exemplars and said: "I don't see the difference in the pictures,
+which one is he staggering and which one is he not." He was right, and chasing it found one rig bug (fixed)
+and two design findings (here)._
+
+- **The scoring window and the VISIBLE peak are not the same interval** [Assets/Scripts/Grading/ShotGrader.cs · `Timing` · Assets/Data/Events/TownDrunk.asset] — `PeakOffset` reads 0 anywhere in the 1.5 s peak, so timing scores a flat **100 % from the window's very first frame**. But `DrunkStagger` is blended in with `CrossFadeInFixedTime(hash, 0.2f)` (`EventActor.cs:499`) and takes longer than that to become a recognisable pose, so for roughly the first half-second of a "perfect" window the drunk is still standing in his walk pose. **A player who shoots on the leading edge earns full marks for a photograph in which nothing is visibly happening** — which is exactly the picture Alexv rejected, and precisely the complaint NFR10 exists to prevent ("understand why"). Reproduced: the 2026-09-11 exemplar fired at the first frame and was indistinguishable from the 0 % shot; re-shot 0.6 s into the window, the stagger reads clearly (arms out catching balance, versus arms down mid-stride). **Action:** align the two — either delay the start of the timing window by the blend duration, or drive timing from the animation's own progress rather than the phase boundary. Note the HUD rig now dwells 0.6 s into the window (`_peakDwell`) so its evidence shows the moment the score is about; that is the RIG being honest and does **not** fix the game.
+- **The peak reads poorly from behind, and nothing steers the player in front of him** [Assets/Prefabs/Events/EventActor_Drunk.prefab · route authoring] — the stagger is arms-out physical acting and it is legible from the front; from behind it is a silhouette with two sticks out. Both exemplars were shot from behind because the rig picks its vantage by visible pixels, which is blind to facing — and the player has nothing steering them either. Compounds the facing-term request logged above on 2026-09-11. **Action:** consider it together with the facing term; a route that turns him toward likely viewing positions during the peak may be the cheaper half of the fix.
+
+**Also raised by Alexv, recorded as a design question rather than a defect:** he judged `c_counted_but_zero`
+"an ok picture but not 0 grade — the guy is well centered, his whole body is in the picture". That is the
+`percent = composition × timing` multiplier working as designed (ruled as designed 2026-07-28), and it is
+defensible — a well-framed photograph of nothing happening is not a good photograph. But it is the second
+time the hard zero has surprised someone. **Action: none unless he asks** — if it is revisited, a floor on
+the product (so composition can still earn a star) is the smallest change, and it would move every recorded
+grading number.
