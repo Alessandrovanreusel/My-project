@@ -212,3 +212,42 @@ were **disproven by running them** and are recorded as dismissed in the story so
 - **`IsShowing` cannot answer the question its documentation says it exists to answer** [Assets/Scripts/UI/GradeHud.cs:107] — the summary says the verification rig "has to know whether it is photographing a HUD that is up, mid-fade, or already gone", but `_visible` is a single bool that is `true` for the whole `SafeVisibleSeconds` window. It separates gone from not-gone and nothing else; `_remaining` and `fadeGroup.alpha` are both private. A rig that polls `IsShowing` and then captures can land anywhere in a 2.8 s window whose last 0.6 s is a partial-alpha fade, and a legibility judgement made at alpha 0.15 is a finding about the rig rather than the HUD. This project has been burned specifically by rigs photographing the wrong instant. **Action:** either expose the phase (a `float NormalizedAlpha` or an enum) or correct the doc-comment to claim only what the bool delivers.
 - **`ShotGrade.ToString()` changed shape, moving a baseline three rigs diff against** [Assets/Scripts/Grading/ShotGrade.cs:291] — the counted line gained `@ peak {PeakOffsetText}`. Disclosed by the dev as "the only structural difference" and genuinely benign, but the photo-shoot, gallery-shoot and HUD rigs all compare recorded text against stored evidence, so anyone re-running a pre-1.12 comparison sees a diff that is a formatting change rather than a regression. **Action:** none required; noted so a future run does not spend an hour on it.
 - **The HUD's "why" line has no composition voice** [Assets/Scripts/UI/GradeHud.cs:258] — **deferred by Alexv's ruling on 2026-08-07**, reason: the information is already on screen and new player-facing wording should be designed by a story, not invented during a code review. `whyLabel` is fed only by `GradeText.TimingAdvice`, so composition can never be the reason given however dominant it is: a shot at `composition 5% × timing 100%` scores 5% and its only actionable sentence is *"right on the moment"* — a compliment on a bad photograph. Nothing on screen is false (the axes line prints `composition 5%`), but NFR10 asks the player to understand *why*, and the one line written to answer that can only ever discuss timing. Note `MissLong` went to real trouble to supply the actionable half for every miss reason ("get closer, or zoom in", "move so you can see him"); the composition axis, which is half the score formula (`percent = composition × timing`), got none of it. **Action:** when a story next touches the readout's wording, give `whyLabel` the axis that actually cost the shot — the data is already on `ShotGrade` (`Composition01` vs `Timing01`), so this is a wording and design task, not a plumbing one.
+
+## Deferred from: Alexv's design input during story-1-12 review (2026-09-11)
+
+_Alexv described what he thinks a good photograph of the drunk is: "in front of the camera (should have a
+bad grade if he comes from behind), well centered, all of his body on the picture and not too far." Three of
+the four are already implemented and were checked against the code before being written down here; only the
+first is new. Recorded rather than built, because it changes grading (Stories 1.9–1.10) and it arrived while
+1.12 — a HUD story — was sitting at `review`._
+
+**Already implemented, no action needed** (kept so this is not re-raised as missing):
+- *Well centred* — `Composition`'s placement term, `centreWeight: 0.35`. Centred scores highest, and it is
+  that way round **because of Alexv's own judgement**: the rule-of-thirds bonus the GDD originally specified
+  was disproven by matched-pair photographs and FR6 was rewritten to match his eye
+  (`ShotGrader.cs:411-417`).
+- *All of his body in the picture* — the cut-off term, `cutoffWeight: 0.6`, on `framedFraction`. This is the
+  `framed 100 %` figure in the debug overlay.
+- *Not too far* — twice: a hard `minSubjectHeight: 0.2` gate that produces a **TooSmall** miss, and a
+  prominence sweet spot of **0.45–0.78** of frame height falling off below 0.15 and above 1.15 — so too
+  CLOSE costs as well, which is what stops a nose-to-nose shot reading as perfect.
+- *Not behind the camera* — already a hard `BehindCamera` miss (`ShotGrader.cs:302-309`).
+
+**NEW — the subject's facing is not scored at all** [Assets/Scripts/Grading/ShotGrader.cs · `Composition`] —
+nothing anywhere in grading compares the drunk's forward direction with the camera's, so a photograph of the
+back of his head scores exactly the same as one of his face, all else equal. Alexv's phrasing — "a good
+picture for the drunk guy would be that he is **in front of** the camera" — is asking for the photographic
+sense of the word: you are looking at him, not at his back. This matters more here than in most games because
+the peak is a **stagger** — a piece of physical acting whose whole readability is in the front of the body.
+
+**Action:** add a facing term to `Composition`, alongside prominence, placement and cut-off. Sketch:
+`Vector3.Dot(subject.forward, -camera.forward)` — 1 when he faces the lens, 0 side-on, −1 from directly
+behind — remapped to a 0–1 factor and weighted like the others (`facingWeight`, a new `GradingConfig` field
+with a `Safe*` accessor, defaulting low enough that it shaves rather than dominates). Three cautions:
+1. It needs a **facing direction on `ISubject`**, not `transform.forward` on the actor root — the actor's
+   root orientation and the rendered body can disagree, and the drunk stands still during the peak while his
+   animation keeps moving. Expose it from `EventActor` so grading never reaches into the model.
+2. **Do not make it a gate.** A back-turned shot is a worse photograph, not a failed one; a hard rejection
+   would produce a `MISSED` readout for a picture the player can plainly see.
+3. It moves every recorded grading number again (photo-shoot, gallery-shoot and HUD rig evidence), so it
+   wants its own story with its own regression pass — the same reason 1.12 did not absorb it.
