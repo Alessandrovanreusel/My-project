@@ -91,8 +91,18 @@ photograph. It has now surprised a reader twice, and the product owner has asked
   - [ ] Fix the percentage assertions; add the floor contract in both directions.
 - [ ] **Task 5 — Re-run all three rigs and report the diffs honestly (AC4)**
 - [ ] **Task 6 — Hand Alexv the new exemplars.** He asked for this change; he should see what it did to the
-      readout before it is called done. The banded colours from 1.12 mean `c_counted_but_zero` will move
-      from amber-1★ to amber-2★ — visible, and worth his eye.
+      readout before it is called done. ⚠️ **Corrected 2026-09-12 (code review of 1.12): the COLOUR does not
+      change.** `c_counted_but_zero` moves from amber-1★ to amber-2★ — amber to amber. Only the star glyph
+      and the percentage move; 1.12's banding puts everything below 3★ in one band. Worth his eye, but do
+      not promise him a visible colour shift that will not be there.
+      Note also that after this change `b_mid_counted` (41 %, 2★) and `c_counted_but_zero` (29 %, 2★) share
+      the same colour **and** the same star count. That was accepted deliberately on 2026-09-12 ("both weak"
+      is the intended reading) — it is not a regression to re-litigate, but he should see it.
+
+- [ ] **Task 7 — Do not start this story until 1.12 is closed.** Alexv's call, 2026-09-12: the banded
+      readout gets judged on its own first. This story moves every recorded grading number and re-shoots all
+      three rigs, so running it first would mean the banding is never judged in isolation — which is the
+      discipline AC2 above already states in its own terms.
 
 ## Dev Notes
 

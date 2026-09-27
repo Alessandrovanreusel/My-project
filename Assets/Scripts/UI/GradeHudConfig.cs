@@ -47,7 +47,10 @@ namespace CameraGame.UI
 
         [Header("Colours")]
 
-        [Tooltip("Text colour for a COUNTED shot — one that passed every gate and carries a real score.")]
+        [Tooltip("Text colour for a COUNTED shot of 3 stars — the middle of the grade. The counted readout " +
+                 "is BANDED: 4-5 stars use strongColor, 3 stars this one, 1-2 stars weakColor. Colour was " +
+                 "already what made a MISS unmistakable and was doing nothing for the grade, so a 5-star " +
+                 "and a 0% shot read alike (AC3, 2026-09-11). See GradeHudConfig.CountedColorFor.")]
         public Color countedColor = new Color(0.94f, 0.94f, 0.90f);
 
         [Tooltip("Text colour for a STRONG counted shot (4-5 stars). See countedColor for why the counted " +
@@ -55,8 +58,12 @@ namespace CameraGame.UI
         public Color strongColor = new Color(0.55f, 0.93f, 0.62f);
 
         [Tooltip("Text colour for a WEAK counted shot (1-2 stars). Must not be confusable with missColor: " +
-                 "a weak shot and a miss are different outcomes and that is the whole point of the banding.")]
-        public Color weakColor = new Color(0.95f, 0.80f, 0.42f);
+                 "a weak shot and a miss both read 1 star, so colour is most of what separates them.\n\n" +
+                 "Bright on purpose: it is drawn on a translucent panel with the live world behind it, and " +
+                 "must clear 4.5:1 contrast there on a bright background. A darker amber measured below " +
+                 "that off the real captures (2026-09-12). If you retune it, re-measure a capture with " +
+                 "tools/verification/build_hud_panel_sheet.py --rect rather than judging by eye.")]
+        public Color weakColor = new Color(1.00f, 0.88f, 0.31f);
 
         [Tooltip("Text colour for a MISSED shot. Distinct from the counted colour on purpose: a miss and " +
                  "an off-peak counted shot both read 1 star, so colour is one of the few things that can " +
@@ -98,6 +105,25 @@ namespace CameraGame.UI
         /// valid colour in the Inspector — the silent-nothing shape, in a channel nobody thinks to check.</summary>
         public const float MinVisibleAlpha = 0.05f;
 
+        /// <summary>
+        /// How far apart two readout colours must be, in CIE-Lab ΔE, to count as tellable apart at a glance.
+        ///
+        /// ⚠️ ΔE, NOT RGB DISTANCE. The 2026-09-12 review found the shipped `weakColor` and `missColor`
+        /// clearing a Euclidean-RGB threshold of 0.25 by 0.0067 while being ΔE 45.5 apart — a pair that is
+        /// obviously different to the eye, sitting one nudge away from failing its own test. RGB distance is
+        /// not perceptually uniform, so its verdicts near a threshold mean little.
+        ///
+        /// ΔE76 is better, not perfect, and two limits are worth knowing (2026-09-27 review): it does NOT
+        /// check lightness on its own — two colours of equal luminance pass on hue alone, which normal
+        /// vision handles but colour-blind players may not — and it overstates distances between saturated
+        /// colours (see <see cref="PerceptualDistance"/>). Both are logged in deferred-work.md.
+        ///
+        /// 25 is the floor, not the target. On the six pairs the validator checks, the shipped palette sits
+        /// at ΔE 50-87 (measured 2026-09-27) and should stay well clear of it. This exists to catch an
+        /// authoring mistake, not to police tuning.
+        /// </summary>
+        public const float MinBandSeparation = 25f;
+
         // --- Safe accessors ---------------------------------------------------------------------------
 
         /// <summary>Hold, guaranteed usable however the asset was authored.</summary>
@@ -133,8 +159,18 @@ namespace CameraGame.UI
         ///
         /// Banded rather than continuously lerped, so the readout says "this was good / this was weak"
         /// instead of asking the player to judge a hue. The bands follow the star scale the player already
-        /// sees, so nothing new has to be learned — and 3★ keeps the original neutral cream, which means a
-        /// middling shot looks exactly as it always did.
+        /// sees, so nothing new has to be learned — and 3★ keeps the original neutral cream.
+        ///
+        /// ⚠️ "3★ IS THE MIDDLE" IS A STATEMENT ABOUT THE STAR SCALE, NOT ABOUT ANY PARTICULAR SHOT. This
+        /// comment has been wrong twice by naming shots: first claiming "a middling shot looks exactly as it
+        /// always did", then quoting exemplar grades that were already stale when written — the rig's
+        /// shutter timing varies run to run, and a grading story can move every number. Which percentages
+        /// get 3★ is decided by the star thresholds on GradingConfig; which photographs land there is a
+        /// MEASUREMENT. If you change a band, photograph it — do not reason about which shot lands where.
+        ///
+        /// 1★ and 2★ deliberately SHARE the weak band (Alexv's call, 2026-09-12): the readout is meant to
+        /// say "this shot was weak", not to rank one weak shot against another — the stars and the
+        /// percentage already do that.
         /// </summary>
         public Color CountedColorFor(int stars) =>
             stars >= 4 ? SafeStrongColor :
@@ -184,6 +220,47 @@ namespace CameraGame.UI
         private static float Channel(float v) => float.IsNaN(v) ? 0f : Mathf.Clamp01(v);
 
         /// <summary>
+        /// Perceptual distance between two colours (CIE-Lab ΔE76) — how different two readout colours look
+        /// from EACH OTHER. Both are put through <see cref="Visible"/> first, so a repaired value (NaN,
+        /// out of range, near-zero alpha) is measured as it would be drawn rather than as it was typed.
+        ///
+        /// ⚠️ WHAT THIS DOES NOT ANSWER: whether either colour is READABLE. It compares the two as if opaque
+        /// and ignores the alpha, the panel and the world behind the text, so it says nothing about
+        /// contrast. That is measured off the real captures (tools/verification/build_hud_panel_sheet.py).
+        ///
+        /// ΔE76 rather than ΔE2000 is a simplicity trade with a known cost: ΔE76 overstates distances
+        /// between SATURATED colours — two strong blues can score ΔE76 25.2 and ΔE2000 3.8, i.e. pass here
+        /// while being hard to tell apart. Nothing in the shipped palette is in that region. Switching metric
+        /// is not a drop-in fix: the shipped palette is ΔE2000 23-58, so the floor would need re-deriving
+        /// (deferred-work.md, 2026-09-27).
+        /// </summary>
+        public static float PerceptualDistance(Color a, Color b)
+        {
+            Vector3 la = Lab(Visible(a)), lb = Lab(Visible(b));
+            return Vector3.Distance(la, lb);
+        }
+
+        /// <summary>sRGB to CIE-Lab (D65). Gamma is undone first — skipping that step is the usual reason a
+        /// "perceptual" comparison turns out to be no such thing.</summary>
+        private static Vector3 Lab(Color c)
+        {
+            float r = Linear(c.r), g = Linear(c.g), b = Linear(c.b);
+
+            float x = (r * 0.4124564f + g * 0.3575761f + b * 0.1804375f) / 0.95047f;
+            float y = (r * 0.2126729f + g * 0.7151522f + b * 0.0721750f) / 1.00000f;
+            float z = (r * 0.0193339f + g * 0.1191920f + b * 0.9503041f) / 1.08883f;
+
+            float fx = LabF(x), fy = LabF(y), fz = LabF(z);
+            return new Vector3(116f * fy - 16f, 500f * (fx - fy), 200f * (fy - fz));
+        }
+
+        private static float Linear(float v) =>
+            v <= 0.04045f ? v / 12.92f : Mathf.Pow((v + 0.055f) / 1.055f, 2.4f);
+
+        private static float LabF(float t) =>
+            t > 0.008856f ? Mathf.Pow(t, 1f / 3f) : 7.787f * t + 16f / 116f;
+
+        /// <summary>
         /// Reports authoring mistakes that would break the HUD SILENTLY rather than loudly — the project's
         /// standing "fail-soft must not mean invisible" rule. Called once at <c>Awake</c> by
         /// <see cref="GradeHud"/>; returns false when everything is sane.
@@ -221,6 +298,27 @@ namespace CameraGame.UI
             all = ReportInvisible(all, weakColor, nameof(weakColor));
             all = ReportInvisible(all, missColor, nameof(missColor));
             all = ReportInvisible(all, placeholderColor, nameof(placeholderColor));
+
+            // ⚠️ THE BANDING'S RUNTIME DEFENCE — THE ONE THAT SEES WHATEVER CONFIG THE HUD IS ACTUALLY GIVEN.
+            //
+            // The 2026-09-12 review set strongColor = weakColor in the SHIPPED .asset and ran the suite:
+            // all green, clean console, and a readout with no banding left in it at all. The fixtures in
+            // GradeHudConfigTests are CreateInstance objects, so they pin the C# defaults while the player
+            // sees the asset. The answer is the project's standard one for its most repeated failure shape
+            // — a hand-authored value that disables a feature silently: the validator reads what the
+            // designer typed and says so at Awake. The suite now backs it up before anyone presses Play
+            // (ShippedAsset_PassesItsOwnValidator validates every GradeHudConfig asset in the project).
+            all = ReportConfusable(all, strongColor, nameof(strongColor), countedColor, nameof(countedColor), WhyBand);
+            all = ReportConfusable(all, weakColor, nameof(weakColor), countedColor, nameof(countedColor), WhyBand);
+            all = ReportConfusable(all, strongColor, nameof(strongColor), weakColor, nameof(weakColor), WhyBand);
+
+            // A COUNTED shot and a MISS are different outcomes, and colour is most of what separates them —
+            // both can read 1★. That requirement is older than the banding, so these three explain
+            // themselves differently. The weak/miss pair is the one that was nearly lost: the amber shipped
+            // on 2026-09-11 sat ΔE 45.5 from the miss, on a metric (RGB) that called it borderline.
+            all = ReportConfusable(all, weakColor, nameof(weakColor), missColor, nameof(missColor), WhyMiss);
+            all = ReportConfusable(all, countedColor, nameof(countedColor), missColor, nameof(missColor), WhyMiss);
+            all = ReportConfusable(all, strongColor, nameof(strongColor), missColor, nameof(missColor), WhyMiss);
 
             problem = all;
             return all != null;
@@ -270,6 +368,44 @@ namespace CameraGame.UI
                 ? Add(all, $"{field} is {ColorText(c)}, so that line would be invisible or mis-coloured on " +
                            "screen while reading as a perfectly valid colour in the Inspector — repairing it.")
                 : all;
+
+        /// <summary>
+        /// Reports two readout colours that a player could not tell apart, naming both fields and the
+        /// measured distance so the designer can see how far off it is rather than just that it is off.
+        ///
+        /// Warns rather than repairs, for the same reason <see cref="LingerWarnSeconds"/> warns: there is no
+        /// correct colour to substitute, and quietly moving a designer's hue would be worse than saying so.
+        ///
+        /// Three details, each from the 2026-09-27 review, and each the "message has to match the mistake"
+        /// rule from <see cref="WhyHold"/> again:
+        /// - It prints the colours AS DRAWN, because that is what was measured. A NaN field repaired to
+        ///   black, or a 0-255 value clamped to white, would otherwise produce a line about a colour the
+        ///   designer never typed, with nothing to connect the two.
+        /// - The distance is TRUNCATED, not rounded: 24.97 rounded prints "ΔE 25.0 apart (needs 25)", a
+        ///   message that contradicts itself.
+        /// - The reason is the caller's (<see cref="WhyBand"/> or <see cref="WhyMiss"/>): a counted shot
+        ///   that reads like a miss is a different failure from two grades that read alike.
+        /// </summary>
+        private static string ReportConfusable(string all, Color a, string fieldA, Color b, string fieldB,
+                                               string why)
+        {
+            float d = PerceptualDistance(a, b);
+            return d < MinBandSeparation
+                ? Add(all, $"{fieldA} {Rgb(Visible(a))} and {fieldB} {Rgb(Visible(b))} are only " +
+                           $"ΔE {Mathf.Floor(d * 10f) / 10f:0.0} apart as drawn (needs {MinBandSeparation:0}) — " +
+                           why)
+                : all;
+        }
+
+        private const string WhyBand =
+            "a player could not tell those two grades apart at a glance, which is the whole reason the " +
+            "counted readout is banded by grade.";
+
+        private const string WhyMiss =
+            "a player could not tell that counted shot from a MISS at a glance — both can read 1 star, so " +
+            "colour is most of what separates them.";
+
+        private static string Rgb(Color c) => $"({c.r:0.00}, {c.g:0.00}, {c.b:0.00})";
 
         /// <summary>Names what is actually wrong with a colour, rather than always blaming the alpha — the
         /// same rule <see cref="WhyHold"/> follows. A validator whose explanation is wrong costs more than

@@ -17,8 +17,11 @@ namespace CameraGame.Tests
     /// Nothing here asserts that 2.2 seconds is the RIGHT hold. That is a question for eyes and it goes to
     /// Alexv with photographs (AC3).
     ///
-    /// Configs are built with <c>CreateInstance</c> and never loaded from the shipped asset, so a test run
-    /// can never mutate <c>Assets/Data/UI/GradeHudConfig.asset</c>.
+    /// Every fixture is built with <c>CreateInstance</c>, so the tests that set values pin the C# defaults
+    /// and the <c>Safe*</c> behaviour. Exactly one test reads the real assets —
+    /// <see cref="ShippedAsset_PassesItsOwnValidator"/> — and it only loads and validates them. Nothing in
+    /// this file ever writes to an asset, so a test run can never mutate
+    /// <c>Assets/Data/UI/GradeHudConfig.asset</c>.
     /// </summary>
     public class GradeHudConfigTests
     {
@@ -146,9 +149,14 @@ namespace CameraGame.Tests
         // one is which". Both counted shots were one cream colour. Colour was already what made the miss
         // unmistakable; banding gives the grade the same help.
         //
-        // What is pinned is that the three bands are actually TELLABLE APART — from each other and from a
-        // miss. A banding whose colours are near-identical would pass a "does it band?" test and fail the
-        // player, which is the failure this whole check exists to catch.
+        // ⚠️ THIS TEST NO LONGER CARRIES THE WEIGHT IT LOOKS LIKE IT CARRIES, AND THAT IS DELIBERATE.
+        // The 2026-09-12 review set strongColor = weakColor in the SHIPPED .asset and this suite stayed
+        // green, because `_cfg` is a CreateInstance fixture (see the class doc) and therefore pins the C#
+        // DEFAULTS, not the asset the player sees. A control breaking the default failed this test
+        // correctly — it works, it was simply guarding the wrong input. The runtime defence lives in
+        // GradeHudConfig.TryGetConfigProblem, which reads what the designer typed; the asset case is
+        // pinned by ShippedAsset_PassesItsOwnValidator below. What remains here is the DEFAULTS contract:
+        // a freshly created config must band, and must band far enough apart to read.
         [Test]
         public void CountedColour_IsBandedByGrade_AndEveryBandIsDistinguishable()
         {
@@ -160,24 +168,141 @@ namespace CameraGame.Tests
             Assert.AreEqual(weak, _cfg.CountedColorFor(2), "1 and 2 stars share the weak band");
             Assert.AreEqual(_cfg.SafeCountedColor, mid, "3 stars keeps the original neutral colour");
 
-            // Far enough apart to read at a glance on a translucent panel, not merely non-equal.
-            const float MinSeparation = 0.25f;
-            AssertApart(strong, weak, MinSeparation, "strong", "weak");
-            AssertApart(strong, mid, MinSeparation, "strong", "mid");
-            AssertApart(weak, mid, MinSeparation, "weak", "mid");
+            // ⚠️ ΔE, NOT RGB DISTANCE. The first version of this test measured sqrt(Δr²+Δg²+Δb²) against a
+            // threshold of 0.25, and the shipped weak/miss pair cleared it by 0.0067 while being ΔE 45.5
+            // apart — borderline on the metric, obvious to the eye. One metric now, shared with the
+            // validator, so the test and the shipped guard-rail cannot disagree — which also means they can
+            // be wrong TOGETHER, and is why PerceptualDistance_MatchesPublishedCieLabValues exists.
+            AssertApart(strong, weak, "strong", "weak");
+            AssertApart(strong, mid,  "strong", "mid");
+            AssertApart(weak,   mid,  "weak",   "mid");
 
-            // And a weak COUNTED shot must not read as a MISS — they are different outcomes, and that
-            // distinction is the one Alexv confirmed already works.
-            AssertApart(weak, _cfg.SafeMissColor, MinSeparation, "weak", "miss");
+            // Every counted band against a MISS — all three, not just the weak one. A 5★ shot followed by a
+            // miss is an ordinary on-screen sequence, and mid-vs-miss was the only counted/miss pair that
+            // existed before banding. The earlier version asserted 4 of these 6 pairs.
+            AssertApart(weak,   _cfg.SafeMissColor, "weak",   "miss");
+            AssertApart(mid,    _cfg.SafeMissColor, "mid",    "miss");
+            AssertApart(strong, _cfg.SafeMissColor, "strong", "miss");
         }
 
-        private static void AssertApart(Color a, Color b, float min, string an, string bn)
+        // Contract: the validator actually FIRES on a confusable palette — for EVERY pair it claims to
+        // guard, not just one. The first version exercised strong==weak only, so the 2026-09-27 review could
+        // delete any of the other five checks and keep the suite green: the guard-rail silently broken one
+        // level up, which is precisely the failure it exists to prevent. `nameof` keeps the cases honest
+        // through a rename.
+        [TestCase(nameof(GradeHudConfig.strongColor), nameof(GradeHudConfig.countedColor))]
+        [TestCase(nameof(GradeHudConfig.weakColor), nameof(GradeHudConfig.countedColor))]
+        [TestCase(nameof(GradeHudConfig.strongColor), nameof(GradeHudConfig.weakColor))]
+        [TestCase(nameof(GradeHudConfig.weakColor), nameof(GradeHudConfig.missColor))]
+        [TestCase(nameof(GradeHudConfig.countedColor), nameof(GradeHudConfig.missColor))]
+        [TestCase(nameof(GradeHudConfig.strongColor), nameof(GradeHudConfig.missColor))]
+        public void Validator_ReportsEveryPairAPlayerMustTellApart(string fieldA, string fieldB)
         {
-            float d = Mathf.Sqrt((a.r - b.r) * (a.r - b.r) +
-                                 (a.g - b.g) * (a.g - b.g) +
-                                 (a.b - b.b) * (a.b - b.b));
-            Assert.That(d, Is.GreaterThan(min),
-                $"{an} {a} and {bn} {b} are only {d:0.00} apart — too close to tell at a glance");
+            SetColour(fieldA, GetColour(fieldB));
+
+            Assert.That(_cfg.TryGetConfigProblem(out string problem), Is.True,
+                $"{fieldA} set equal to {fieldB} must be reported — a player can no longer tell them apart");
+            Assert.That(SentenceNaming(problem, fieldA, fieldB), Is.Not.Null,
+                $"ONE sentence must name both {fieldA} and {fieldB}, so the designer knows what to change: {problem}");
+            StringAssert.Contains("ΔE", SentenceNaming(problem, fieldA, fieldB),
+                "and state the measured distance, not just that it is wrong");
+        }
+
+        // Contract: the floor is where the constant says it is. Two greys differ in lightness only, so their
+        // ΔE is exactly their ΔL* — which makes a pair at a known distance either side of the threshold
+        // constructible without trusting the code under test. The sRGB values are L* 50, 74.96 and 75.5
+        // pushed through the published sRGB/CIE-Lab formulas. 24.96 is chosen on purpose: it is the value
+        // that used to print "ΔE 25.0 apart (needs 25)".
+        [Test]
+        public void Validator_FiresJustBelowTheFloorAndNotJustAbove()
+        {
+            Color l50 = Grey(0.466327f), l7496 = Grey(0.723472f), l755 = Grey(0.729253f);
+
+            _cfg.strongColor = l50;
+            _cfg.countedColor = l7496;                                 // ΔE 24.96 — must fire
+            _cfg.TryGetConfigProblem(out string below);
+            Assert.That(SentenceNaming(below, "strongColor", "countedColor"), Is.Not.Null,
+                $"ΔE 24.96 is under the floor of {GradeHudConfig.MinBandSeparation} and was not reported: {below}");
+            StringAssert.Contains("ΔE 24.9 ", below, "truncated, never rounded up across the threshold");
+
+            _cfg.countedColor = l755;                                  // ΔE 25.5 — must not
+            _cfg.TryGetConfigProblem(out string above);
+            Assert.That(SentenceNaming(above, "strongColor", "countedColor"), Is.Null,
+                $"ΔE 25.5 clears the floor and was reported anyway: {above}");
+        }
+
+        // ⚠️ THE TEST AND THE VALIDATOR SHARE ONE FUNCTION, SO THEY CAN ONLY BE WRONG TOGETHER — unless
+        // something pins that function to an answer it did not produce. The 2026-09-27 review broke the
+        // maths two ways (dropped the gamma step; swapped two matrix rows) and every other test stayed green.
+        //
+        // The reference values are PUBLISHED, not computed here: sRGB red is L*a*b* (53.24, 80.09, 67.20) and
+        // blue (32.30, 79.19, −107.86), so their distances from black are 117.33 and 137.65. ⚠️ THE MID-GREY
+        // IS NOT DECORATION: primaries only use channel values of 0 and 1, which gamma leaves unchanged, so
+        // they cannot see a missing Linear() step. sRGB 0.5 is L* 53.39 with it and 76.07 without.
+        [Test]
+        public void PerceptualDistance_MatchesPublishedCieLabValues()
+        {
+            Assert.That(GradeHudConfig.PerceptualDistance(Color.white, Color.black), Is.EqualTo(100f).Within(0.05f),
+                "white to black is exactly 100 L* — anything else means the white point or a matrix row is wrong");
+            Assert.That(GradeHudConfig.PerceptualDistance(Color.red, Color.black), Is.EqualTo(117.33f).Within(0.05f));
+            Assert.That(GradeHudConfig.PerceptualDistance(Color.blue, Color.black), Is.EqualTo(137.65f).Within(0.05f));
+            Assert.That(GradeHudConfig.PerceptualDistance(Grey(0.5f), Color.black), Is.EqualTo(53.39f).Within(0.05f),
+                "76.07 here means the gamma was never undone — the comparison is not perceptual at all");
+        }
+
+        // ⚠️ THE ONE TEST THAT LOOKS AT WHAT THE PLAYER ACTUALLY GETS.
+        //
+        // Every other test in this file uses a CreateInstance fixture, which is right for pinning the Safe*
+        // accessors but cannot see the hand-authored YAML. This one loads every GradeHudConfig ASSET in the
+        // project READ-ONLY and never writes to it (see the class doc). It exists because the 2026-09-12
+        // review broke the shipped asset and watched the whole suite pass. It searches by type rather than
+        // by path, so a moved asset is still validated and a variant is not skipped (2026-09-27 review).
+        [Test]
+        public void ShippedAsset_PassesItsOwnValidator()
+        {
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:" + nameof(GradeHudConfig));
+            Assert.That(guids, Is.Not.Empty,
+                "no GradeHudConfig asset found — the shipped one lives at Assets/Data/UI/GradeHudConfig.asset");
+
+            var failures = new System.Collections.Generic.List<string>();
+            foreach (string guid in guids)
+            {
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                var asset = UnityEditor.AssetDatabase.LoadAssetAtPath<GradeHudConfig>(path);
+                if (asset == null)
+                    failures.Add($"{path} did not load as a GradeHudConfig");
+                else if (asset.TryGetConfigProblem(out string problem))
+                    failures.Add($"{path}: {problem}");
+            }
+
+            Assert.That(failures, Is.Empty,
+                "a GradeHudConfig asset — what the player sees — fails its own validator:\n" +
+                string.Join("\n", failures));
+        }
+
+        private Color GetColour(string field) => (Color)typeof(GradeHudConfig).GetField(field).GetValue(_cfg);
+
+        private void SetColour(string field, Color value) =>
+            typeof(GradeHudConfig).GetField(field).SetValue(_cfg, value);
+
+        private static Color Grey(float v) => new Color(v, v, v, 1f);
+
+        // The validator joins its problems with a double space. Asserting both names somewhere in the whole
+        // string would pass if they came from two unrelated messages, so find the one sentence naming both.
+        private static string SentenceNaming(string problem, string fieldA, string fieldB)
+        {
+            if (string.IsNullOrEmpty(problem)) return null;
+            foreach (string sentence in problem.Split(new[] { "  " }, System.StringSplitOptions.RemoveEmptyEntries))
+                if (sentence.StartsWith(fieldA + " ") && sentence.Contains(" " + fieldB + " "))
+                    return sentence;
+            return null;
+        }
+
+        private static void AssertApart(Color a, Color b, string an, string bn)
+        {
+            float d = GradeHudConfig.PerceptualDistance(a, b);
+            Assert.That(d, Is.GreaterThanOrEqualTo(GradeHudConfig.MinBandSeparation),
+                $"{an} {a} and {bn} {b} are only ΔE {d:0.0} apart — too close to tell at a glance");
         }
 
         // Contract: the shipped defaults are sane, so a freshly created asset warns about nothing. If this

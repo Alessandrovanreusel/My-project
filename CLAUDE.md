@@ -130,6 +130,16 @@ the difference between findings and fiction, and each was measured. The short ve
   fields still read fine from managed memory while `== null` is simultaneously true.
 - Editing `ProjectSettings/*.asset` on disk does not take effect while the editor is running — use the
   editor API.
+- **Anything you edit on disk — a script OR an `Assets/**/*.asset` — is invisible to a rig run until Unity
+  has actually reimported it, and `execute_menu_item` will happily run on the stale version with a clean
+  console.** This cost the 2026-09-12 code review two full rig runs. First a new scenario was added to a
+  runner and the run produced no such capture (source 11:59, assembly 11:55 — never recompiled). Then a
+  config colour was restored on disk and the run photographed the *previous* value, which looked exactly
+  like a banding regression and was nearly written up as one. Neither failure said anything: no error, no
+  warning, a complete-looking run. **Before triggering a rig: call `refresh_unity`, wait for the rebuild,
+  and read the value back through the editor** (`AssetDatabase.LoadAssetAtPath` + `execute_code`) so you
+  are verifying what Unity holds, not what the file says. `mcpforunity://editor/state` reports
+  `assets.external_changes_dirty: true` when edits are pending — check it.
 - A debug readout that outlives the instant it describes will be read against a later frame. Bound its
   lifetime and label it a snapshot — a 4-second overlay produced a confident, wrong bug diagnosis from a
   screenshot taken two seconds after the shot.

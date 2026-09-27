@@ -566,6 +566,18 @@ namespace CameraGame.UI
             /// <summary>Hold until the actor is inside the peak WINDOW, then fire.</summary>
             InsidePeak,
 
+            /// <summary>
+            /// Hold until the shutter lands a QUARTER of the way down the timing curve — the band that
+            /// grades 3★.
+            ///
+            /// ⚠️ THIS EXISTS BECAUSE THE CREAM BAND SHIPPED UNPHOTOGRAPHED. The 2026-09-12 code review
+            /// found that `countedColor` (3★) is the one band with no exemplar anywhere in the evidence
+            /// set: the three counted shots grade 94 %, 20 % and 0 %, while cream covers only 45-70 %.
+            /// A colour nobody has ever seen a picture of is exactly the kind of claim this project does
+            /// not accept, so the rig now shoots one.
+            /// </summary>
+            JustPastPeak,
+
             /// <summary>Hold until the shutter would land part-way down the timing curve.</summary>
             PartWayPastPeak,
 
@@ -578,6 +590,12 @@ namespace CameraGame.UI
         {
             new State("a_money_shot", "Two heights back, dead centre, shutter pulled inside the peak window.",
                       2.2f, when: Timing.InsidePeak),
+            // ⚠️ THE 3★ CREAM BAND — added 2026-09-12, and the reason is in Timing.JustPastPeak. Without
+            // this shot the middle of the grade scale has never been photographed, and `countedColor` is
+            // the only readout colour resting on an assertion rather than a picture.
+            new State("b1_three_star_cream", "Same framing, shutter pulled a quarter of the way down the " +
+                      "timing curve — the middle of the scale, which should read CREAM.",
+                      2.2f, when: Timing.JustPastPeak),
             new State("b_mid_counted", "Same framing, shutter pulled part-way down the timing curve.",
                       2.2f, when: Timing.PartWayPastPeak),
             new State("c_counted_but_zero", "Same framing, shutter pulled well after the peak window ended.",
@@ -1506,7 +1524,17 @@ namespace CameraGame.UI
             gradingConfig.ResolveTimingWindow(out float full, out float zero);
 
             // Where the shutter should fall, in seconds of PeakOffset (positive early, negative late).
+            // ⚠️ THE RIG FIRES LATE, AND THE TARGET HAS TO ALLOW FOR IT. Polling at timeScale 3 the shutter
+            // lands roughly 0.3 s past whatever it aims at — `b_mid_counted` aims at -1.25 s and the run
+            // logs -1.54 s. That does not matter for the other states (they aim at wide, flat parts of the
+            // curve) but it matters here: the 3★ band is only 45-70 % wide, so aiming at its centre would
+            // overshoot into 2★ and photograph amber while claiming cream. Aim a quarter of the way down
+            // and let the overshoot carry it to the middle.
+            //
+            // This number is a PREDICTION, not a guarantee. Read the grade the run actually logs; if it is
+            // not 3★, move this and shoot again rather than relabelling the picture.
             float target = s.When == Timing.InsidePeak ? 0f
+                         : s.When == Timing.JustPastPeak ? -(full + (zero - full) * 0.25f)
                          : s.When == Timing.PartWayPastPeak ? -(full + zero) * 0.5f
                          : -(zero + 1.5f);
 

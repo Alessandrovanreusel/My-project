@@ -452,6 +452,299 @@ values); `GradeText.TimingAdvice` is unsanctioned new wording (sanctioned by dec
 `TryGetConfigProblem` deviates from the one-problem-at-a-time idiom (deviates *toward* two standing
 deferred items, and is disclosed).
 
+---
+
+Code review 2026-09-12 (`636b4cc..HEAD`, shipped code only — `GradeHudShootRunner.cs` changed in the same
+range and was excluded as a rig). Subject: the grade-banded counted readout (`CountedColorFor`,
+`strongColor`/`weakColor`). Layers: Blind Hunter (diff only) and Acceptance Auditor (diff + spec) both
+returned; **the Edge Case Hunter stalled and was stopped with no findings** — its territory was covered
+instead by three experiments run directly against the editor (below). 22 triaged findings → 4 decisions
+(all resolved 2026-09-12), 11 patches (**all applied 2026-09-12**), 1 deferred, 7 dismissed as disproven.
+Re-verified after patching: **156/156 EditMode** (154 before, +2 new), the reproduction in E1 now FAILS as
+it should, and the readout was re-shot and re-photographed — `panels_banded.png` shows 5★ green, 3★ cream,
+1★ amber, 1★ amber, MISS salmon.
+
+**Three things were settled by running, not reading:**
+- **E1** — set `strongColor` = `weakColor` in the shipped `.asset`, refreshed, ran the suite:
+  **154/154 PASSED, console clean, no warning.** Banding is dead for the player and nothing reports it.
+- **E2 (control)** — broke the *C# default* instead: the banding test **fails correctly**
+  (`"...are only 0.00 apart" / Expected: greater than 0.25f`). The test is not vacuous; it guards the
+  input that never ships.
+- **E3** — deleted both new keys from the `.asset` (a pre-banding config): Unity **retains the C# field
+  initialisers**, banding stays correct, validator correctly silent. An old asset upgrades cleanly.
+All three mutations were reverted; `git status` and a read-back through Unity's own loader confirm it.
+
+**Decisions (need Alexv — the code cannot be correctly patched without his intent):**
+
+- [x] [Review][Decision] **RESOLVED 2026-09-12 — accept it; "both weak" is the intended reading.**
+      *The weak band merges 2★ and 1★, so two of the three exemplars still differ only
+      by star glyphs and a percentage.** Measured off `panels_banded.png`: `a_money_shot` (94 %, 5★) vs
+      `c_counted_but_zero` (0 %, 1★) is **dE 51.9 — the original complaint is genuinely fixed**. But
+      `b_mid_counted` (20 %, 2★) vs `c_counted_but_zero` is **dE 2.80 — the same amber**, which is exactly
+      the property Alexv objected to ("not obvious which one is which"). Options: split the weak band
+      (1★ vs 2★), band by percentage rather than stars, or accept that "both weak" is the intended reading.*
+      **Alexv's call: accept.** The readout is meant to say "this shot was weak", not to rank 20 % against
+      0 %; the star glyphs and the percentage already carry that. This also settles the 1.13 concern below —
+      b and c converging to the same colour *and* star count is the same answer, deliberately.
+- [x] [Review][Decision] **RESOLVED 2026-09-12 — darken the amber until it clears 4.5:1.**
+      *The new amber is the least legible colour in the palette.* Measured against the
+      real translucent panel over the real world: weak amber **3.85:1** and **4.30:1**, below the 4.5:1
+      WCAG-AA body-text floor; strong green 4.88:1 and miss salmon 5.62:1 are above it. The colour this
+      change introduces is the one hardest to read. **Alexv's call: fix it by measurement** — adjust
+      `weakColor` until it clears the AA floor against the real background, keeping the hue, then re-measure
+      the render rather than assuming. Tracked as a patch below.
+- [x] [Review][Decision] **RESOLVED 2026-09-12 — re-ask AC3 first, then implement 1.13.**
+      *Sequencing: re-ask AC3 before or after 1.13?* AC3 is still open, Alexv has not
+      seen the banded readout, and 1.13 will move every grading number and re-shoot all three rigs. Doing
+      1.13 first means the banding is never judged in isolation — which is the discipline 1.13's own AC2
+      states ("do not adjust two things at once and lose the ability to attribute the result").
+      **Alexv's call: banding gets judged on its own first.** 1.13 stays `ready-for-dev` until 1.12 closes.
+- [x] [Review][Decision] **RESOLVED 2026-09-12 by the first decision — accepted, not a defect.**
+      *Banding by stars gets less discriminating under 1.13.* With `floor = 0.3`,
+      `b_mid_counted` → 41 % (2★) and `c_counted_but_zero` → 29 % (2★): they would share the same colour
+      **and** the same star count, differing only by two digits. If stars is the wrong axis, better to know
+      before 1.13 lands than after. **Alexv's call: stars stays the axis** — both shots being "weak" is the
+      message intended. Recorded so 1.13 does not re-open it as a surprise.
+
+**Patches (unambiguous, no decision required):**
+
+- [x] [Review][Patch] **From decision 2:** darken `weakColor` until the rendered readout clears 4.5:1
+      against the real background (it measures 3.85:1 / 4.30:1 today), keeping the amber hue, and confirm
+      by re-measuring the capture rather than by eye `[GradeHudConfig.cs:58 · GradeHudConfig.asset:20]`
+      ⚠️ **Correction 2026-09-27 — what was actually done differs from this wording, twice.** (1) The amber
+      was *brightened*, not darkened: `(0.95, 0.80, 0.42)` → `(1.00, 0.88, 0.31)`, L* 83.5 → 89.6. On a dark
+      panel that is the physically right direction ("darken" was the wrong word, not the wrong fix). The hue
+      moved 43° → 49.6°, still amber but at the top of the band. (2) The capture was **never re-measured**:
+      the value was chosen by `pick_amber2.py`, which scores the *authored* colour (predicted 4.68:1), and the
+      rendered glyphs come out darker. Re-measured on 2026-09-27: **4.2:1** on `b_mid_counted` — still below
+      the floor. Settled by the 2026-09-27 review's decision 1 (panel opacity) instead.
+- [x] [Review][Patch] The banding test cannot catch an asset regression — reproduced (E1/E2). Extend
+      `TryGetConfigProblem` to report confusable counted colours, the way it already reports invisible ones
+      `[GradeHudConfig.cs:217-222]`
+- [x] [Review][Patch] Replace Euclidean RGB in `AssertApart` with a perceptual metric: `weak` vs `miss`
+      clears the 0.25 threshold by **0.0067** while being **dE 45.5** apart in Lab — the metric both cries
+      wolf and would certify an unreadable equal-luminance palette `[GradeHudConfigTests.cs:173-180]`
+- [x] [Review][Patch] `EveryBandIsDistinguishable` asserts 4 of the 6 pairs — `strong` vs `miss` and
+      `mid` vs `miss` are uncovered `[GradeHudConfigTests.cs:165-172]`
+- [x] [Review][Patch] "a middling shot looks exactly as it always did" is false — the story's own designated
+      middling shot (`b_mid_counted`, line 951) is 2★ and therefore amber, not cream
+      `[GradeHudConfig.cs:137]`
+- [x] [Review][Patch] The 3★ cream band ships unphotographed — the three counted exemplars are 94 %, 20 %
+      and 0 %, and cream covers only 45–70 %. Add a rig scenario in that band before AC3 closes
+      `[GradeHudShootRunner.cs:578-585]`
+- [x] [Review][Patch] Completion note still describes `c_counted_but_zero` as `0 %` **"in cream"** — this
+      change makes it amber `[1-12-grade-feedback-hud.md:763]`
+- [x] [Review][Patch] `panels_banded.png` — the single most decisive artifact for this change — appears
+      **0 times** in the story file; it is not in Debug Log References `[1-12-grade-feedback-hud.md:731]`
+- [x] [Review][Patch] `strongColor`'s tooltip says "See countedColor for why the counted readout is banded
+      by grade at all", but `countedColor`'s tooltip was not updated and explains nothing about banding —
+      a designer following the pointer in the Inspector lands nowhere `[GradeHudConfig.cs:50]`
+- [x] [Review][Patch] The Handover is still dated 2026-08-07 and asks the pre-banding question, with no
+      re-ask and no coverage of the newly-merged `b` vs `c` pair `[1-12-grade-feedback-hud.md:935]`
+- [x] [Review][Patch] Story 1.13 Task 6 claims the shot moves "from amber-1★ to amber-2★ — **visible**";
+      amber → amber is no colour change at all, only the glyph and number move
+      `[1-13-soften-the-timing-multiplier.md:94]`
+
+**Deferred:**
+
+- [x] [Review][Defer] ~~`Visible()` repairs only an alpha of *exactly* zero, so a colour authored at
+      `a = 0.02` ships invisible and unreported, and `AssertApart` compares RGB only. This diff extends the
+      pattern to two more fields but did not create it `[GradeHudConfig.cs:115-120]` — deferred, pre-existing~~
+      **DISPROVEN 2026-09-27 — not a defect, and it was never one.** `MinVisibleAlpha = 0.05` and the
+      `!(c.a >= MinVisibleAlpha)` repair have existed since `636b4cc` (2026-09-09), three days before this was
+      written: `a = 0.02` IS repaired to opaque and IS reported by `ReportInvisible`. Removed from
+      `deferred-work.md`. (The RGB half is also gone — `AssertApart` now uses ΔE.)
+
+**Dismissed (7)** — recorded so a future review does not re-derive them. Each was **disproven by running
+or by reading the full file**, not waved away:
+`strong`/`weak` collapse for colour-blind players (disproven — Vienot simulation on the rendered colours:
+worst case protanopia **dE 20.2**, still clearly different; the 2.7 % luminance figure behind the claim was
+computed on gamma-encoded values, the real linear gap is **11.9 %**); a miss could be repainted weak-amber
+(disproven — the miss branch `return`s before the counted path, `GradeHud.cs:286-300`); `stars == 0` falls
+into the weak band (unreachable — `StarScale.StarsFor` returns 1..5 and documents "there is no 0★",
+`ShotGrade.cs:19-20`); absent YAML keys deserialize to `(0,0,0,0)` and render as opaque black (disproven by
+E3 — Unity retains the field initialisers); the fade clobbers the banded colour (disproven —
+`CanvasGroup.alpha` multiplies over `Text.color`, it does not replace it, `GradeHud.cs:398-404`); a null
+`config` at the new call site (identical exposure before and after — the old line dereferenced `config`
+too, so no regression); the banding test is vacuous (disproven by the E2 control — it fails correctly when
+its actual input is broken).
+
+---
+
+Code review 2026-09-27 (uncommitted working tree vs `2dbd7f0` — i.e. **the 2026-09-12 review's own
+patches**, which were applied and re-verified by running but never themselves reviewed). Shipped code only:
+`GradeHudConfig.cs`, `GradeHudConfig.asset`, `GradeHudConfigTests.cs` (+169/−22); `GradeHudShootRunner.cs`
+excluded as a rig. All three layers returned (Blind Hunter, Edge Case Hunter, Acceptance Auditor).
+**~40 raw findings → 1 decision (resolved by Alexv), 8 patches (ALL APPLIED 2026-09-27), 6 deferred,
+8 dismissed.** Re-verified after patching: **163/163 EditMode** (156 − 1 replaced + 8 new); each new test
+**proven to catch the defect it was written for** by reintroducing it (below); the HUD re-shot on the real
+scene and every band re-measured off the captures at **≥ 4.64 : 1**.
+
+**The new tests, proven by mutation (each mutation compiled, run, then reverted — source sha256 `a5c839e8…`
+identical before and after):**
+- **M-A** — deleted the weak/miss `ReportConfusable` line: exactly one failure,
+  `Validator_ReportsEveryPairAPlayerMustTellApart("weakColor","missColor")`. Before this review: suite green.
+- **M-B** — dropped `Linear()` (gamma never undone): `PerceptualDistance_MatchesPublishedCieLabValues` fails
+  with *"Expected 53.39 … But was 76.07"* — the exact value predicted. ⚠️ **Primaries alone could not have
+  caught this** (channels of 0 and 1 are unchanged by gamma); the mid-grey is what does. The boundary test
+  caught it independently, because its greys are built from the published formulas, not from our code.
+- **M-C** — restored `{d:0.0}` rounding: `Validator_FiresJustBelowTheFloorAndNotJustAbove` fails, and the
+  failure message reproduces the original defect verbatim: *"only ΔE 25.0 apart as drawn (needs 25)"*.
+
+**Settled by running, not reading (all mutations in memory only; asset sha256 `c9b43b27…` identical before
+and after, not dirty, `git status` unchanged):**
+- **R1 — the headline patch works end to end.** Set `strongColor = weakColor` on the loaded asset in memory,
+  pressed Play in `SampleScene`: `[GradeHud] GradeHudConfig: strongColor and weakColor are only ΔE 0.0 apart
+  (needs 25)…` from `GradeHud.Awake` (`GradeHud.cs:154`). This is exactly the case that was silent on
+  2026-09-12 (E1).
+- **R2 — the Lab maths is correct.** ΔE(white, black) = **100.00**, ΔE(red, black) = **117.33** (reference
+  Lab of sRGB red is (53.24, 80.09, 67.20)). Shipped palette: the six validated pairs sit at **50.3–87.4**.
+- **R3 — 156/156 EditMode** on assemblies newer than every changed source (12:07 vs 11:54–11:56).
+- **R4 — contrast of the re-tuned amber, re-measured off the real captures** with
+  `build_hud_panel_sheet.py --rect` (three rects chosen independently of the auditor's): `b_mid_counted`
+  **4.26 / 4.19 / 3.80 : 1**, `c_counted_but_zero` 5.17 / 5.01 / 4.76. Green 8.28, cream 6.33, salmon 5.13.
+
+**Decisions (need Alexv — the code cannot be correctly patched without his intent):**
+
+- [x] [Review][Decision] **RESOLVED 2026-09-27 — option 1: raise the panel's opacity.**
+      **Alexv's call: fix the background, not the ink.** The amber is nearly out of headroom, and what varies
+      shot to shot is the bright world showing through the 72 % panel — so the panel is the lever, and it
+      helps every band on bright ground, not just amber. Tracked as a patch below.
+      *The re-tuned amber still misses the 4.5:1 floor on one of the two real
+      backgrounds.* 2026-09-12 decision 2 said "adjust `weakColor` until it clears the AA floor against the
+      real background … then re-measure the render". The re-tune was chosen by `pick_amber2.py`, which scores
+      the *authored* colour and predicted 4.68:1; the rendered glyphs come out darker than authored
+      (`(0.957, 0.842, 0.300)` vs `(1.00, 0.88, 0.31)`), so the real capture measures **4.2:1** (R4). No
+      post-re-tune contrast figure was ever recorded. **The amber is nearly out of headroom:** background
+      luminance behind that readout is 0.122; the brightest colour that is still amber, `(1, 0.92, 0.40)`,
+      predicts only 5.0:1 *before* the same render loss. The bigger lever is the panel — `Panel` is
+      `(0.043, 0.047, 0.055)` at **72 % opacity** over a bright olive world. Options: (1) raise panel
+      opacity (fixes every band on bright ground at once; the world shows through a little less — AC4 look);
+      (2) push amber to its brightest `(1, 0.92, 0.40)` (borderline, and moves it toward cream); (3) accept —
+      the rating row is large text, where WCAG's floor is 3:1, and let the R3 eye-check judge it.
+      `[GradeHudConfig.asset:20 · SampleScene.unity Panel]`
+
+**Patches (unambiguous, no decision required):**
+
+- [x] [Review][Patch] **From decision 1:** raise `GradeHudCanvas/Panel`'s opacity (72 % today, ~78 % estimated)
+      until the **rendered** amber clears 4.5:1 on both real backgrounds, then re-shoot and re-measure every
+      band with `build_hud_panel_sheet.py --rect` and record the figures — the step the 2026-09-12 re-tune
+      skipped. Keep the smallest opacity that passes, so the camcorder look (AC4) moves as little as possible
+      `[SampleScene.unity · GradeHudCanvas/Panel]`
+      **APPLIED — `a: 0.72 → 0.78`** (one-line scene diff). Chosen by model, then confirmed by re-shooting:
+      UI blends in linear light (project is Linear colour space), so `bg = a·panel + (1−a)·world`; solving on
+      the worst background predicted 75 % → 4.60 (no margin for run-to-run variation), **78 % → 4.99**. Re-shot
+      with `Tools > HUD > Grade HUD Shoot (Play)` (Phase 0 controls pass: world 0.598 mean luminance, overlay
+      marker 99.70 %; shipped config "reports no problem"; no errors beyond the rig's declared ones). Measured,
+      three rects each, **re-fitted to this run's 962×500 frame** (the 2026-09-12 captures were 575×494 — the
+      old rects landed below the text and first produced an all-bands "regression" that was the rig, not the
+      panel; caught because opaque text cannot be darkened by the panel behind it):
+
+      | Readout | 72 % (before) | **78 % (after)** |
+      |---|---|---|
+      | amber `b_mid_counted` | 4.26 / 4.19 / 3.80 | **5.28 / 5.14 / 4.64** |
+      | amber `c_counted_but_zero` | 5.17 / 5.01 / 4.76 | **6.24 / 5.99 / 5.07** |
+      | cream 3★ | 6.33 | **7.46 / 6.33** |
+      | salmon MISS | 5.13 | **5.66 / 5.65 / 4.92** |
+      | green 5★ | 8.28 | **4.94** (the two wider rects were rejected by the tool's own "rect missed the text" check) |
+
+      **Attribution:** the world behind `b_mid_counted` measured luminance **0.425** this run vs **0.426**
+      before — the same background, so the gain is the panel's, not a kinder shot. Before/after for the look:
+      `verification/hud/panel_opacity_before_after.png`; baseline captures kept in
+      `verification/hud-panel-0.72-baseline/`.
+- [x] [Review][Patch] **Six comments in `GradeHudConfig.cs` state things that are not true:** "the shipped
+      palette sits at 46–67" (it is 50.3–87.4 — 46 is the *retired* amber); `CountedColorFor` hard-codes
+      exemplar grades that were already wrong when written ("b_mid_counted grades 20 % / 2★", "NO exemplar …
+      falls in [cream] (94 %, 20 %, 0 %)" — the same review added `b1_three_star_cream` at 46 % 3★, and
+      `b_mid` now grades 13 % / 1★); ΔE is said to catch equal-luminance pairs (ΔE76 does not — strong/weak are
+      ΔL* 3.2 apart and pass at 58); "ΔE2000 buys nothing at 25" (false for saturated colours — see defer 2);
+      `PerceptualDistance` "answers … what would be DRAWN" (it ignores alpha and the panel); and the
+      validator's "has to live here rather than in a test / only real defence" is contradicted by
+      `ShippedAsset_PassesItsOwnValidator` added in the same diff. The `weakColor` tooltip's "see the note on
+      MinBandSeparation" points at a note that never mentions brightness or contrast — the constraint that
+      actually drove the re-tune `[GradeHudConfig.cs:62, 103-117, 152-167, 212-221, 286-298]`
+      **APPLIED** — range now "ΔE 50-87 (measured 2026-09-27)"; `CountedColorFor` names no shots; ΔE76's two
+      limits stated honestly; `PerceptualDistance` says it does NOT answer readability; the validator comment
+      no longer calls itself the only defence; the `weakColor` tooltip names the 4.5:1 constraint and how to
+      re-measure it. The same false luminance claim was also removed from the test file's comment.
+- [x] [Review][Patch] **Five of the six validator pairs can be deleted with the suite staying green.**
+      `Validator_ReportsColoursAPlayerCouldNotTellApart` exercises strong==weak only; the defaults test and
+      the shipped-asset test can only catch over-firing. One `[TestCase]` per pair (set field A = field B,
+      assert both names in the message) `[GradeHudConfigTests.cs:228-241]`
+      **APPLIED** — `Validator_ReportsEveryPairAPlayerMustTellApart`, six `[TestCase]`s via `nameof`, asserting
+      ONE sentence names both fields; plus `Validator_FiresJustBelowTheFloorAndNotJustAbove` (greys at ΔE 24.96
+      and 25.5). Proven by M-A and M-C above.
+- [x] [Review][Patch] **Nothing pins the colour maths to a known value.** The test and the validator share
+      `PerceptualDistance`, so they fail together: the Blind Hunter dropped `Linear()` (the step the comment
+      warns about) and swapped matrix rows — both variants leave every test green. Add reference values:
+      white/black = 100, red/black = 117.33 `[GradeHudConfig.cs:224-248 · GradeHudConfigTests.cs]`
+      **APPLIED** — `PerceptualDistance_MatchesPublishedCieLabValues`: white 100, red 117.33, blue 137.65, and
+      mid-grey 53.39 (the one that sees a missing gamma step). Proven by M-B above.
+- [x] [Review][Patch] **The warning message gives the wrong reason for the three miss pairs and rounds
+      across its own threshold.** Every pair ends "…which is the whole reason the counted readout is banded by
+      grade" — for miss pairs the reason is that a miss and a counted 1★ must never read alike, which predates
+      banding (the file's own rule: "THE MESSAGE HAS TO MATCH THE MISTAKE"). `d = 24.97` prints "only ΔE 25.0
+      apart (needs 25)" (reproduced live by the Edge Case Hunter). It also does not say it measured the
+      *drawn* (repaired) colours, so a NaN field or a 0–255 value yields a confusability line about a colour
+      the designer never typed — print the drawn values `[GradeHudConfig.cs:367-375]`
+      **APPLIED** — `WhyBand` / `WhyMiss` per pair; distance truncated (`Mathf.Floor(d*10)/10`); message now
+      reads `strongColor (0.47, 0.47, 0.47) and countedColor (0.72, 0.72, 0.72) are only ΔE 24.9 apart as
+      drawn (needs 25) — …` (read back live from the compiled build).
+- [x] [Review][Patch] **The test class doc is now false** — "Configs are built with CreateInstance and never
+      loaded from the shipped asset". One test now loads it read-only; say so, and keep the real guarantee
+      (nothing ever writes to it) `[GradeHudConfigTests.cs:20-21]`
+      **APPLIED.**
+- [x] [Review][Patch] **`ShippedAsset_PassesItsOwnValidator` checks one hard-coded path.** Validate every
+      `GradeHudConfig` found by `AssetDatabase.FindAssets("t:GradeHudConfig")` (assert ≥ 1), so a variant or a
+      moved asset is covered rather than skipped or falsely "missing" `[GradeHudConfigTests.cs:250-262]`
+      **APPLIED** — name kept (the story and comments cite it); collects every failure before asserting.
+- [x] [Review][Patch] **The story's own record is wrong in three places.** The 2026-09-12 deferred item says
+      `Visible()` "repairs only an alpha of exactly zero, so `a = 0.02` ships invisible and unreported" —
+      false: `MinVisibleAlpha = 0.05` and `!(c.a >= MinVisibleAlpha)` have existed since `636b4cc`
+      (2026-09-09), so 0.02 is repaired and reported; remove it from `deferred-work.md` and mark it disproven
+      here. Decision/patch 2 says "darken … keeping the amber hue" while the colour was *brightened*
+      (L* 83.5 → 89.6) and moved 43° → 49.6° (still amber, top of the band) — record what was done. Debug Log
+      References describes `panels_banded.png` as "the three counted readouts plus a miss"; it has five
+      panels `[1-12-grade-feedback-hud.md:489-495, 511-513, 543-545, 845 · deferred-work.md:277]`
+      **APPLIED** — all three corrected in place; the deferred-work entry is struck through and marked
+      CLOSED/DISPROVEN rather than deleted, so the claim is not re-raised.
+
+**Deferred (real, not worth acting on now):**
+
+- [x] [Review][Defer] The validator cannot see alpha, the panel, or the world behind it, so the 4.5:1
+      contrast target lives nowhere in code — a later darker re-tune gets no warning. Needs the panel colour,
+      which is scene data, not config `[GradeHudConfig.cs:224]` — deferred, pre-existing limitation of a
+      config-only validator; the decision above is where contrast is actually settled
+- [x] [Review][Defer] ΔE76 is badly non-uniform for saturated colours: `(0.216, 0.141, 0.868)` vs
+      `(0.048, 0, 1)` is ΔE76 25.19 (validator silent) but ΔE2000 **3.8** (Edge Case Hunter, live). Switching
+      metric needs the threshold recalibrated — the shipped palette is ΔE2000 23.0–58.1 — so it is not a
+      drop-in fix `[GradeHudConfig.cs:224-248]` — deferred, no saturated-blue band exists today
+- [x] [Review][Defer] Colour-vision deficiency, re-measured on the new palette (Machado 2009, severity
+      1.0): 5★ green vs MISS salmon under **deuteranopia ΔE 15.5**; weak amber vs cream under tritanopia 19.4
+      (22.8 before the re-tune). A miss also reads `MISSED` with dashed axes, so colour is not its only channel
+      `[GradeHudConfig.asset]` — deferred, strong/miss predate this diff; belongs in an accessibility pass
+- [x] [Review][Defer] `placeholderColor` is in no pairwise check; counted/placeholder is ΔE 31.0, the
+      closest unchecked pair. It only shows when grading is unconfigured and reads `NOT GRADED`
+      `[GradeHudConfig.cs:301-310]` — deferred, developer-facing state
+- [x] [Review][Defer] Out-of-range channels (a 0–255 value typed into the YAML, HDR > 1, negatives) are
+      clamped silently by `Visible()`; `weakColor = (255, 224, 79, 255)` draws white with no range warning
+      `[GradeHudConfig.cs:207-213]` — deferred, pre-existing clamp; the message patch above at least shows the
+      drawn value
+- [x] [Review][Defer] `countedColor` now means "the 3★ colour" but keeps its old name; a rename needs
+      `FormerlySerializedAs` and touches the asset `[GradeHudConfig.cs:26]` — deferred, naming only
+
+**Dismissed (8)** — recorded so a future review does not re-derive them: a NaN distance passes silently
+(disproven — `Channel()` maps NaN to 0 and `Visible()` repairs NaN alpha before any maths; the Edge Case Hunter
+confirmed `PerceptualDistance` cannot return NaN); the validator measures a different colour than the HUD
+draws (disproven — `Safe*Color => Visible(field)`, identical); the message prints "24,9" on a French-locale
+Windows (disproven here — Unity's `CurrentCulture` is `en-US` on this machine and the live log printed
+`0.0`); the shipped-asset test reads memory rather than the file (that is Unity's contract; the stale-import
+trap is a rig procedure, CLAUDE.md); no `OnValidate` (by design — `GradingConfig` validates at `Awake` the same
+way); "under ΔE2000 two shipped pairs fail 25" (25 is a ΔE76 threshold — ΔE2000 23 is still an enormous
+difference; the real point is kept as defer 2); dated review history in comments (this project's documented
+idiom); `a_money_shot` quoted at 94 % vs 96 % now (run-to-run shutter variance, already noted in the re-ask).
+
+
 ## Dev Notes
 
 ### What already exists — read these before writing anything
@@ -734,6 +1027,17 @@ touch.
   Phase A (every readout state), Phase B (AC5), Phase C (stress/reuse), Phase D (boundaries), Phase E (NFR2).
 - `_bmad-output/verification/hud/*.png` — 9 states × 2 moments (settled + at-shutter), 3 control shots,
   4 stress frames, 3 stored gallery thumbnails.
+- **`_bmad-output/verification/hud/panels_banded.png`** — ⚠️ **the single most useful picture in this
+  story, and the one to send Alexv.** Five panels — the four counted readouts (5★ green, 3★ cream, and the
+  two weak shots in amber) plus a miss — cropped to the panels with the world removed, which is the
+  comparison AC3 actually asks about. Rebuilt and measured by `tools/verification/build_hud_panel_sheet.py`
+  (pass `--rect` for contrast and ΔE figures). It is what proved the banding works
+  (5★ vs 0% measured ΔE 51.9 apart) *and* what showed `b_mid_counted` and `c_counted_but_zero` sharing one
+  colour (ΔE 2.80 — accepted as intended on 2026-09-12).
+- `_bmad-output/verification/review-1-12-banding/` — the 2026-09-12 code review's own evidence:
+  `FINDINGS.md` (three experiments run against the live editor, with the two disproven claims), plus the
+  measurement scripts (`margins.py`, `rendered.py`, `cvd.py`, `pick_amber2.py`) so every number in the
+  review findings can be re-derived rather than taken on trust.
 - `_bmad-output/verification/hud-motion/motion-review.md` — the temporal half: frame analysis of the
   recorded readout, the Gemini video review, and a claim-by-claim verification of it.
   `hud_readout.mp4` + `frames/` are the recording itself.
@@ -760,8 +1064,9 @@ in the editor-only `GradeDetail`.
 
 **AC2 — satisfied, and this is the one the pictures settle.** Three visibly different shapes, all
 photographed:
-- `c_counted_but_zero.png` → `★☆☆☆☆ 0 %` in cream, `composition 95 % × timing 0 % · seen 100 %`,
-  `3.6s late — shoot sooner`.
+- `c_counted_but_zero.png` → `★☆☆☆☆ 0 %` in **amber**, `composition 98 % × timing 0 % · seen 100 %`,
+  `3.9s late — shoot sooner`. *(Updated 2026-09-12: this line said "in cream" with the 2026-08-07 numbers.
+  The counted readout is now banded by grade, so a 1★ shot is amber, not cream — see `panels_banded.png`.)*
 - `e_too_far.png` → `★☆☆☆☆ MISSED` in **salmon**, `composition — × timing — · seen —`,
   `too far away — get closer, or zoom in`.
 - `i_not_graded.png` → `NOT GRADED`, dashes, `this shot was never graded`. No percentage, no stars
@@ -937,7 +1242,60 @@ decision from Alexv and no further investigation.
 *Written 2026-08-07 during code review. Task 7 required this and it was missing: the record correctly said
 AC3/AC4 were open, but never asked the actual question. This is the ask.*
 
+*⚠️ **RE-ASK 2026-09-12 — the readout has CHANGED since you last looked at it, twice.** You answered the
+first ask on 2026-09-11 and it found a real defect: the miss was "obvious" but the 5★ and the 0% shots were
+"not obvious which one is which". The counted readout is now **banded by grade** (4–5★ green, 3★ the
+original cream, 1–2★ amber), and on 2026-09-12 the amber was brightened to `(1.00, 0.88, 0.31)` because it
+measured **below the 4.5:1 contrast floor** against the real background. **Start from the re-ask below, not
+from the original questions — the six images named in the table predate both changes.***
+
+*⚠️ **AND ONE MORE CHANGE, 2026-09-27:** the amber still measured below 4.5:1 on one background, so — your
+call — the panel behind the text went from **72 % to 78 % opacity** instead of touching the colours again.
+Everything below has been re-shot with it. The panel is a touch darker; the world still shows through.*
+
 **Status: AC1, AC2 and AC5 are proven. AC3 and AC4 are open and only you can close them.**
+
+### ⚠️ START HERE — the re-ask (2026-09-12, re-shot 2026-09-27)
+
+Open **one** image: `_bmad-output/verification/hud/panels_banded.png`. It is the five readouts stacked,
+which is the comparison these questions are actually about. Rebuilt 2026-09-27 with the 78 % panel and
+current. To see what the panel change did to the look, also open
+`_bmad-output/verification/hud/panel_opacity_before_after.png` (72 % left, 78 % right).
+*(To regenerate: `Tools > HUD > Grade HUD Shoot (Play)`, then
+`python tools/verification/build_hud_panel_sheet.py`.)*
+
+| Panel | What it is | What it looks like in the current sheet |
+|-------|------------|------------------------------------------|
+| 1 | `a_money_shot` — 95 %, 5★ | **green** |
+| 2 | `b1_three_star_cream` — 51 %, 3★ | **cream** — the middle band |
+| 3 | `b_mid_counted` — 18 %, 1★ | **amber** |
+| 4 | `c_counted_but_zero` — 0 %, 1★ | **amber** (same as #3, on purpose) |
+| 5 | `f_blocked` — a MISS | **salmon**, reads `MISSED`, dashes for the axes |
+
+*(The rig's shutter timing varies a little run to run — `b_mid_counted` has graded 20 %, 13 % and now 18 %
+across runs. Same band every time. The captures are also bigger this run, 962×500 rather than 575×494,
+because the editor's Game View was a different size.)*
+
+**R1 — the one that failed last time.** Panels 1 and 4: can you now tell the great shot from the worthless
+one **at a glance**, without reading the numbers? *(Measured ΔE 51.9 apart, up from effectively zero —
+but measurement is not your eye, which is why you are being asked.)*
+
+**R2 — the new question, and the one I most want your answer on.** Panels 3 and 4 are now **deliberately
+the same colour**: you called this on 2026-09-12 — the readout says "this shot was weak" rather than
+ranking 20 % against 0 %, and the stars and the percentage carry the rest. Looking at them side by side:
+does that still feel right, or does it read as the same bug you reported in the first place?
+
+**R3 — legibility, now with the darker panel.** Every readout now measures **at least 4.64:1** against its
+real background (the amber was 3.80–4.26 before). Is the text comfortable to read over the moving world
+behind it? And the look half of the change: comparing `panel_opacity_before_after.png`, does the 78 % panel
+still feel like a camcorder overlay, or has it become a heavy box? (If it reads heavy, that is AC4 and your
+call — the measured floor would then need a different lever.)
+
+**R4 — is a weak shot still obviously not a miss?** Panels 4 and 5 are the pair that was already working
+before banding, and the change moved the weak colour closer to warm. Confirm it did not break.
+
+**The original 2026-08-07 questions below still stand for AC4 and for the "understand why" wording** — they
+have not been re-answered and the images they name are still valid for those. Answer the four above first.
 
 ### What I need from you — about 5 minutes
 
@@ -1035,7 +1393,11 @@ with a working reference implementation of the honest measurement sitting in the
 - `Assets/Scripts/UI/GradeHud.cs`
 - `Assets/Scripts/UI/GradeHudShootRunner.cs`
 - `Assets/Scripts/Editor/GradeHudShootRig.cs` (two menu items: the shoot, and the motion recording)
-- `Assets/Data/UI/GradeHudConfig.asset` (gained `strongColor`/`weakColor` on 2026-09-11)
+- `Assets/Data/UI/GradeHudConfig.asset` (gained `strongColor`/`weakColor` on 2026-09-11; `weakColor`
+  re-tuned to `(1.00, 0.88, 0.31)` on 2026-09-12 to clear the contrast floor)
+- `tools/verification/build_hud_panel_sheet.py` (2026-09-12) — rebuilds `panels_banded.png` from the
+  state captures and MEASURES it. Added because that sheet was the most decisive artifact in this story
+  and was hand-made once, reproducible by nothing.
 - `Assets/Tests/EditMode/GradeTextTests.cs`
 - `Assets/Tests/EditMode/GradeHudConfigTests.cs`
 - (and the `.meta` file Unity generated for each of the above, plus `Assets/Scripts/UI.meta` and
@@ -1057,7 +1419,35 @@ with a working reference implementation of the honest measurement sitting in the
   question other than the walk-cycle one can be asked; the default is unchanged.
 - `CLAUDE.md` — the traps this story paid for (Overlay vs `cam.Render()`, the capture-flash instant,
   `manager.enabled` not emptying the world).
+- `_bmad-output/implementation-artifacts/1-13-soften-the-timing-multiplier.md` — Task 6's "visible"
+  colour claim corrected; Task 7 added (do not start 1.13 until 1.12 closes).
+
+**Modified by the 2026-09-12 code review**
+
+- `Assets/Scripts/UI/GradeHudConfig.cs` — `MinBandSeparation` + `PerceptualDistance` (CIE-Lab ΔE) added;
+  `TryGetConfigProblem` now reports colour pairs a player could not tell apart, which is what closes the
+  hole the review reproduced; `weakColor` re-tuned; `countedColor`'s tooltip now explains the banding it
+  is pointed at; the false "a middling shot looks exactly as it always did" claim corrected.
+- `Assets/Tests/EditMode/GradeHudConfigTests.cs` — the banding test moved onto the shared perceptual
+  metric and widened to all six pairs; two tests added: `Validator_ReportsColoursAPlayerCouldNotTellApart`
+  and `ShippedAsset_PassesItsOwnValidator` (the first test in this project to read a shipped asset).
+- `Assets/Scripts/UI/GradeHudShootRunner.cs` — `Timing.JustPastPeak` and the `b1_three_star_cream`
+  scenario, so the 3★ cream band is photographed rather than asserted.
 - `_bmad-output/implementation-artifacts/1-12-grade-feedback-hud.md`
+
+**Modified by the 2026-09-27 code review**
+
+- `Assets/Scenes/SampleScene.unity` — `GradeHudCanvas/Panel` opacity `0.72 → 0.78` (one line), so every
+  readout clears 4.5:1 on the real background (decision 1).
+- `Assets/Scripts/UI/GradeHudConfig.cs` — six false comments corrected; the confusability warning now
+  gives a per-pair reason (`WhyBand` / `WhyMiss`), prints the colours as drawn, and truncates the distance
+  so it can no longer read "ΔE 25.0 apart (needs 25)".
+- `Assets/Tests/EditMode/GradeHudConfigTests.cs` — `Validator_ReportsEveryPairAPlayerMustTellApart` (6
+  cases, replaces the single-pair test), `Validator_FiresJustBelowTheFloorAndNotJustAbove`,
+  `PerceptualDistance_MatchesPublishedCieLabValues`; `ShippedAsset_PassesItsOwnValidator` now validates
+  every `GradeHudConfig` asset; class doc corrected.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — 6 items deferred; the 2026-09-12 item closed
+  as disproven.
 
 ### Change Log
 
@@ -1077,3 +1467,12 @@ with a working reference implementation of the honest measurement sitting in the
 | 2026-09-10 | The rig's "he is hidden" warning is now geometric (expected silhouette from bounds, distance and FOV) instead of a flat threshold, so `e_too_far` — whose whole point is distance — is no longer falsely flagged. A rig that cries wolf teaches you to skim its warnings. |
 | 2026-09-11 | **AC3 perceptual check run with Alexv — it found a real readout defect and it is fixed.** Shown the three panels with the world cropped away he called the MISS "obvious" but said of the 5★ and the 0% pair "it's not obvious which one is which". Cause: the miss changes colour, swaps the number for MISSED and prints dashes, while both counted shots shared one cream colour and differed only by small star glyphs and a percentage — colour was carrying the miss and doing nothing for the grade. **Fix: the counted readout is now banded by grade** (4–5★ green, 3★ the original cream, 1–2★ amber) via `GradeHudConfig.CountedColorFor`, with `strongColor`/`weakColor` added to the config and asset. Pinned by a test that asserts the bands are far enough apart to tell at a glance and that weak is not confusable with a miss. 154/154 EditMode tests pass. |
 | 2026-09-11 | Also from that check, and fixed first: the rig fired the shutter on the FIRST frame of the peak window, where `DrunkStagger` is still blending in over 0.2 s — so the 5★ exemplar photographed him standing in the walk pose and was genuinely indistinguishable from the 0% shot. The rig now dwells 0.6 s into the window. Alexv's remaining points — the subject faces away, and a hard 0% for a well-composed shot is "too extreme" — are design questions logged in `deferred-work.md`, not HUD defects. |
+| 2026-09-12 | **Code review of the banding change (`636b4cc..HEAD`). The banding works; the test protecting it did not.** Setting `strongColor = weakColor` in the SHIPPED `.asset` left the suite at 154/154 green with a clean console and no banding on screen — this project's signature failure, a hand-authored value silently disabling a feature, inside the test named `AndEveryBandIsDistinguishable`. Cause: the tests build their fixture with `CreateInstance`, so they pin the C# defaults while the player sees the asset. A control breaking the default failed the test correctly, proving it works and simply guards the wrong input. **Fixed by putting the guard where the asset is read:** `TryGetConfigProblem` now reports colour pairs a player could not tell apart, and `ShippedAsset_PassesItsOwnValidator` pins it in CI. Re-running the same mutation now FAILS with the field names and the measured distance. |
+| 2026-09-12 | The banding test measured Euclidean RGB distance, on which the shipped `weakColor`/`missColor` pair cleared a 0.25 threshold by **0.0067** while being ΔE 45.5 apart — borderline on the metric, obvious to the eye, and a metric that would equally certify two colours of identical luminance. Replaced with CIE-Lab ΔE (`GradeHudConfig.PerceptualDistance`, threshold `MinBandSeparation = 25`), shared by the validator and the test so the two cannot disagree. Coverage widened from 4 of the 6 pairs to all 6. |
+| 2026-09-12 | **`weakColor` re-tuned to `(1.00, 0.88, 0.31)`.** Measured off the real captures, the amber introduced on 2026-09-11 was the LEAST legible colour in the palette — 3.66:1 and 4.03:1 against its own background, below the 4.5:1 AA floor, while green read 4.77:1 and the miss 6.49:1. The new value was chosen by search under three constraints (contrast ≥ 4.5 on both real backgrounds, hue held in the amber band, ΔE ≥ 25 from every other readout colour) and it also lifts the weak-vs-miss separation from ΔE 45.5 to 62.9. Alexv's call; verified by re-shooting, not by assuming. |
+| 2026-09-12 | Alexv's call on the review's main design question: **1★ and 2★ keep sharing the weak band.** Measured, `b_mid_counted` (2★) and `c_counted_but_zero` (1★) are ΔE 2.8 apart — the same amber — which is the property he originally objected to. Accepted deliberately: the readout says "this shot was weak" rather than ranking 20 % against 0 %, and the stars and percentage carry the rest. Recorded in `CountedColorFor` and in 1.13's Task 6 so it is not re-litigated as a regression. |
+| 2026-09-12 | The 3★ cream band had **no exemplar anywhere in the evidence set** — the counted shots grade 94 %, 20 % and 0 %, while cream covers only 45-70 % — so the middle of the grade scale shipped on an assertion. Added `Timing.JustPastPeak` and the `b1_three_star_cream` scenario to the shoot rig. Also corrected the claim in `CountedColorFor` that "a middling shot looks exactly as it always did": the story's own designated middling shot is 2★ and therefore amber. |
+| 2026-09-12 | `panels_banded.png` — the most decisive artifact in this story — was hand-made once, reproducible by nothing and referenced nowhere. Added `tools/verification/build_hud_panel_sheet.py`, which rebuilds it from the state captures **and measures it** (rendered text colour, WCAG contrast, pairwise ΔE), and referenced it from Debug Log References. Its first version reported the 5★ readout as grey because it sampled the whole panel instead of the rating row; that is recorded in the script so the next reader does not repeat it. |
+| 2026-09-12 | Handover rewritten with a **re-ask**: the readout has changed twice since Alexv last looked, so the original six-image ask would have been answered against a stale build. Four questions now, including the new one — are panels 2 and 3 sharing a colour still right? Story 1.13 gains Task 7: do not start it until 1.12 closes, so the banding is judged in isolation. |
+| 2026-09-12 | Review disproved four plausible findings rather than passing them on: strong/weak do NOT collapse for colour-blind players (Vienot simulation, worst case protanopia ΔE 20.2); a miss cannot be repainted amber (the miss branch returns first); `stars == 0` is unreachable (`StarsFor` returns 1-5); and an asset missing the new keys does NOT deserialize to black — Unity retains the field initialisers, verified by deleting them and reading the values back. |
+| 2026-09-27 | **Code review of the 2026-09-12 review's own patches** (never reviewed; uncommitted). The headline fix works end to end — a broken palette now warns at `GradeHud.Awake`, proven by pressing Play on a mutated asset — but the tests around it did not prove what they claimed: 5 of 6 validator pairs were deletable with the suite green, and the colour maths could be broken two ways unnoticed. Fixed and **proven by mutation** (each defect reintroduced and caught). The re-tuned amber was found to **still miss 4.5:1 (4.2:1)** because it had been chosen from the authored colour and never re-measured; **Alexv's call: raise the panel's opacity** — `0.72 → 0.78`, re-shot, every band now ≥ 4.64:1 on the same background. 163/163 EditMode. AC3/AC4 still open: the re-ask is updated for the darker panel. |
