@@ -1,6 +1,14 @@
 # Story 1.13: Soften the timing multiplier
 
-Status: ready-for-dev
+Status: superseded
+
+> **⛔ SUPERSEDED 2026-11-10 — do not implement as written.** At the stakeholder's request, video replaces photo
+> as the core verb (`_bmad-output/planning-artifacts/sprint-change-proposal-2026-11-10.md`). This story changes the
+> *photo* grade formula (`percent = composition × timing`), which players no longer see. Its intent — a
+> well-framed but mistimed attempt is worth something, while timing stays the dominant axis — and Alexv's quote
+> below are carried into **Story 1.16 (Grade a clip)**, where "timing" becomes **peak coverage** with a
+> designer-set floor. This file is kept as the record of that feedback and of the analysis behind it. The
+> measurements in it (for example, the 98 % × 0 % shot) are still useful when Story 1.16 sets its floor.
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

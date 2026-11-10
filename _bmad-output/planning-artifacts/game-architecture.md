@@ -3,7 +3,8 @@ title: 'Game Architecture'
 project: 'Camera Game'
 date: '2026-05-27'
 author: 'Alexv'
-version: '1.0'
+version: '1.1'
+updated: '2026-11-10'  # Clip Recording + ADR-4 (open) — sprint-change-proposal-2026-11-10.md
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 status: 'complete'
 engine: 'Unity 6.3 LTS (6000.3.8f1)'
@@ -34,6 +35,10 @@ existing first-person controller/camera and the Drunk-Pack animations already in
 - **Data-driven Event-Actor lifecycle** (ADR-3) — one generic `EventActor` + per-event
   `EventDefinition` ScriptableObjects + pooled `EventManager`. Future events are *data,
   not code* — ~80% of Epic 3 is unlocked by this single system.
+- **Video recording replaces the shutter** (2026-11-10, `sprint-change-proposal-2026-11-10.md`).
+  *How* a built game records itself is decided by measurement in **ADR-4** (Story 1.14,
+  open). The Frame-Read grader (ADR-2) becomes the per-frame engine of clip grading.
+  See **Clip Recording** below.
 
 **Project Structure:** Hybrid Unity layout (by-type at root, feature folders under
 `Scripts/`) with one `CameraGame.asmdef` for the slice and `CameraGame.*` namespaces.
@@ -77,11 +82,15 @@ game is the thrill of *being there* and getting the shot before it's gone. Core
 | System | Complexity | Notes |
 |--------|-----------|-------|
 | Camera State Machine (walk ↔ photo) | High | Two states; raise=hold RMB |
-| Photo Capture & Viewfinder | Medium | First-person lens, zoom 1×–4×, capture=LMB |
-| Shot Grading (subject + composition + timing) | High (novel) | Frame analysis + peak-timing |
+| Clip Recording & Viewfinder | High (novel) | First-person lens, zoom 1×–4×, record=LMB start/stop; approach per ADR-4 |
+| Shot Grading (subject + composition) → Clip Grading (+ peak coverage) | High (novel) | Per-frame frame read, sampled while recording |
 | NPC Event-Actor lifecycle | High (novel, reusable) | spawn→build→peak→wind-down→despawn |
-| Minimal Gallery | Low–Medium | Persist captured shots + grades |
+| Memory Card | Medium | Capacity in seconds; stores graded clips; playback |
 | Directional Audio Cues | Medium | Diegetic discovery; gameplay-critical |
+
+*Revised 2026-11-10: the rows were "Photo Capture & Viewfinder (Medium) — capture=LMB",
+"Shot Grading (subject + composition + timing)" and "Minimal Gallery (Low–Medium) — persist
+captured shots + grades".*
 
 ### Technical Requirements
 
@@ -169,16 +178,17 @@ These are NOT provided by the engine and must be decided in the next steps:
 | 3 | Photo grading | Hybrid screen-space "frame read" (frustum+occlusion gate · screen-bounds composition · lifecycle timing) | Cheap, deterministic, tunable; no GPU readback stalls. |
 | 4 | Event-actor system | Data-driven lifecycle FSM + EventDefinition ScriptableObject + NavMesh + Animator + pooled EventManager | The ~80% reusable engine; new events = data, not code. |
 | 5 | Input | Extend existing PlayerInput (Send-Messages); add Capture/RaiseCamera/Zoom; gate by mode | Least disruption to working input; one map for the slice. |
-| 6 | Gallery persistence | In-memory List<CapturedShot> via GalleryService; disk-ready seam | Matches GDD "minimal gallery"; defers disk to Epic 4/5. |
+| 6 | Memory card persistence | In-memory `CapturedClip` store capped in seconds of footage (evolves GalleryService); disk-ready seam; cross-session by Epic 9 | Video needs a hard bound; editing needs clips to survive. *(Revised 2026-11-10 — was "Gallery persistence: in-memory List<CapturedShot>; defers disk to Epic 4/5".)* |
 | 7 | Code organization | CameraGame.* namespaces; feature folders; one asmdef; SO event channel for ShotCaptured | Lean for solo dev; clean dependency seams without over-engineering. |
 | 8 | Audio / pooling | 3D AudioSource per actor (~25m rolloff, 1 mixer); generic ObjectPool<T> | Sufficient for the slice; satisfies no-leak metric. |
+| 9 | Clip recording | **ADR-4 — OPEN**, decided by measurement in Story 1.14; must work in a Windows build | Unity Recorder, which films the rigs, is Editor-only (`includePlatforms: [Editor]`) and cannot ship. *(Added 2026-11-10.)* |
 
 ### Camera & State
 
 **Model:** Single first-person camera with two modes — `Walk` and `Photo` — owned by a
 `PhotoModeController`. Hold RMB → Photo (fade in viewfinder UI, enable zoom); release →
 Walk. Zoom lerps camera field-of-view (≈60° → ≈18° for 1×–4×). Raise/lower transition
-< 0.3s. Capture-to-feedback < 0.2s. (Existing `ThirdPersonController`/`ThirdPersonCamera`
+< 0.3s. Capture-to-feedback < 0.2s (from 2026-11-10: record-start-to-feedback < 0.2s). (Existing `ThirdPersonController`/`ThirdPersonCamera`
 provide the FP base; recommend renaming to `Player*`/`FirstPerson*` to match behavior.)
 
 ### Photo Capture & Grading
@@ -193,6 +203,40 @@ provide the FP base; recommend renaming to `Player*`/`FirstPerson*` to match beh
 - **Timing:** from event lifecycle — full marks within ±0.5s of the peak **window**, 0 by ±2s
   beyond it (`ISubject.PeakOffset`; the peak is an interval, not an instant).
 - Thresholds in a `GradingConfig` ScriptableObject (Inspector-tunable, no recompile).
+
+### Clip Recording (added 2026-11-10)
+
+**Model:** recording replaces the photo shutter as the player's verb (`sprint-change-proposal-2026-11-10.md`).
+Holding RMB still raises the camera into the Viewfinder state; the code keeps the name `PhotoMode`. The
+**Capture** action (LMB / RT) now toggles recording.
+
+- **`ClipRecorder`** (`Scripts/Recording/`): started and stopped by `PhotoModeController`'s Capture handler.
+  It is also stopped by lowering the camera or by a full memory card, and footage recorded so far is always
+  kept. It captures footage in the format ADR-4 chooses.
+- **`ClipGrader`**: samples `ShotGrader.Grade(...)` on frames throughout the recording. The per-frame subject
+  gate and composition are **unchanged and not re-implemented**. It aggregates the samples, plus **peak
+  coverage** read from `ISubject`, into a `ClipGrade` (0–100% → 1–5★, with a per-axis breakdown). Tunables
+  live in `GradingConfig`.
+- **`MemoryCardService`** (evolves `GalleryService`, stays in `Scripts/Gallery/`): stores `CapturedClip`s,
+  enforces capacity in **seconds of footage**, and frees footage on delete. It remains the **single owner**
+  of any native memory, as `GalleryService` is today.
+- **`CapturedClip { string Id; <footage handle per ADR-4> Footage; Texture2D Thumbnail; ClipGrade Grade;
+  string SubjectId; DateTime CapturedAtUtc; float DurationSeconds }`**: follows the same disk-ready rules as
+  `CapturedShot` (a file-name-safe, unique Id; UTC wall-clock time; a small DTO for JSON, because
+  `JsonUtility` handles neither `DateTime` nor textures).
+- **`ClipRecordedChannel : EventChannel<…>`**: raised once per finished clip. The memory card, the grade HUD
+  and (later) reputation listen to it. `ShotCapturedChannel` stays for as long as the clip stories still
+  need the per-frame grade path.
+
+**Data flow:** Capture (press) → `ClipRecorder.Start` → on each sampled frame, `ShotGrader.Grade` → Capture
+(press) / lower / card full → `ClipRecorder.Stop` → `ClipGrader` → `ClipRecordedChannel.Raise` →
+`MemoryCardService` stores the clip, and `GradeHud` shows its grade.
+
+**Dependency direction:** `PhotoMode` → `Recording` → `Grading` and `Events` (through `ISubject` only). The
+memory card (`Gallery`) and `UI` listen through `ClipRecordedChannel` and never the reverse.
+
+*The names and exact shapes are finalised by Stories 1.14–1.17. This section fixes the responsibilities and
+the dependency direction.*
 
 ### Event-Actor System (reusable engine)
 
@@ -213,6 +257,9 @@ future refactor if handlers get crowded.
 
 ### Data Persistence (Gallery)
 
+*2026-11-10: for clips, this is superseded by `CapturedClip` (see **Clip Recording**). The text below
+remains the record of the photo-era model; its disk-ready rules carry over unchanged.*
+
 `CapturedShot { Texture2D image; ShotGrade grade; string subjectId; DateTime time }`,
 held in an in-memory `List` inside `GalleryService`. No disk/economy in the slice
 (per GDD). Designed so PNG (`EncodeToPNG` → `persistentDataPath`) + JSON metadata can be
@@ -220,7 +267,7 @@ added later without reshaping the model.
 
 ### Code Organization
 
-- Namespaces: `CameraGame.{Core, PhotoMode, Events, Grading, Gallery}`.
+- Namespaces: `CameraGame.{Core, PhotoMode, Events, Grading, Gallery, Recording}` (`Recording` added 2026-11-10).
 - Folders: `Assets/Scripts/{Core,PhotoMode,Events,Grading,Gallery}`; SO configs in `Assets/Data/`.
 - Assemblies: start with one `CameraGame.asmdef` (+ test asmdef when tests arrive); split
   only when compile times justify it.
@@ -241,6 +288,23 @@ added later without reshaping the model.
 - **ADR-3 (Event system):** Data-driven (ScriptableObject) over hard-coded events.
   *Rationale:* makes the ~80% of future events cheap (data, not code). *Consequence:*
   slightly more upfront structure for the single slice event, paid back immediately in Epic 3.
+- **ADR-4 (Clip recording) — OPEN, decided by Story 1.14.** *(Added 2026-11-10.)* How a built
+  game records its own gameplay. Candidates:
+  - **(A) Encode a video file while playing.** Options are FFmpeg, Windows Media Foundation, or a
+    paid capture plugin. The licence must be checked: FFmpeg builds that include an H.264 encoder
+    such as libx264 are GPL.
+  - **(B) Replay recording.** Save what happened (camera pose/FOV, actor transforms and animation
+    state, sound events) and re-render it on playback.
+  - **(C) Raw frames in memory.** About 8.3 MB per 1080p frame, so 10 s at 30 fps is about 2.5 GB.
+    It is listed so that it is measured and rejected, not rejected by assumption.
+
+  *Constraint:* it must run in a Windows **build**. Unity Recorder, which films the verification
+  rigs, is Editor-only. *It must answer:* FPS cost at 1080p while recording, memory/disk per second
+  of footage, whether game sound is captured, playback quality, how the Edit Suite (Epic 9) trims
+  and joins clips on top of it, and how (if ever) a clip leaves the game as a file (FR31, open).
+  *Consequence if (B) wins:* add a cross-cutting rule to **Cross-cutting Concerns** — everything
+  that moves or makes sound on screen must be recordable — because every later epic's systems
+  would have to cooperate with replay.
 
 ---
 
@@ -364,14 +428,16 @@ My project/
 │   │   ├── PhotoMode/       # PhotoModeController (mode toggle, FOV zoom, viewfinder hookup)
 │   │   ├── Grading/         # ShotGrader, ShotGrade, GradingConfig (SO)
 │   │   ├── Events/          # EventActor, EventManager, EventDefinition (SO), lifecycle states, ISubject
-│   │   ├── Gallery/         # GalleryService, CapturedShot
+│   │   ├── Gallery/         # GalleryService → MemoryCardService, CapturedShot (2026-11-10)
+│   │   ├── Recording/       # ClipRecorder, ClipGrader, CapturedClip, ClipRecordedChannel (added 2026-11-10)
 │   │   ├── Editor/          # AddMeshColliders, ColorCharacter (existing)
 │   │   └── CameraGame.asmdef
 │   ├── Data/                # ScriptableObject *instances*
 │   │   ├── Events/          #   TownDrunk.asset (EventDefinition)
 │   │   ├── Grading/         #   GradingConfig.asset
 │   │   ├── Camera/          #   CameraConfig.asset
-│   │   └── Channels/        #   ShotCapturedChannel.asset, EventPeakedChannel.asset
+│   │   ├── Recording/       #   MemoryCardConfig.asset (added 2026-11-10)
+│   │   └── Channels/        #   ShotCapturedChannel.asset, EventPeakedChannel.asset, ClipRecordedChannel.asset
 │   ├── Models/              # FBX (existing: game scneen.fbx, main characters.fbx)
 │   ├── Materials/           # existing
 │   ├── Animations/          # Animator controllers + Drunk Pack clips
@@ -399,7 +465,8 @@ My project/
 | Photo mode | `Scripts/PhotoMode/` | Walk↔Photo toggle, FOV zoom, viewfinder control |
 | Shot grading | `Scripts/Grading/` | Subject gate, composition, timing → ShotGrade |
 | Event actors | `Scripts/Events/` | Lifecycle FSM, EventManager, pooling, ISubject |
-| Gallery | `Scripts/Gallery/` | Hold captured shots + grades in memory |
+| Gallery → Memory card | `Scripts/Gallery/` | Hold recorded clips + grades, capped in seconds of footage (2026-11-10: was captured shots) |
+| Clip recording | `Scripts/Recording/` | Record start/stop, clip grading, the clip data model (added 2026-11-10) |
 | Shared infra | `Scripts/Core/` | Logging, constants, pooling, event-channel base |
 | Tunable data | `Data/` | EventDefinition, GradingConfig, CameraConfig, channels |
 | Editor tools | `Scripts/Editor/` | Mesh colliders, character color (existing) |
@@ -648,11 +715,12 @@ State pattern for when an entity has many complex states — overkill for the 5-
 
 | Epic | Architectural Support |
 |------|----------------------|
-| E1 — First Playable Slice | Direct — every system in this doc serves it |
+| E1 — First Playable Slice | Direct — every system in this doc serves it, including Clip Recording (ADR-4) from 2026-11-10 |
+| E9 — The Edit Suite *(added 2026-11-10; sequenced right after E1)* | Builds on the ADR-4 clip format and the memory card's disk seam; its first story makes clips survive between sessions |
 | E2 — Living Town | Scene/Audio/UI structure ready; districts are level-design layered on top |
 | E3 — Event Content Pack #1 | Reuses EventActor + EventDefinition (data, not code) |
-| E4 — Progression & Reputation | `ShotCapturedChannel` already decoupled; ReputationSystem subscribes later |
-| E5 — Home Base | `GalleryService` has disk-persistence seam ready |
+| E4 — Progression & Reputation | `ClipRecordedChannel` already decoupled; ReputationSystem subscribes later *(2026-11-10: was `ShotCapturedChannel`)* |
+| E5 — Home Base | The memory card's disk seam (cashed in by E9) is reused for printing stills *(2026-11-10: was `GalleryService`'s seam)* |
 | E6 — Nature & Collection | Reuses EventActor for nature-spectacle events (lightning, eclipse) |
 | E7 — Missions & Mystery | Additive — new `MissionService` listens to `ShotCapturedChannel` |
 | E8 — Stealth Layer | Additive — `EventActor` already exposes phase events for spotted/abort |

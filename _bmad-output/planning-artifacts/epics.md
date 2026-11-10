@@ -19,6 +19,7 @@ jiraSync:
     - { name: "Epic 6: Nature & Collection Layer", key: KAN-9 }
     - { name: "Epic 7: Missions & Mystery", key: KAN-10 }
     - { name: "Epic 8: Stealth Layer", key: KAN-11 }
+    - { name: "Epic 9: The Edit Suite", key: PENDING }  # added 2026-11-10 (sprint-change-proposal-2026-11-10) — sync when Atlassian MCP is re-authenticated
   stories:  # all parented to KAN-4 (Epic 1)
     - { name: "Story 1.1", key: KAN-12 }
     - { name: "Story 1.2", key: KAN-13 }
@@ -32,7 +33,13 @@ jiraSync:
     - { name: "Story 1.10", key: KAN-21 }
     - { name: "Story 1.11", key: KAN-22 }
     - { name: "Story 1.12", key: KAN-23 }
-    - { name: "Story 1.13", key: PENDING }  # Jira token expired 2026-09-10 — sync when re-authenticated
+    - { name: "Story 1.13", key: NONE }  # superseded 2026-11-10 before it was ever synced — intentionally NOT created in Jira
+    # Stories 1.14–1.18 added 2026-11-10 (sprint-change-proposal-2026-11-10) — sync when Atlassian MCP is re-authenticated
+    - { name: "Story 1.14", key: PENDING }
+    - { name: "Story 1.15", key: PENDING }
+    - { name: "Story 1.16", key: PENDING }
+    - { name: "Story 1.17", key: PENDING }
+    - { name: "Story 1.18", key: PENDING }
   subtasks:  # story Tasks/Subtasks mirrored as Jira Subtasks (parent = the story)
     # Story 1.1 (parent KAN-12) — created 2026-06-04
     - { name: "1.1 Task 1 — Create folder structure", key: KAN-24, parent: KAN-12 }
@@ -141,19 +148,23 @@ The epic structure mirrors the GDD's validated 8-epic plan. **Epic 1 (the First 
 
 **Core Catch Loop (Epic 1 — MVP)**
 
-FR1: The game has two camera states — **Walk** (exploration) and **Photo** (first-person viewfinder) — toggled by holding the raise-camera input (RMB / gamepad LT); releasing returns to Walk.
-FR2: In Photo state the player can aim freely and **zoom** in/out (scroll wheel / gamepad) to compose the frame (zoom ~1×–4×, camera FOV ~60°→~18°).
-FR3: The player can **capture** a photo with a click (LMB / gamepad RT) while in Photo state; capture is a no-op in Walk state.
-FR4: A captured shot is **graded** on three dimensions — Subject Capture, Composition, and Timing — blended into a 1–5 star (0–100%) grade.
-FR5: **Subject-capture gate** — the shot fails (near-zero) if the target subject is not within the frame, is occluded, or is **too small in the frame**. *(Revised 2026-07-28 by the Story 1.10 code review: originally "occupies below ~8% of the frame". The gate is now the subject box height as a fraction of the FRAME HEIGHT, shipped at 0.20 — the same measure FR6 scores on. The old ~8% was an AREA figure, and area around a tall thin figure is mostly empty air: a good full-body portrait measures 4.5% by area and 39% by height. FR6 was rewritten for this on 2026-07-27; this clause was left behind and is corrected here so the two describe one measure. Do not "restore" the 8%.)*
-FR6: **Composition scoring** — score is higher when the subject is prominent in the frame and sits near the **centre**; lower when too small, cut off, or pushed toward a corner. *(Revised 2026-07-27 by Story 1.10: originally specified a rule-of-thirds bonus and "~25–50% of the frame". The thirds bonus was built, photographed in matched pairs, and judged worse than centred — in the empty test world and again in the real town. Prominence is now the subject's height as a fraction of the frame, since "25–50%" measured as area reads 4.5% for a good full-body portrait. See the GDD's grading section and Story 1.10's Dev Agent Record.)*
-FR7: **Timing scoring** — full marks within ±0.5 s of the event's **peak window**, decaying to zero by ±2 s beyond it. *(Clarified 2026-07-28 by the Story 1.10 code review: the peak is an INTERVAL, not an instant — 1.5 s for the Town Drunk — and every frame inside it scores full marks. Distance is measured from the window's nearest edge via `ISubject.PeakOffset`, so the full-marks band is the peak duration plus 1 s. Measuring from the window's START instead, as the architecture sketch did, would score the last frame of the money shot as though it were 1.5 s early.)*
-FR8: Captured shots are **saved to a gallery** with their grade and subject identity.
+*Revised 2026-11-10 (`sprint-change-proposal-2026-11-10.md`): at the stakeholder's request the core verb changed from still photography to **video recording**. FR1–FR8 below were rewritten for clips, and FR27–FR28 were added. Each revised FR keeps a note of its photo-era wording.*
+
+FR1: The game has two camera states — **Walk** (exploration) and **Viewfinder** (first-person through the camcorder) — toggled by holding the raise-camera input (RMB / gamepad LT); releasing returns to Walk. *(Revised 2026-11-10: "Photo" state renamed **Viewfinder** now that video replaces photo. The code name `PhotoMode` / `PhotoModeController` is unchanged.)*
+FR2: In Viewfinder state the player can aim freely and **zoom** in/out (scroll wheel / gamepad) to compose the frame (zoom ~1×–4×, camera FOV ~60°→~18°).
+FR3: The player can **start and stop recording a clip** (LMB / gamepad RT) while in Viewfinder state. Lowering the camera or a full memory card also stops recording, and the clip so far is kept. Record is a no-op in Walk state. *(Revised 2026-11-10: was "The player can **capture** a photo with a click (LMB / gamepad RT) while in Photo state; capture is a no-op in Walk state.")*
+FR4: A recorded clip is **graded** by sampling the per-frame shot grader — **Subject Capture** (gate) and **Composition** — throughout the recording, plus **Peak coverage**, blended into a 1–5 star (0–100%) grade. *(Revised 2026-11-10: was "A captured shot is graded on three dimensions — Subject Capture, Composition, and Timing". The per-frame grader built in Stories 1.9–1.10 is unchanged and becomes the engine underneath clip grading.)*
+FR5: **Subject-capture gate** — the shot fails (near-zero) if the target subject is not within the frame, is occluded, or is **too small in the frame**. *(Revised 2026-07-28 by the Story 1.10 code review: originally "occupies below ~8% of the frame". The gate is now the subject box height as a fraction of the FRAME HEIGHT, shipped at 0.20 — the same measure FR6 scores on. The old ~8% was an AREA figure, and area around a tall thin figure is mostly empty air: a good full-body portrait measures 4.5% by area and 39% by height. FR6 was rewritten for this on 2026-07-27; this clause was left behind and is corrected here so the two describe one measure. Do not "restore" the 8%.)* *(2026-11-10: the gate is evaluated on every sampled frame of a clip; a clip in which the subject never passes it is a miss, with the reason.)*
+FR6: **Composition scoring** — score is higher when the subject is prominent in the frame and sits near the **centre**; lower when too small, cut off, or pushed toward a corner. *(Revised 2026-07-27 by Story 1.10: originally specified a rule-of-thirds bonus and "~25–50% of the frame". The thirds bonus was built, photographed in matched pairs, and judged worse than centred — in the empty test world and again in the real town. Prominence is now the subject's height as a fraction of the frame, since "25–50%" measured as area reads 4.5% for a good full-body portrait. See the GDD's grading section and Story 1.10's Dev Agent Record.)* *(2026-11-10: evaluated on every sampled frame of a clip.)*
+FR7: **Peak coverage** — a clip earns full marks when it contains the event's whole **peak window** with the subject framed, and partial credit for partial coverage. A well-framed clip that missed the peak still scores above zero via a designer-set floor, but far below one that caught it. *(Revised 2026-11-10. This replaces the photo-era **Timing scoring**: "full marks within ±0.5 s of the event's peak window, decaying to zero by ±2 s beyond it", clarified 2026-07-28 to measure from the window's nearest edge via `ISubject.PeakOffset`, because the peak is an INTERVAL — 1.5 s for the Town Drunk — not an instant. With video, catching the peak becomes a question of coverage rather than of one click's timing. The "above zero" floor carries the intent of superseded Story 1.13.)*
+FR8: Recorded clips are **saved to the memory card** with their grade, subject identity, time, duration and a thumbnail. *(Revised 2026-11-10: was "Captured shots are **saved to a gallery** with their grade and subject identity.")*
 FR9: Every catchable event runs a **lifecycle** — Spawn → Build → Peak → Wind-Down → Despawn — advancing on its own timers.
 FR10: Each event **self-telegraphs** via directional audio and/or visual cues within a cue radius (~25 m); discovery is diegetic (no map markers in core).
 FR11: The **Town Drunk** event is playable end-to-end using the husband model and Drunk Pack animations: spawns (leaving the pub) → stumble-walks → peak stagger/near-fall (~1.5 s money-shot window) → recovers → despawns into an alley (~20–30 s lifecycle).
 FR12: A **small playable patch of town** exists to walk around in for the slice (walkable surface with colliders).
 FR13: The player explores with **free-roam traversal** (WASD/stick move, sprint to chase a moment) using the existing controller.
+FR27: **Memory card capacity** — the card holds a limited amount of footage (designer-tunable, in seconds). The viewfinder shows the time remaining. When the card fills, recording stops (the clip so far is kept) and the viewfinder shows **CARD FULL**. Deleting a clip frees its space. *(Added 2026-11-10.)*
+FR28: **Clip playback** — the player can watch any clip on the memory card in-game, with the game sound it recorded, and delete it from there. *(Added 2026-11-10.)*
 
 **The Living Town (Epic 2)**
 
@@ -166,41 +177,47 @@ FR16: **3–5 additional event types** are playable, each reusing the event-acto
 
 **Progression & Reputation (Epic 4)**
 
-FR17: Banking a graded shot earns **Reputation** — higher grades and rarer subjects pay more.
+FR17: Banking a graded clip earns **Reputation** — higher grades and rarer subjects pay more. *(2026-11-10: was "graded shot".)*
 FR18: **Reputation tiers** unlock rarer/bigger events, new districts, camera upgrades, and home-base features.
 FR19: A **"town log" collection** tracks captured event types and nature subjects with completion and rarity tiers.
 FR20: **"New best" tracking** records the player's best grade per subject/event, rewarding re-capture.
 
 **Home Base (Epic 5)**
 
-FR21: A **home-base interior hub** lets the player review the gallery, **print** photos, and **decorate** the house with them.
+FR21: A **home-base interior hub** lets the player review clips on the memory card, **print stills** pulled from clips, and **decorate** the house with them. Once Epic 9 exists, it also gives the Edit Suite a physical room. *(Revised 2026-11-10: was "review the gallery, **print** photos, and **decorate** the house with them".)*
 
 **Nature & Collection Layer (Epic 6)**
 
-FR22: **Spawnable nature subjects** (fish, trees, mushrooms, butterflies, pets) exist with per-type spawn probabilities and rarity tiers, photographable for the collection.
+FR22: **Spawnable nature subjects** (fish, trees, mushrooms, butterflies, pets) exist with per-type spawn probabilities and rarity tiers, filmable for the collection. *(2026-11-10: was "photographable".)*
 FR23: **Nature-spectacle events** (lightning strike, solar eclipse, avalanche) run on the event lifecycle as rare catchable moments.
 
 **Missions & Mystery (Epic 7 — optional layer)**
 
-FR24: A **mission system** offers photo-bounty objectives ("capture X doing Y"), mission-giver hubs, and a town-mystery thread advanced by capturing specific subjects as photo-evidence.
+FR24: A **mission system** offers clip-bounty objectives ("record X doing Y"), mission-giver hubs, and a town-mystery thread advanced by recording specific subjects as footage evidence. *(2026-11-10: was photo-bounty / photo-evidence.)*
 FR25: A mid/late-game **police-vs-criminal allegiance choice** branches available missions.
 
 **Stealth Layer (Epic 8)**
 
 FR26: A **stealth layer** adds proximity/eyeline detection on sensitive events; being **spotted** aborts the event (a soft consequence, never death), enabling sneak-to-shoot play.
 
+**The Edit Suite (Epic 9)** *(added 2026-11-10)*
+
+FR29: **Clip editing** — the player can choose clips from the memory card, trim each one, arrange them in order on a timeline, and preview the edit as one video.
+FR30: **Saved edits** — finished edits are saved and can be re-watched and re-opened for editing.
+FR31: **[OPEN — confirm with the stakeholder] Export** — a finished edit can leave the game as a standard video file playable outside it. Online sharing remains deferred. *(Whether this is wanted affects ADR-4: exporting a file needs some form of video encoding, at least at export time.)*
+
 ### NonFunctional Requirements
 
-NFR1: **Performance** — 60 FPS at 1080p on `PC_RPAsset` on a mid-range Windows desktop with the active event running.
-NFR2: **Input responsiveness** — no perceptible input lag; camera raise/lower transition < 0.3 s, capture-to-feedback < 0.2 s.
-NFR3: **Memory stability** — the event-actor lifecycle leaks no objects over an extended session (object pooling required; no Instantiate/Destroy in gameplay loops).
+NFR1: **Performance** — 60 FPS at 1080p on `PC_RPAsset` on a mid-range Windows desktop with the active event running, **including while recording**. *(2026-11-10.)*
+NFR2: **Input responsiveness** — no perceptible input lag; camera raise/lower transition < 0.3 s, **record-start-to-feedback (REC indicator + beep) < 0.2 s**. *(Revised 2026-11-10: was "capture-to-feedback < 0.2 s", meaning shutter + flash.)*
+NFR3: **Memory stability** — the event-actor lifecycle leaks no objects over an extended session (object pooling required; no Instantiate/Destroy in gameplay loops). Recorded footage is bounded by the memory card's capacity — no unbounded buffer; deleting a clip frees its memory. *(2026-11-10.)*
 NFR4: **Render pipeline** — URP only; the Standard shader is not supported.
 NFR5: **Build hygiene** — zero compile errors; clean Unity console after every script change (verify via MCP `read_console`).
 NFR6: **Simulation budget** — cap concurrent active event actors (1 for the slice); use LOD/culling across the open town.
 NFR7: **Audio locatability** — the mix must make directional cues clearly locatable; audio is gameplay-critical, not just ambience.
 NFR8: **No fail state / fail-soft** — there is no death, health, or game-over; errors must never crash or hard-pause gameplay and are never shown to the player.
 NFR9: **Platform & input** — Windows 64-bit standalone; keyboard/mouse primary, gamepad supported (New Input System, "Player" map).
-NFR10: **Grade legibility** — players can distinguish a high-grade from a low-grade shot and understand *why* (legible grade feedback).
+NFR10: **Grade legibility** — players can distinguish a high-grade from a low-grade clip and understand *why* (legible grade feedback). *(2026-11-10: was "shot".)*
 
 ### Additional Requirements
 
@@ -209,29 +226,32 @@ These are technical/setup requirements drawn from the Architecture document that
 - **AR1 (Brownfield input):** Extend the existing `PlayerInput` (Send-Messages mode); repurpose "Attack" → **Capture**, add **RaiseCamera** (hold) and **Zoom** actions; gate Capture/Zoom to Photo mode.
 - **AR2 (Event engine):** Data-driven `EventActor` (lifecycle FSM) + per-event `EventDefinition` ScriptableObject + pooled `EventManager` — the ~80%-reusable engine.
 - **AR3 (Grading impl):** Hybrid screen-space "frame read" (frustum + occlusion gate · screen-bounds composition · lifecycle timing); no GPU readback; thresholds in a `GradingConfig` ScriptableObject.
-- **AR4 (Decoupling):** ScriptableObject event channels (`ShotCapturedChannel`, `EventPeakedChannel`) connect capture → gallery → (future) reputation.
+- **AR4 (Decoupling):** ScriptableObject event channels (`ShotCapturedChannel`, `EventPeakedChannel`, and from 2026-11-10 `ClipRecordedChannel`) connect record → memory card → HUD → (future) reputation.
 - **AR5 (Code org):** `CameraGame.*` namespaces; feature folders under `Scripts/`; one `CameraGame.asmdef` (Editor/Tests separate).
-- **AR6 (Gallery persistence):** In-memory `List<CapturedShot>` via `GalleryService`, designed with a disk-ready seam for Epic 5.
+- **AR6 (Memory card persistence):** An in-memory store of `CapturedClip` capped in seconds of footage (evolves `GalleryService`), designed with a disk-ready seam. Clips surviving between sessions lands no later than Epic 9's first story. *(Revised 2026-11-10: was "Gallery persistence: in-memory `List<CapturedShot>` via `GalleryService`, designed with a disk-ready seam for Epic 5".)*
 - **AR7 (Camera fork — ADR-1):** Walk state is **first-person** (not third-person), reusing the existing FP controller/camera; "raise camera" = mode toggle + FOV zoom on one rig. (A small GDD note is advisable.)
 - **AR8 (Import constraint):** The World FBX's embedded Blender camera must stay **disabled** on import (it overrides Main Camera via higher depth).
 - **AR9 (Asset pipeline — Epic 2 blocker):** The town map currently exists only as a 214 MB `.blend`; it needs a **Blender → FBX export** before Unity import.
 - **AR10 (Animator setup):** A Unity **Animator** must be built for the husband from the Drunk Pack (idle, idle variations, walk, turns, run) to drive the Town Drunk lifecycle.
 - **AR11 (Project scaffold):** Create the folder/namespace structure (`Scripts/{Core, Player, PhotoMode, Grading, Events, Gallery}`, `Data/{Events, Grading, Camera, Channels}`) and the SO config assets before feature work.
+- **AR12 (Clip recording approach):** Decided by measurement in Story 1.14 and recorded as **ADR-4** before any recording story starts. It must work in a Windows **build**: Unity Recorder (`com.unity.recorder`), which films the verification rigs, is Editor-only and cannot ship. *(Added 2026-11-10.)*
 
 ### UX Design Requirements
 
-_No standalone UX Design Specification exists yet. UI work items (first-person viewfinder/lens overlay styled like a 2000s camcorder, on-capture grade-feedback HUD showing subject %/composition/timing) are captured within the functional requirements above (FR1–FR8) and the Architecture's UI/`Scripts/PhotoMode` + `UI/` sections. If `gds-ux` is run later, dedicated UX-DRs can be folded in._
+_No standalone UX Design Specification exists yet. UI work items (first-person viewfinder/lens overlay styled like a 2000s camcorder — from 2026-11-10 with a REC indicator, running timecode, card time remaining and CARD FULL — and the grade-feedback HUD showing subject %/composition/timing) are captured within the functional requirements above (FR1–FR8) and the Architecture's UI/`Scripts/PhotoMode` + `UI/` sections. If `gds-ux` is run later, dedicated UX-DRs can be folded in._
 
 ### FR Coverage Map
 
-- FR1: **Epic 1** — Two camera states (walk ↔ photo toggle)
-- FR2: **Epic 1** — Photo-mode aim & zoom composition
-- FR3: **Epic 1** — Capture action (gated to photo mode)
-- FR4: **Epic 1** — Blended 3-dimension shot grade
-- FR5: **Epic 1** — Subject-capture gate
-- FR6: **Epic 1** — Composition scoring
-- FR7: **Epic 1** — Peak-timing scoring
-- FR8: **Epic 1** — Save shots to gallery
+- FR1: **Epic 1** — Two camera states (walk ↔ viewfinder toggle)
+- FR2: **Epic 1** — Viewfinder aim & zoom composition
+- FR3: **Epic 1** — Record start/stop (gated to the viewfinder)
+- FR4: **Epic 1** — Blended clip grade (per-frame grader + peak coverage)
+- FR5: **Epic 1** — Subject-capture gate (per frame)
+- FR6: **Epic 1** — Composition scoring (per frame)
+- FR7: **Epic 1** — Peak coverage scoring
+- FR8: **Epic 1** — Save clips to the memory card
+
+_(FR1–FR8 labels revised 2026-11-10: they were walk ↔ photo toggle, photo-mode zoom, capture action, 3-dimension shot grade, peak-timing scoring, save shots to gallery.)_
 - FR9: **Epic 1** — Event lifecycle FSM
 - FR10: **Epic 1** — Diegetic cue self-telegraphing
 - FR11: **Epic 1** — The Town Drunk proof-event
@@ -247,19 +267,31 @@ _No standalone UX Design Specification exists yet. UI work items (first-person v
 - FR21: **Epic 5** — Home-base hub: review, print, decorate
 - FR22: **Epic 6** — Spawnable nature subjects with rarity
 - FR23: **Epic 6** — Nature-spectacle events
-- FR24: **Epic 7** — Mission system / photo-bounties / mystery
+- FR24: **Epic 7** — Mission system / clip-bounties / mystery
 - FR25: **Epic 7** — Police-vs-criminal allegiance choice
 - FR26: **Epic 8** — Stealth detection & "spotted" abort
+- FR27: **Epic 1** — Memory card capacity *(added 2026-11-10)*
+- FR28: **Epic 1** — Clip playback *(added 2026-11-10)*
+- FR29: **Epic 9** — Clip editing (trim, timeline, preview) *(added 2026-11-10)*
+- FR30: **Epic 9** — Saved edits *(added 2026-11-10)*
+- FR31: **Epic 9** — Export as a video file — **OPEN**, confirm with the stakeholder *(added 2026-11-10)*
 
-_All 26 FRs are mapped. NFR1–NFR10 are cross-cutting and apply to every epic (enforced per-story in acceptance criteria and at code review). AR1–AR11 are realized primarily in Epic 1's foundation stories, with AR9 (map FBX export) gating Epic 2._
+_All 31 FRs are mapped (FR31 is open). NFR1–NFR10 are cross-cutting and apply to every epic (enforced per-story in acceptance criteria and at code review). AR1–AR12 are realized primarily in Epic 1's foundation stories, with AR9 (map FBX export) gating Epic 2 and AR12 (the recording approach) gating Stories 1.15–1.18._
 
 ## Epic List
 
 ### Epic 1: First Playable Slice — The Catch Loop (MVP)
-Prove the core loop is fun: a first-time player hears a cue, finds the Town Drunk, raises the camera, composes and captures a graded shot, sees it banked in their gallery, and wants to wait for the next one. Delivers the entire Catch Loop end-to-end on a small town patch, building the reusable camera, grading, and event-actor systems.
-**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13
-**Foundation (AR):** AR1–AR8, AR10, AR11
+Prove the core loop is fun: a first-time player hears a cue, finds the Town Drunk, raises the camcorder, records him through his stagger, sees a graded clip land on their memory card, watches it back, and wants to wait for the next one. Delivers the entire Catch Loop end-to-end on a small town patch, building the reusable camera, recording, grading, and event-actor systems.
+*Revised 2026-11-10 (`sprint-change-proposal-2026-11-10.md`): the core verb changed from still photography to video at the stakeholder's request. Stories 1.1–1.12 built the photo version; their systems are the foundation the camcorder stories 1.14–1.18 build on — none is rolled back.*
+**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR27, FR28
+**Foundation (AR):** AR1–AR8, AR10, AR11, AR12
 **Depends on:** — (greenfield slice on a brownfield base)
+
+### Epic 9: The Edit Suite
+This completes the "from capture to creation" arc the stakeholder asked for. The player picks clips from the memory card, trims them, arranges them on a timeline, and plays the result back as one short video they made. It starts as a menu screen; Epic 5 can give it a physical editing room in the home base later.
+**FRs covered:** FR29, FR30, FR31 (FR31 open — confirm with the stakeholder)
+**Depends on:** Epic 1 (clips, and the ADR-4 recording format)
+**Sequenced:** immediately after Epic 1, ahead of Epic 2. It is listed here, out of numeric order, to show that sequence; it is numbered 9 only so existing epic numbers and Jira keys stay stable. *(Added 2026-11-10 — promoted from the GDD's deferred "full video-editing minigame".)*
 
 ### Epic 2: The Living Town
 Give the proven loop a real, navigable world: import the full town map, zone it into districts with colliders and NavMesh, place reachable vantage points, and lay down directional ambient audio so the world reads as alive and cues are locatable.
@@ -273,14 +305,14 @@ Add breadth of moments: 3–5 new event types built purely as `EventDefinition` 
 **Depends on:** Epic 1, Epic 2
 
 ### Epic 4: Progression & Reputation
-Give the player a reason to keep playing: reputation earned from graded shots, tier-based unlocks (events/districts/upgrades/home features), a town-log collection, and "new best" tracking that rewards re-capture.
+Give the player a reason to keep playing: reputation earned from graded clips, tier-based unlocks (events/districts/upgrades/home features), a town-log collection, and "new best" tracking that rewards re-capture.
 **FRs covered:** FR17, FR18, FR19, FR20
 **Depends on:** Epic 1, Epic 3
 
 ### Epic 5: Home Base
-Close the session loop: a home-base interior hub where the player reviews the gallery, prints photos, and decorates the house with them — the payoff that sends the player back out.
+Close the session loop: a home-base interior hub where the player reviews their clips, prints stills pulled from clips, and decorates the house with them — and, once Epic 9 exists, a physical room for the Edit Suite — the payoff that sends the player back out. *(Revised 2026-11-10: was "reviews the gallery, prints photos".)*
 **FRs covered:** FR21
-**Depends on:** Epic 1, Epic 4
+**Depends on:** Epic 1, Epic 4 (and Epic 9 for the editing room)
 
 ### Epic 6: Nature & Collection Layer
 Cozy completionism: spawnable nature subjects (fish/trees/mushrooms/butterflies/pets) with rarity, and rare nature-spectacle events (lightning, eclipse, avalanche) on the event lifecycle.
@@ -288,7 +320,7 @@ Cozy completionism: spawnable nature subjects (fish/trees/mushrooms/butterflies/
 **Depends on:** Epic 2, Epic 4
 
 ### Epic 7: Missions & Mystery (optional layer)
-A light narrative spine: mission-giver hubs, photo-bounty objectives, the town-mystery thread advanced by photo-evidence, and a mid/late-game police-vs-criminal allegiance choice.
+A light narrative spine: mission-giver hubs, clip-bounty objectives, the town-mystery thread advanced by footage as evidence, and a mid/late-game police-vs-criminal allegiance choice.
 **FRs covered:** FR24, FR25
 **Depends on:** Epic 3, Epic 4
 
@@ -301,7 +333,9 @@ Tension on sensitive events: proximity/eyeline detection, a "spotted" consequenc
 
 ## Epic 1: First Playable Slice — The Catch Loop (MVP)
 
-Prove the core loop is fun: a first-time player hears a cue, finds the Town Drunk, raises the camera, composes and captures a graded shot, sees it banked in their gallery, and wants to wait for the next one. This epic builds the reusable camera, grading, and event-actor systems end-to-end on a small playable town patch.
+Prove the core loop is fun: a first-time player hears a cue, finds the Town Drunk, raises the camcorder, records him through his stagger, sees a graded clip land on their memory card, watches it back, and wants to wait for the next one. This epic builds the reusable camera, recording, grading, and event-actor systems end-to-end on a small playable town patch.
+
+*Revised 2026-11-10 (`sprint-change-proposal-2026-11-10.md`): video replaces photo as the core verb. Stories 1.1–1.12 built and proved the photo version, and every system they built is reused. Stories 1.14–1.18 turn it into a camcorder: 1.14 decides how a built game records itself (and gates the rest), then record → grade → memory card → watch. Story 1.13 is superseded.*
 
 **Slice success criterion (GDD):** an uninstructed first-time player completes the full Catch Loop and *voluntarily* seeks the next event.
 
@@ -544,7 +578,12 @@ So that I can tell a great shot from a weak one and want to do better.
 
 ---
 
-### Story 1.13: Soften the timing multiplier
+### Story 1.13: Soften the timing multiplier — ⛔ SUPERSEDED 2026-11-10
+
+> **Not to be implemented as written.** It changes the photo grade formula, which players no longer see once
+> video replaces photo (`sprint-change-proposal-2026-11-10.md`). Its intent — a well-framed but mistimed
+> attempt is worth something, and timing stays the dominant axis — is carried into **Story 1.16**'s acceptance
+> criteria, with Alexv's original quote. The text below is kept as the record of that feedback.
 
 As a player,
 I want a well-composed photograph taken slightly too late to still be worth something,
@@ -571,16 +610,170 @@ record that asserted it is updated rather than left claiming a state the game ca
 
 ---
 
-## Epics 2–8: Detailed Just-In-Time
+### Story 1.14: Decide how the game records video
 
-Per the GDD's scope discipline — *"Do not start a later epic until Epic 1 has proven the loop is fun"* — Epics 2 through 8 are intentionally **not** broken into detailed stories yet. Their goals, FR coverage, and dependencies are fixed in the **Epic List** above. Re-run `gds-create-story` / this workflow to detail each one just-in-time, once Epic 1 validates how the core systems actually feel.
+*Technical spike — **gates Stories 1.15–1.18**. Added 2026-11-10 (`sprint-change-proposal-2026-11-10.md`).*
+
+As a developer,
+I want to know, by measuring rather than guessing, how a **built** copy of the game can record its own gameplay,
+So that the camcorder stories build on an approach that actually works outside the Editor.
+
+**Acceptance Criteria:**
+
+**Given** Unity Recorder is Editor-only and cannot ship in a build,
+**When** recording approaches are compared — at minimum **(A)** encoding a video file while playing, **(B)** replay
+recording (saving what happened and re-rendering it), and **(C)** keeping raw frames in memory —
+**Then** each is prototyped against the Town Drunk in the real slice scene and measured for: frame rate at 1080p
+while recording (NFR1), memory and disk per second of footage, whether the game's sound is captured, playback
+quality, and licence/cost.
+
+**Given** the measurements,
+**When** an approach is chosen,
+**Then** it is recorded as **ADR-4** in the architecture with the evidence behind it, including how the Edit Suite
+(Epic 9) would trim and join clips on top of it and how (if ever) a clip leaves the game as a standard video file
+(FR31)
+**And** Alexv approves the choice before Story 1.15 starts.
+
+**Given** the chosen approach,
+**When** it is proven,
+**Then** a ~10-second clip of the drunk is recorded **and** played back **in a Windows build**, not only in the
+Editor, where Unity Recorder would mask the problem
+**And** the throwaway prototype code is removed or clearly fenced off from game code.
+
+### Story 1.15: Record a clip
+
+*Added 2026-11-10. Depends on Story 1.14 (ADR-4).*
+
+As a player,
+I want to press a button to start and stop recording while my camera is raised,
+So that I can film the moment as it happens instead of freezing one instant.
+
+**Acceptance Criteria:**
+
+**Given** I am in Viewfinder state,
+**When** I press Record (LMB / gamepad RT),
+**Then** recording starts within **< 0.2 s**, with a REC indicator, a running timecode and a start beep in a
+2000s-camcorder style (FR3, NFR2)
+**And** pressing Record again stops it, with a stop beep.
+
+**Given** I am recording,
+**When** I lower the camera (release RaiseCamera),
+**Then** recording stops and the clip is kept. Lowering never throws footage away.
+
+**Given** I am recording with the drunk event active,
+**When** I record for the length of a full event lifecycle (~30 s),
+**Then** the game holds **60 FPS at 1080p** (NFR1), and aim and zoom keep working while recording (FR2).
+
+**Given** the existing Capture action (Story 1.5),
+**When** recording is wired,
+**Then** it reuses that action (LMB / RT), which is a no-op in Walk state
+**And** each finished clip is announced on a `ClipRecordedChannel`, so the memory card and HUD can listen without the
+recorder knowing about them (AR4).
+
+### Story 1.16: Grade a clip
+
+*Added 2026-11-10. Carries the intent of superseded Story 1.13.*
+
+As a player,
+I want each clip scored on how well I kept the subject framed and whether I caught the peak,
+So that filming the moment is still a skill, not just pressing record and walking away.
+
+**Acceptance Criteria:**
+
+**Given** a clip is being recorded,
+**When** frames are rendered,
+**Then** the existing per-frame grader (`ShotGrader`, Stories 1.9–1.10) is sampled throughout the recording, with its
+subject gate and composition unchanged and not re-implemented (FR4–FR6).
+
+**Given** a finished clip,
+**When** it is graded,
+**Then** its grade rewards **peak coverage** (how much of the event's peak window the clip contains with the subject
+framed) and how well the subject was framed while recorded, blended into a 0–100% → 1–5★ `ClipGrade` with a
+per-axis breakdown (FR4, FR7)
+**And** the blend, every threshold, and whether footage without the subject lowers the grade live in
+`GradingConfig` and are decided by measuring recorded clips, as Story 1.10 decided prominence.
+
+**Given** a well-framed clip that missed the peak,
+**When** it is graded,
+**Then** it still scores above zero. This is Alexv's Story 1.12 feedback, carried over from superseded Story 1.13:
+*"it should not be a big deal the timing for me. I think it's too extreme to give 0"*
+**And** a clip that caught the peak with equal framing still wins by a wide margin.
+
+**Given** a clip in which the subject never passes the gate,
+**When** it is graded,
+**Then** it is a miss with a reason (no subject / too small / occluded)
+**And** the grade HUD (Story 1.12) shows the clip's stars and breakdown when recording stops (NFR10).
+
+### Story 1.17: The memory card
+
+*Added 2026-11-10.*
+
+As a player,
+I want my clips saved on a memory card that can fill up,
+So that every recording is a decision and the footage I keep is footage I chose.
+
+**Acceptance Criteria:**
+
+**Given** a clip finishes recording,
+**When** the memory card receives it via `ClipRecordedChannel`,
+**Then** a `CapturedClip` (footage, grade, subject id, time, duration, thumbnail) is stored, evolving the photo
+gallery's storage from Story 1.11 (FR8, AR6).
+
+**Given** the card's capacity, measured in **seconds of footage** in a designer-tunable config (starting value
+~2 minutes),
+**When** I am in Viewfinder state,
+**Then** the viewfinder shows the time remaining
+**And** when the card fills mid-recording, recording stops, the clip so far is kept, and the viewfinder shows
+**CARD FULL** (FR27).
+
+**Given** the memory-card view (reworked from Story 1.11's gallery view),
+**When** I open it,
+**Then** I see each clip's thumbnail, stars and duration, and I can delete one: its seconds are freed immediately and
+its memory is released, with no leak over an extended session (NFR3).
+
+**Given** the in-memory model,
+**When** it is designed,
+**Then** it keeps a disk-ready seam in the format ADR-4 chose, so clips can survive between sessions in Epic 9 (AR6).
+
+### Story 1.18: Watch your clips
+
+*Added 2026-11-10.*
+
+As a player,
+I want to play back any clip on my memory card,
+So that I can relive the catch and judge which footage is worth keeping.
+
+**Acceptance Criteria:**
+
+**Given** clips on the memory card,
+**When** I select one in the memory-card view,
+**Then** it plays back in-game exactly as I recorded it (same framing, zoom and timing), with the game sound that was
+playing (FR28).
+
+**Given** playback is running,
+**When** I watch,
+**Then** I can pause, skip and close it; the camera and player input are suppressed while I watch (the existing
+suppression seam); and closing returns me exactly where I was
+**And** watching never alters the live game: no event is skipped and no actor is teleported.
+
+**Given** a recorded clip of the drunk's stagger,
+**When** Alexv watches it back,
+**Then** he confirms it reads as "I caught it". This is a **human** check and stays open until he has done it.
+(The uninstructed first-time-player playtest of the whole slice remains Epic 1's exit check.)
+
+---
+
+## Epics 2–9: Detailed Just-In-Time
+
+Per the GDD's scope discipline — *"Do not start a later epic until Epic 1 has proven the loop is fun"* — Epics 2 through 9 are intentionally **not** broken into detailed stories yet. Their goals, FR coverage, and dependencies are fixed in the **Epic List** above. Re-run `gds-create-story` / this workflow to detail each one just-in-time, once Epic 1 validates how the core systems actually feel. **Epic 9 is sequenced first among them**, immediately after Epic 1 (2026-11-10).
 
 **Known seeds for when those epics are detailed:**
 
+- **Epic 9** *(added 2026-11-10)* — the first story makes clips survive between sessions (cashing in the memory card's disk seam, AR6). After that: trim a clip → arrange clips on a timeline → play back the edit → save and re-open an edit (FR29–FR30). Later candidates: a music bed, title cards, transitions, and export to a standard video file (FR31 — only if the stakeholder confirms it). ADR-4 (Story 1.14) decides how trimming and joining work (re-render versus re-encode).
 - **Epic 2** — the town map FBX export (AR9) is the first story and a hard blocker; districts, vantage points (FR14), colliders/NavMesh, and per-district ambient audio (FR15) follow.
 - **Epic 3** — each new event (oil-rig smoke break, cheating husband, fisher, graffiti) is one story = one `EventDefinition` + its animations; the engine from Story 1.6 is reused unchanged (FR16). Assets on hand: bandit, CEO, oil-rig worker FBX + a "bandit fight mode" walk.
-- **Epic 4** — `ReputationSystem` subscribes to the existing `ShotCapturedChannel` (FR17–FR20); no rework of capture/grading needed.
-- **Epic 5** — `GalleryService`'s disk seam (AR6) is cashed in here for print/decorate (FR21).
+- **Epic 4** — `ReputationSystem` subscribes to `ClipRecordedChannel` (FR17–FR20); no rework of recording/grading needed. *(2026-11-10: was `ShotCapturedChannel`.)*
+- **Epic 5** — the memory card's disk seam (AR6) is cashed in by Epic 9; Epic 5 reuses it to print stills and decorate (FR21). *(2026-11-10: was "`GalleryService`'s disk seam is cashed in here".)*
 - **Epic 6** — nature subjects (FR22) and spectacle events (FR23) reuse the event lifecycle.
-- **Epic 7** — `MissionService` listens to capture events; photo-as-evidence + allegiance branch (FR24–FR25).
+- **Epic 7** — `MissionService` listens to clip events; footage-as-evidence + allegiance branch (FR24–FR25). *(2026-11-10: was capture events / photo-as-evidence.)*
 - **Epic 8** — stealth detection + "spotted" abort hooks the `EventActor` phase events (FR26).
