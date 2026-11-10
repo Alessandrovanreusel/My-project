@@ -9,11 +9,17 @@ fresh context, a different model, no stake in the code being right. Nobody will 
 for you, and the guard refuses git writes. If you think something should change, that is a
 finding, not an edit.
 
+{coverage_hint}
+
 ## What to review
 
 - The story and its acceptance criteria: `{story_file}`.
-- The change: `git diff {base_ref}..{branch}` (also `git log {base_ref}..{branch}`). Read every
-  changed file **in full**, not only the hunks: bugs hide in the code around a change.
+- The change: `git diff {base_ref}..{branch}` (also `git log {base_ref}..{branch}`).
+- **Read every changed source file in full** with the Read tool, not only the hunks: bugs hide in
+  the code around a change. List them first with `git diff --name-only {base_ref}..{branch}`.
+  Shell output is cut off after about 30,000 characters, so `cat`-ing several files at once hides
+  most of them from you. **The orchestrator measures which files your tools actually showed you.** A
+  verdict given before you have seen the code is rejected and you are asked again.
 - The project's standards: `CLAUDE.md`, especially *Verifying Your Own Work* and *Traps already
   paid for*. The project memory is loaded too.
 - Verification rigs (`*ShootRunner*`, `Assets/Scripts/Editor/*Rig*`) are tools, not subjects. Only
@@ -38,8 +44,9 @@ finding, not an edit.
   input or state that leads to a wrong outcome. No scenario, no finding.
 - Rate confidence honestly: high (you traced it), medium (likely), low (worth checking).
 - No style preferences, no praise, no preamble, no summary of what the code does.
-- **"FINDINGS: 0" is a correct and valuable answer.** Do not invent findings to look thorough. A
-  wrong finding costs a later session time to disprove.
+- **"FINDINGS: 0" is a correct and valuable answer, once you have read the code.** Do not invent
+  findings to look thorough: a wrong finding costs a later session time to disprove. But zero
+  findings from code you have not read is not a review.
 
 ## Your final message is the review — nothing else
 

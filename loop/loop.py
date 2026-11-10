@@ -83,6 +83,14 @@ LIMIT_RE = re.compile(r"usage limit|limit reached|hit your limit|rate.?limit|ove
                       r"too many requests|\b429\b|\b529\b|credit balance", re.I)
 DISALLOWED = "AskUserQuestion,Workflow,EnterPlanMode,ExitPlanMode"
 REVIEW_DISALLOWED = DISALLOWED + ",Edit,Write,NotebookEdit,mcp__UnityMCP,mcp__blender,mcp__claude-in-chrome"
+# A cross-review is only trusted if the reviewer demonstrably SAW the code. Measured 2026-11-10: at
+# default effort, with no coverage check, it answered "FINDINGS: 0" on Story 1.14 after 16 s and four
+# commands, having opened 3 of its 10 changed source files.
+REVIEW_EFFORT = "high"
+REVIEW_MIN_COVERAGE = 0.8       # share of changed source files whose text must reach the reviewer
+REVIEW_FILE_SEEN = 0.6          # share of a file's distinctive lines that must appear in its tool output
+REVIEW_SOURCE_RE = re.compile(r"^(Assets|Packages)/.+\.(cs|asmdef|asmref|shader|hlsl|cginc|compute|uss|uxml)$", re.I)
+REVIEW_RIG_RE = re.compile(r"ShootRunner|^Assets/Scripts/Editor/[^/]*Rig[^/]*$", re.I)   # tools, not subjects
 
 
 @dataclass
@@ -603,6 +611,41 @@ def final_message(log_text: str) -> str:
     return ""
 
 
+def tool_output_text(log_text: str) -> str:
+    """Everything the session's tools returned to it (file contents, command output), as one string."""
+    out = []
+    for line in log_text.splitlines():
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        content = (e.get("message") or {}).get("content") if e.get("type") == "user" else None
+        for c in content if isinstance(content, list) else []:
+            if isinstance(c, dict) and c.get("type") == "tool_result":
+                r = c.get("content")
+                if isinstance(r, list):
+                    out.extend(x.get("text", "") for x in r if isinstance(x, dict))
+                else:
+                    out.append(str(r or ""))
+    return "\n".join(out)
+
+
+def review_coverage(base_ref: str, branch: str, log_text: str) -> tuple[list[str], list[str]]:
+    """Which changed source files did the reviewer actually see? Measured, never self-reported: a file
+    counts as read when most of its distinctive lines (over 20 characters) appear in what its tools
+    returned, whether it used Read, cat, git show or a diff. Output cut off by a tool limit does not
+    count, because the reviewer never saw it either. Returns (read, unread)."""
+    names = git("diff", "--name-only", "--diff-filter=d", f"{base_ref}..{branch}", check=False).stdout.splitlines()
+    files = [p for p in names if REVIEW_SOURCE_RE.search(p) and not REVIEW_RIG_RE.search(p)]
+    seen = tool_output_text(log_text)
+    read, unread = [], []
+    for p in files:
+        lines = {l.strip() for l in git("show", f"{branch}:{p}", check=False).stdout.splitlines() if len(l.strip()) > 20}
+        if lines:
+            (read if sum(l in seen for l in lines) / len(lines) >= REVIEW_FILE_SEEN else unread).append(p)
+    return read, unread
+
+
 def run_cross_review(u: Unit, us: dict) -> str | None:
     """A second, READ-ONLY Claude Code session on a different model reviews the story's diff.
 
@@ -615,29 +658,57 @@ def run_cross_review(u: Unit, us: dict) -> str | None:
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     findings = RESULTS / u.id / f"cross-review-findings-{stamp}.md"
     findings.parent.mkdir(parents=True, exist_ok=True)
-    logfile = LOGS / f"{stamp}-{u.id}-cross-review.jsonl"
-    ctx = {"unit": u.id, "story_file": rel(IMPL / f"{u.id}.md"), "base_ref": us["base_ref"], "branch": u.branch}
-    cmd = [CLAUDE, "-p", "--dangerously-skip-permissions", "--model", REVIEW_MODEL,
+    ctx = {"unit": u.id, "story_file": rel(IMPL / f"{u.id}.md"), "base_ref": us["base_ref"], "branch": u.branch,
+           "coverage_hint": ""}
+    cmd = [CLAUDE, "-p", "--dangerously-skip-permissions", "--model", REVIEW_MODEL, "--effort", REVIEW_EFFORT,
            "--output-format", "stream-json", "--verbose", "--disallowedTools", REVIEW_DISALLOWED]
-    log(f"{u.id}: cross-review by a read-only Claude session ({REVIEW_MODEL}) → {rel(logfile)}")
     # Remember what was ALREADY changed, so the backstop below undoes only the reviewer's own edits.
     # (Measured 2026-11-10: a blanket `git checkout -- .` here reverted an unrelated uncommitted edit.)
     before = {p: (ROOT / p).read_bytes() for p in dirty_tracked() if (ROOT / p).is_file()}
-    waited = 0
-    while True:
-        code, _ = run_process(cmd, render("cross-review", ctx, with_rules=False), logfile,
-                              HOURS["cross-review"] * 3600, child_env(u.id, "cross-review"))
-        text = logfile.read_text(encoding="utf-8", errors="replace")
-        answer = final_message(text)
-        if not answer and LIMIT_RE.search(text[-20000:]) and waited < LIMIT_WAIT_MAX_S:
-            log(f"{u.id}: usage/rate limit during cross-review; waiting {LIMIT_WAIT_S // 60} min")
-            for _ in range(LIMIT_WAIT_S // 30):
-                if stop_requested():
-                    return None
-                time.sleep(30)
-            waited += LIMIT_WAIT_S
-            continue
-        break
+    answer, code, coverage, stopped = "", 0, "", False
+    us.pop("review_coverage", None)
+    for attempt in (1, 2):   # a verdict from a reviewer that did not read the code is re-asked once
+        logfile = LOGS / f"{stamp}-{u.id}-cross-review{'' if attempt == 1 else '-a2'}.jsonl"
+        log(f"{u.id}: cross-review by a read-only Claude session ({REVIEW_MODEL}, effort {REVIEW_EFFORT}) "
+            f"→ {rel(logfile)}")
+        waited = 0
+        while True:
+            code, _ = run_process(cmd, render("cross-review", ctx, with_rules=False), logfile,
+                                  HOURS["cross-review"] * 3600, child_env(u.id, "cross-review"))
+            text = logfile.read_text(encoding="utf-8", errors="replace")
+            answer = final_message(text)
+            if not answer and LIMIT_RE.search(text[-20000:]) and waited < LIMIT_WAIT_MAX_S:
+                log(f"{u.id}: usage/rate limit during cross-review; waiting {LIMIT_WAIT_S // 60} min")
+                for _ in range(LIMIT_WAIT_S // 30):
+                    if stop_requested():
+                        stopped = True
+                        break
+                    time.sleep(30)
+                if stopped:
+                    break
+                waited += LIMIT_WAIT_S
+                continue
+            break
+        if stopped or not answer.strip():
+            break
+        read, unread = review_coverage(us["base_ref"], u.branch, text)
+        total = len(read) + len(unread)
+        coverage = f"read {len(read)}/{total} changed source files (measured from its tool output)"
+        if not total or len(read) >= REVIEW_MIN_COVERAGE * total:
+            break
+        if attempt == 1:
+            report(f"{u.id}: cross-review answered after seeing only {len(read)}/{total} changed source files; "
+                   f"asked again")
+            ctx["coverage_hint"] = (
+                "## Your previous attempt was not accepted\n\n"
+                f"It gave a verdict after its tools had shown it only {len(read)} of the {total} changed source "
+                "files. Read each of these **in full** before you answer. Use the Read tool: shell output is cut "
+                "off after about 30,000 characters, and what was cut off was never seen.\n\n"
+                + "\n".join(f"- `{p}`" for p in unread) + "\n")
+        else:
+            answer = (f"COVERAGE WARNING: even when asked twice, the reviewer saw only {len(read)} of {total} changed "
+                      f"source files. Unread: {', '.join(unread)}. Treat the review below as partial.\n\n" + answer)
+            report(f"{u.id}: cross-review still saw only {len(read)}/{total} files; its review is marked partial")
     undone = []
     for p in dirty_tracked():
         if p in before:
@@ -649,10 +720,13 @@ def run_cross_review(u: Unit, us: dict) -> str | None:
             undone.append(p)
     if undone:
         report(f"{u.id}: the read-only reviewer changed {', '.join(undone[:6])}; undone")
+    if stopped:
+        return None
     if not answer.strip():
         report(f"{u.id}: cross-review produced no findings text (exit {code}); skipped, see {rel(logfile)}")
         return None
-    findings.write_text(answer, encoding="utf-8")
+    us["review_coverage"] = coverage
+    findings.write_text(answer.rstrip() + (f"\n\n---\nCoverage: {coverage}\n" if coverage else "\n"), encoding="utf-8")
     return rel(findings)
 
 
@@ -768,7 +842,8 @@ def run_unit(u: Unit, state: dict) -> str:
             us["findings"] = run_cross_review(u, us)
             n = findings_count(us["findings"]) if us["findings"] else 0
             us["history"].append({"phase": phase, "status": "ok", "summary": f"cross-review: {n} finding(s)", "at": now()})
-            report(f"{u.id} cross-review ({REVIEW_MODEL}, read-only): {n} finding(s)")
+            report(f"{u.id} cross-review ({REVIEW_MODEL}, read-only): {n} finding(s); "
+                   f"{us.get('review_coverage') or 'coverage not measured'}")
             us["phase"] = next_phase(u, us, phase)
             save_state(state)
             continue
