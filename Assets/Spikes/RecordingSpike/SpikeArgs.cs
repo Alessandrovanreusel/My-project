@@ -21,6 +21,8 @@ namespace CameraGame.Spikes.RecordingSpike
         public string Tag = "run";        // file prefix, e.g. measure-A-run1
         public string FfmpegPath = "C:/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe";
         public string Encoder = "h264_mf";
+        public string Transport = "tcp";  // tcp | pipe
+        public int FpsCap = -1;           // sensitivity only: Application.targetFrameRate (the game ships uncapped)
         public int Width = 1920, Height = 1080, Fps = 30;
         public int Cycles = 1;            // record (+ play) cycles; cycle 1 is the measured one
         public bool Prove;                // evidence run: play the clip back full-window after recording
@@ -55,6 +57,8 @@ namespace CameraGame.Spikes.RecordingSpike
                     case "-spikeTag": a.Tag = v; i++; break;
                     case "-ffmpeg": a.FfmpegPath = v.Replace('|', ' '); i++; break;
                     case "-encoder": a.Encoder = v; i++; break;
+                    case "-transport": a.Transport = v; i++; break;
+                    case "-fpscap": a.FpsCap = int.Parse(v, CultureInfo.InvariantCulture); i++; break;
                     case "-res": if (v == "720") { a.Width = 1280; a.Height = 720; } i++; break;
                     case "-cycles": a.Cycles = Mathf.Max(1, int.Parse(v, CultureInfo.InvariantCulture)); i++; break;
                     case "-prove": a.Prove = true; break;

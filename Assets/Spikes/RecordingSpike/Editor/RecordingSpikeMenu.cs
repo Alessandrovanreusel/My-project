@@ -83,6 +83,16 @@ namespace CameraGame.Spikes.RecordingSpike.Editor
         [MenuItem("Tools/Recording Spike/Control Shot (Play)")]
         public static void Control() => Play("-recordingSpike control -spikeTag control -timeout 60 -spikeOut " + Esc(Path.Combine(Evidence, "survey")) + " " + ExtraArgs());
 
+        /// <summary>Shake-down run in the Editor with the arguments in editor-dev-args.txt (Editor numbers are NOT
+        /// evidence for NFR1; they only prove the pipeline before a build is spent on it).</summary>
+        [MenuItem("Tools/Recording Spike/Dev Run (Play)")]
+        public static void Dev()
+        {
+            string p = Path.Combine(Evidence, "editor-dev-args.txt");
+            string args = File.Exists(p) ? File.ReadAllText(p).Trim() : "-recordingSpike baseline";
+            Play(args + " -spikeOut " + Esc(Path.Combine(Evidence, "dev-editor")) + " " + ExtraArgs());
+        }
+
         /// <summary>Extra arguments (for example the chosen vantage) kept in a text file next to the evidence.</summary>
         public static string ExtraArgs()
         {

@@ -49,16 +49,34 @@ namespace CameraGame.Spikes.RecordingSpike
 
         public long BufferedBytes => (long)_slots.Length * FrameBytes;
 
-        public bool Start(string exe, string args, string stderrPath)
+        /// <summary>True once the transport is connected and frames can flow.</summary>
+        public volatile bool Ready;
+        public string Transport = "pipe";
+        public double ConnectMs = -1;
+        private int _port;
+        private System.Net.Sockets.TcpClient _tcp;
+
+        /// <summary>Start ffmpeg. <paramref name="args"/> contains "{IN}" where the input goes. Transport "pipe"
+        /// is Process stdin; "tcp" is ffmpeg listening on a loopback port (measured 2026-11-10: Mono's
+        /// Process stdin starved ffmpeg at ~6 fps of 1080p RGBA, while a Python pipe managed 111 fps).</summary>
+        public bool Start(string exe, string args, string stderrPath, string transport = "tcp")
         {
+            Transport = transport;
             try
             {
+                if (transport == "tcp")
+                {
+                    var l = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                    l.Start(); _port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port; l.Stop();
+                    args = args.Replace("{IN}", "tcp://127.0.0.1:" + _port + "?listen=1");
+                }
+                else args = args.Replace("{IN}", "-");
                 _errLog = new StreamWriter(stderrPath, false) { AutoFlush = true };
                 _errLog.WriteLine("# " + exe + " " + args);
                 var psi = new ProcessStartInfo(exe, args)
                 {
                     UseShellExecute = false, CreateNoWindow = true,
-                    RedirectStandardInput = true, RedirectStandardError = true, RedirectStandardOutput = false,
+                    RedirectStandardInput = transport != "tcp", RedirectStandardError = true, RedirectStandardOutput = false,
                 };
                 _proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
                 _proc.ErrorDataReceived += (s, e) =>
@@ -73,7 +91,7 @@ namespace CameraGame.Spikes.RecordingSpike
                 };
                 _proc.Start();
                 _proc.BeginErrorReadLine();
-                _stdin = _proc.StandardInput.BaseStream;
+                if (transport != "tcp") { _stdin = _proc.StandardInput.BaseStream; Ready = true; }
                 _queue = new BlockingCollection<(int, int)>(_slots.Length);
                 _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "RecordingSpike.ffmpeg" };
                 _worker.Start();
@@ -115,6 +133,21 @@ namespace CameraGame.Spikes.RecordingSpike
 
         private unsafe void WorkerLoop()
         {
+            if (Transport == "tcp")
+            {
+                var sw = Stopwatch.StartNew();
+                while (!Ready && sw.Elapsed.TotalSeconds < 10 && !Failed)
+                {
+                    try
+                    {
+                        _tcp = new System.Net.Sockets.TcpClient { SendBufferSize = 16 * 1024 * 1024 };
+                        _tcp.Connect(System.Net.IPAddress.Loopback, _port);
+                        _stdin = _tcp.GetStream(); ConnectMs = sw.Elapsed.TotalMilliseconds; Ready = true;
+                    }
+                    catch (Exception) { _tcp?.Close(); Thread.Sleep(20); }
+                }
+                if (!Ready) Fail("could not connect to ffmpeg on loopback port " + _port);
+            }
             foreach (var (slot, repeats) in _queue.GetConsumingEnumerable())
             {
                 try
@@ -148,7 +181,7 @@ namespace CameraGame.Spikes.RecordingSpike
             {
                 _queue?.CompleteAdding();
                 _worker?.Join(timeoutMs);
-                try { _stdin?.Flush(); _stdin?.Close(); } catch (Exception) { }
+                try { _stdin?.Flush(); _stdin?.Close(); _tcp?.Close(); } catch (Exception) { }
                 if (_proc != null)
                 {
                     if (!_proc.WaitForExit(timeoutMs)) { _proc.Kill(); Fail("ffmpeg did not exit in time"); }

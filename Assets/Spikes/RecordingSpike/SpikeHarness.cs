@@ -40,6 +40,7 @@ namespace CameraGame.Spikes.RecordingSpike
         }
 
         private SpikeArgs _a;
+        private int _prevTargetFps = -1;
         private float _bootTime;
         private PhotoModeController _photo;
         private EventManager _mgr;
@@ -93,6 +94,8 @@ namespace CameraGame.Spikes.RecordingSpike
         private double _stopToReadyMs = -1;
         private float[] _pcm = new float[0];
         private EventActor _actor;
+        private double _finishMs; private int _muxExit;
+        private float _postStart;
 
         // ---------- playback ----------
         private Canvas _playCanvas;
@@ -137,6 +140,9 @@ namespace CameraGame.Spikes.RecordingSpike
             if (SystemInfo.batteryStatus == BatteryStatus.Discharging)
                 Log("WARNING: running on battery - this run is VOID for measurement (protocol 1c).");
 
+            _prevTargetFps = Application.targetFrameRate;
+            if (_a.FpsCap > 0) { Application.targetFrameRate = _a.FpsCap; Log($"SENSITIVITY RUN: frame rate capped at {_a.FpsCap} (the game ships uncapped)"); }
+            _sum["fps_cap"] = _a.FpsCap.ToString();
             yield return null;
             if (!SetupScene()) { Finish("setup failed"); yield break; }
 
@@ -171,7 +177,7 @@ namespace CameraGame.Spikes.RecordingSpike
                 if (_cycle == 1)
                 {
                     _phase = 3;
-                    yield return Wait(10f);
+                    while (Time.unscaledTime - _postStart < 10f) yield return null;
                 }
                 if (_a.Play || _a.Prove) yield return Playback();
                 _phase = 5;
@@ -311,7 +317,7 @@ namespace CameraGame.Spikes.RecordingSpike
             _phase = (byte)(_cycle == 1 ? 2 : _cycle == 2 ? 6 : 9);
             _nextVf = 0; _carry = 0; _captures = 0; _dupFrames = 0; _dropped = 0; _readbackErrors = 0; _outOfOrder = 0; _lastSubmittedVf = -1; _peakVf = -1;
             for (int i = 0; i < 3; i++) _refOk[i] = false;
-            _markerLog.Clear();
+            _markerLog.Clear(); _markerADone = _markerBDone = false;
             string clipBase = Path.Combine(_out, $"{_a.Tag}-c{_cycle}");
             if (_a.Mode == "A")
             {
@@ -321,8 +327,21 @@ namespace CameraGame.Spikes.RecordingSpike
                 string enc = _a.Encoder == "h264_mf" ? "-c:v h264_mf -hw_encoding 1 -rate_control cbr -b:v 8M -g 30 -pix_fmt nv12"
                            : _a.Encoder == "h264_qsv" ? "-c:v h264_qsv -b:v 8M -g 30 -pix_fmt nv12"
                            : "-c:v " + _a.Encoder + " -b:v 8M -g 30 -pix_fmt yuv420p";
-                string args = $"-y -hide_banner -loglevel verbose -f rawvideo -pix_fmt rgba -s {_a.Width}x{_a.Height} -framerate {_a.Fps} -i - {vf}{enc} -movflags +frag_keyframe+empty_moov \"{clipBase}-video.mp4\"";
-                _sink.Start(_a.FfmpegPath, args, clipBase + "-ffmpeg.log");
+                if (_a.Encoder == "h264_qsv") { enc = "-c:v h264_qsv -b:v 8M -g 30"; vf = _a.VFlip ? "-vf vflip,format=nv12 " : "-vf format=nv12 "; }
+                // MPEG-TS while recording: readable when truncated (a crash keeps the footage so far), and
+                // h264_mf never delivers extradata in time for MP4's header. Remuxed to MP4 at stop.
+                string tail = $"{vf}{enc} -f mpegts \"{clipBase}-video.ts\"";
+                // Diagnostics that split (A)'s cost: transport only, transport + RGBA->NV12 conversion.
+                if (_a.Encoder == "null") tail = "-f null -";
+                if (_a.Encoder == "nullconv") tail = $"{vf}-pix_fmt nv12 -f null -";
+                string args = $"-y -hide_banner -loglevel verbose -f rawvideo -pix_fmt rgba -s {_a.Width}x{_a.Height} -framerate {_a.Fps} -i {{IN}} {tail}";
+                var spawn = System.Diagnostics.Stopwatch.StartNew();
+                _sink.Start(_a.FfmpegPath, args, clipBase + "-ffmpeg.log", _a.Transport);
+                double spawnMs = spawn.Elapsed.TotalMilliseconds;
+                while (!_sink.Ready && !_sink.Failed && spawn.Elapsed.TotalSeconds < 10) yield return null;
+                _sum[$"c{_cycle}_ffmpeg_spawn_ms"] = F((float)spawnMs);
+                _sum[$"c{_cycle}_ffmpeg_ready_ms"] = F((float)spawn.Elapsed.TotalMilliseconds);
+                _sum[$"c{_cycle}_transport"] = Q(_a.Transport);
             }
             else if (_a.Mode == "C") _ring.Reset();
             else if (_a.Mode == "B") _track.Reset();
@@ -332,6 +351,7 @@ namespace CameraGame.Spikes.RecordingSpike
             _recording = true;
             Log($"REC start cycle={_cycle} peakOffset={(_actor != null ? _actor.PeakOffset : float.NaN):0.000} dist={(_actor != null ? Vector3.Distance(_actor.Bounds.center, _cam.transform.position) : float.NaN):0.00}");
             while (_recording) yield return null;
+            _postStart = Time.unscaledTime;
             _audio.End();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             _pcm = _audio.Snapshot();
@@ -341,7 +361,7 @@ namespace CameraGame.Spikes.RecordingSpike
 
             if (_a.Mode == "A")
             {
-                var sink = _sink; string video = clipBase + "-video.mp4"; string outp = _clipPath; string ff = _a.FfmpegPath; var pcm = _pcm;
+                var sink = _sink; string video = clipBase + "-video.ts"; string outp = _clipPath; string ff = _a.FfmpegPath; var pcm = _pcm;
                 _finalize = Task.Run(() =>
                 {
                     double fin = sink.Finish();
@@ -351,10 +371,15 @@ namespace CameraGame.Spikes.RecordingSpike
                     { UseShellExecute = false, CreateNoWindow = true });
                     p.WaitForExit();
                     _stopToReadyMs = sw.Elapsed.TotalMilliseconds;
-                    _sum[$"c{_cycle}_ffmpeg_finish_ms"] = F((float)fin);
-                    _sum[$"c{_cycle}_mux_exit"] = p.ExitCode.ToString();
+                    _finishMs = fin; _muxExit = p.ExitCode;
                 });
+                // The game keeps running while the file is finalised: the post-baseline starts NOW, in parallel.
+                _phase = (byte)(_cycle == 1 ? 3 : 5);
+                float waitStart = Time.unscaledTime;
                 while (!_finalize.IsCompleted) yield return null;
+                _sum[$"c{_cycle}_ffmpeg_finish_ms"] = F((float)_finishMs);
+                _sum[$"c{_cycle}_mux_exit"] = _muxExit.ToString();
+                _sum[$"c{_cycle}_finalize_wall_s"] = F(Time.unscaledTime - waitStart);
                 if (_finalize.IsFaulted) Log("finalize faulted: " + _finalize.Exception?.GetBaseException().Message);
                 _sum[$"c{_cycle}_encoder_line"] = Q(sink.EncoderLine);
                 _sum[$"c{_cycle}_encoder_failed"] = Q(sink.Failed ? sink.FailReason : "");
@@ -411,8 +436,9 @@ namespace CameraGame.Spikes.RecordingSpike
             float t = Time.unscaledTime - _recStart;
             int due = Mathf.FloorToInt(t * _a.Fps);           // the output frame this game frame stands for
             if (due < _nextVf) return;                          // game faster than 30 fps: not this frame
-            int repeats = due - _nextVf + 1 + _carry;
-            if (repeats > 1) _dupFrames += repeats - 1;
+            int fresh = due - _nextVf + 1;                     // output frames this game frame covers
+            int repeats = fresh + _carry;                       // plus any owed by a dropped capture
+            _dupFrames += fresh - 1;
             int vfStart = _nextVf - _carry;
             _carry = 0;
             if (_peakVf < 0 && act != null && act.IsAtPeak) _peakVf = vfStart;
@@ -448,7 +474,7 @@ namespace CameraGame.Spikes.RecordingSpike
                             if (ri >= 0) RequestRef(ri);
                         });
                     }
-                    else { _dropped++; _carry += repeats; }
+                    else { _dropped++; _carry = repeats; }
                     break;
                 case "C":
                     if (_ring.Count >= _ring.Slots.Length)
@@ -476,8 +502,13 @@ namespace CameraGame.Spikes.RecordingSpike
             if (_nextVf >= ClipFrames) _recording = false;
         }
 
-        private bool RefIndexMarker(int vfStart, int repeats) =>
-            (_markerA >= vfStart && _markerA < vfStart + repeats) || (_markerB >= vfStart && _markerB < vfStart + repeats);
+        private bool _markerADone, _markerBDone;
+        private bool RefIndexMarker(int vfStart, int repeats)
+        {
+            if (!_markerADone && _markerA >= vfStart && _markerA < vfStart + repeats) return _markerADone = true;
+            if (!_markerBDone && _markerB >= vfStart && _markerB < vfStart + repeats) return _markerBDone = true;
+            return false;
+        }
 
         private void RequestRef(int i)
         {
@@ -667,7 +698,8 @@ namespace CameraGame.Spikes.RecordingSpike
             string outBase = Path.Combine(_out, $"{_a.Tag}-export");
             string vf = (_a.VFlip ? "-vf vflip " : "");
             var sink = new FfmpegSink(FrameBytes, 4);
-            sink.Start(_a.FfmpegPath, $"-y -hide_banner -loglevel verbose -f rawvideo -pix_fmt rgba -s {_a.Width}x{_a.Height} -framerate {_a.Fps} -i - {vf}-c:v h264_mf -hw_encoding 1 -rate_control cbr -b:v 8M -g 30 -pix_fmt nv12 \"{outBase}-video.mp4\"", outBase + "-ffmpeg.log");
+            sink.Start(_a.FfmpegPath, $"-y -hide_banner -loglevel verbose -f rawvideo -pix_fmt rgba -s {_a.Width}x{_a.Height} -framerate {_a.Fps} -i {{IN}} {vf}-c:v h264_mf -hw_encoding 1 -rate_control cbr -b:v 8M -g 30 -pix_fmt nv12 -f mpegts \"{outBase}-video.ts\"", outBase + "-ffmpeg.log", _a.Transport);
+            while (!sink.Ready && !sink.Failed) yield return null;
             var sw = System.Diagnostics.Stopwatch.StartNew();
             int frames = 0;
             if (_a.Mode == "C")
@@ -698,7 +730,7 @@ namespace CameraGame.Spikes.RecordingSpike
             double fin = sink.Finish(60000);
             string wav = Path.Combine(_out, $"{_a.Tag}-c1-audio.wav");
             var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_a.FfmpegPath,
-                $"-y -hide_banner -loglevel error -i \"{outBase}-video.mp4\" -i \"{wav}\" -c:v copy -c:a aac -b:a 160k -shortest -movflags +faststart \"{outBase}.mp4\"")
+                $"-y -hide_banner -loglevel error -i \"{outBase}-video.ts\" -i \"{wav}\" -c:v copy -c:a aac -b:a 160k -shortest -movflags +faststart \"{outBase}.mp4\"")
             { UseShellExecute = false, CreateNoWindow = true });
             p.WaitForExit();
             _sum["export_ms"] = F((float)sw.Elapsed.TotalMilliseconds);
@@ -809,7 +841,7 @@ namespace CameraGame.Spikes.RecordingSpike
             StartCoroutine(KillAfter(3f));
             yield return Record();
             Log($"FAILSOFT kill: game ran {Time.frameCount - framesBefore} frames; failed={_sink.Failed} reason='{_sink.FailReason}' written={_sink.FramesWritten}");
-            string partial = Path.Combine(_out, "failsoft-kill-c1-video.mp4");
+            string partial = Path.Combine(_out, "failsoft-kill-c1-video.ts");
             Log($"FAILSOFT kill: partial fragmented file exists={File.Exists(partial)} bytes={(File.Exists(partial) ? new FileInfo(partial).Length : -1)}");
             _sink.Dispose(); _sink = null;
             // 3) full readback ring
@@ -873,6 +905,7 @@ namespace CameraGame.Spikes.RecordingSpike
             if (_ctrl != null) _ctrl.SetInputSuppressed(false);
             if (_photo != null) _photo.SetPhotoMode(false);
             if (_audio != null) Destroy(_audio);
+            Application.targetFrameRate = _prevTargetFps;
         }
 
         private static string F(float v) => float.IsNaN(v) ? "" : v.ToString("0.###", CultureInfo.InvariantCulture);
