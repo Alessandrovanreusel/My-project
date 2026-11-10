@@ -390,6 +390,9 @@ rules for a story that builds a player and changes build settings.
         - Verify the output as in AC2.
         - Note the keyframe interval (GOP) you used. A short GOP (about 0.5–1 s) makes trimming and
           `VideoPlayer` seeking cheaper at some cost in size; measure both if time allows.
+        - *CLOSE note: not run for (A), because the probe was conditional on (A) winning and (A) lost. The
+          working export path AC2 asks for was demonstrated on the winner, (B), in Task 8
+          (`evidence/evidence-B-edit.mp4`). GOP 30 was recorded.*
   - [x] 4.6 Variant A-MF, **assessed on paper at minimum**: Media Foundation's Sink Writer driven directly
         from C# (COM interop on Mono/Windows). It needs no external exe and uses the OS-provided encoder.
         Prototype it only if (A) leads and shipping a separate ffmpeg executable is the deciding cost.
@@ -492,6 +495,11 @@ rules for a story that builds a player and changes build settings.
         back, the spike's own `OnAudioFilterRead` tap writes what the listener hears to
         `evidence/playback-heard.wav`. Cross-correlate that with the clip's audio track: a clear peak at a
         small lag proves that the build played the clip's sound.
+        - *CLOSE note, a deviation: **the gdigrab film was never made.** The workstation sat on the Windows
+          lock screen during DEV, during the review, and again at 22:22 during CLOSE
+          (`close/lockscreen-probe.txt`). The build filmed its own displayed output instead (44 + 54
+          `ScreenCapture` grabs, plus a per-frame playback log), and the heard-audio proof was done as written.
+          A film in motion is still owed (deferred-work; human check 2).*
   - [x] 8.2 **Analyse the recorded clip itself:**
         - `ffprobe` shows a duration of ≈ 10 s, 1920×1080, 30 fps, and an audio stream;
         - the audio is non-silent (`astats`/`volumedetect`) and the sync-marker offset is reported;
@@ -502,12 +510,19 @@ rules for a story that builds a player and changes build settings.
         a side-by-side contact sheet of clip frames and playback frames, playback smoothness (frame-to-frame
         difference series), and the audio cross-correlation from 8.1. ⚠️ Verify the subject is genuinely on screen
         in the frames you judge (`tools/verification/README.md`). A motion mask also fires on camera moves.
+        *CLOSE note: done on the build's self-captured frames (`evidence/playback-side-by-side.png`) and the
+        per-frame playback log, not on a gdigrab film (see 8.1). Smoothness in motion is unproven: playback
+        showed 96 of 294 distinct ticks.*
   - [x] 8.4 Prove that this was not the Editor: the build's `Managed/` folder has no `Unity.Recorder*` DLL,
         and the Player.log shows the run.
+        *CLOSE note, a deviation: `Unity.Recorder.dll` and `Unity.Recorder.Base.dll` **are** in both builds'
+        `Managed/` (Recorder package runtime defaults; re-listed in CLOSE). No game or spike code references
+        them, and the proof that this was not the Editor rests on the `My project.exe` Player.log.*
   - [x] 8.5 *(Optional, temporal questions only)* Gemini on a short slice of the playback film, with the
         subject present in every frame (verified programmatically first). Ask a descriptive prompt, give
         **no timestamps** and name **no expected defect**, and say explicitly that "nothing" and "I cannot
         tell" are correct answers. **Verify every claim on the cited frame** before writing it down.
+        *CLOSE note: skipped (optional). There is no playback film to send.*
 
 - [x] **Task 9: Fence off the prototype, restore the project, check for regressions (AC3, AC4)**
   - [x] 9.1 Fence (or remove, with the reason recorded). Requirements:
@@ -749,6 +764,51 @@ the patches:
 
 No game code was touched, so the Photo Shoot rig was not re-run. The spike's play-mode `Boot` still returns
 at once when no flag is set.
+
+### Close Gate (loop CLOSE phase, 2026-11-10)
+
+A fresh session checked the story by running things. Evidence: `_bmad-output/verification/1-14-decide-how-the-game-records-video/close/`.
+- **Console:** after a forced `refresh_unity` with a compile and a domain reload, it was empty, and Editor.log
+  showed no `error CS` or `warning CS`. After the Photo Shoot run it held only the two large-triangle
+  warnings (AC4 baseline).
+- **Tests:** EditMode **168/168** passed. The project has no PlayMode test assembly.
+- **The fence, re-checked on disk:** the plain build's `Managed/` has no `CameraGame.Spikes.RecordingSpike.dll`,
+  and the spike build has one. The asmdefs are unchanged since `7ed78d3` (19:37), so the 21:19 plain build
+  still proves the fence for the code being merged.
+- **Numbers re-derived:**
+  - `analyse.py` re-ran and rewrote `measure/analysis.json` byte-identically.
+  - Difference-in-differences recomputed from it: (A) +10.8…10.9 ms, (B) +0.8 ms (−4.2…+3.6), (C) +30.2 ms
+    (25.0–34.6). These match ADR-4 (`close/did-recomputed.txt`).
+  - `evidence-B-edit.mp4` re-probed: H.264 1920×1080 @ 30, 481 frames, AAC 48 kHz stereo, 16.03 s. The full
+    decode printed nothing, and the mean volume is −27.5 dB.
+- **Captures opened and judged:** `control-sheet.png`, `clip-contact-sheet-peak.png`,
+  `playback-side-by-side.png`, `edit-contact-sheet.png` and the fidelity worst-transition tick. Every one
+  shows the drunk in the real town. None is blank, uniform or white.
+- **Photo Shoot re-run.** The review had changed `SpikeArgs.cs`/`SpikeHarness.cs` after DEV's 21:22 run, and
+  that code boots in every Editor play session.
+  - Editor.log for that play session has no `[RecordingSpike]` line, so the harness stayed dormant.
+  - 233 lines, **0 masked differences**. **But masking digits also masks the stars:** `i_from_behind` read
+    3★ (baseline), 2★ (DEV) and 1★ (CLOSE). DEV's "0 masked differences" hid the first of those moves.
+  - **Diagnosed as rig timing, not a regression.** The nine framing shots fire on a real-time schedule that
+    is not anchored to the peak. Every one of them drifted the same way, 0.03–0.4 s later in the drunk's
+    cycle per run (`close/photo-shoot-timing-drift.txt`). `i_from_behind` is the only one that lands on
+    the steep timing tail 1.3–1.7 s after the peak, and its composition was 100% in all three runs.
+  - Composition differs by 1–9 points on 5 of 20 shots, following the live pose. `v_time_early_2s` 85 → 76:
+    the box widened from 92 to 114 px as an arm swung out, and the grader's box is on him in both
+    (`close/photo-shoot-v_time_early_2s-pair.png`).
+  - No game code has changed since `b343a88` (`git diff --stat` is empty for `Assets/Scripts`, `Scenes`,
+    `Settings`, `Data`, `ProjectSettings` and `Packages`).
+- **Restore, read back through the editor:** SampleScene open and not dirty, defines `''`, frame timing off,
+  StandaloneWindows64, quality PC, `timeScale` 1, `captureDeltaTime` 0, `targetFrameRate` −1, preloaded
+  assets 0, spike SessionState empty. These are identical before and after the Photo Shoot run.
+- **gdigrab, re-probed at 22:22:** still the Windows lock screen (`close/lockscreen-probe.txt`). The window
+  film stays deferred.
+- **Story file:** honest-tick notes were added where a ticked task was done another way or not at all (4.5,
+  8.1, 8.3, 8.4, 8.5). The File List gained `tools/verification/recording-spike/*` and `deferred-work.md`.
+- **Approval gate:** master's `loop/dependencies.yaml` (`f9c2cd2`) already gates `1-15-record-a-clip` on
+  `ADR-4`, so this branch adds none, which would only conflict at merge. `loop/runtime/approvals.txt` does not
+  exist yet, so ADR-4 stays **Proposed**.
+- **Status stays `review`:** the ADR-4 approval and three perceptual checks are pending.
 
 Review changes:
 - `Assets/Tests/EditMode/RecordingSpikeFenceTests.cs`;
@@ -1267,6 +1327,8 @@ of the killed encode decodes 35 frames.
 - `_bmad-output/planning-artifacts/game-architecture.md` (ADR-4 and its touch points)
 - `_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/decision-log.md` (one entry)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`, this story file
+- `_bmad-output/implementation-artifacts/deferred-work.md` (the code review's deferred items for story-1-14)
+- `tools/verification/recording-spike/{analyse.py,audio_check.py,battery.sh,evidence.sh,procmem.ps1,run.sh,sheet.py,ssim.py,stats.py}` (new, code review: the scripts behind every ADR-4 number)
 - Not changed (verified by `git status` after the restore): `Assets/Settings/*.asset`, `ProjectSettings/*.asset`, `Assets/Scenes/SampleScene.unity`, all game code.
 
 ## Change Log
@@ -1276,3 +1338,4 @@ of the killed encode decodes 35 frames.
 | 2026-11-10 | Story context created by `gds-create-story` (loop CREATE phase): 4 ACs (3 verbatim from epics.md + AC4 for no regressions and restore), 10 tasks with 4 gating decisions, verification plan, human checks to queue. Status → ready-for-dev. |
 | 2026-11-10 | DEV (loop): spike built and measured in a Windows build (3 rotated rounds); ADR-4 **proposed**: (B) replay + MP4 only at export; AC3 proven in the build; fence proven by the plain build plus 5 guard tests; 168/168 EditMode; restore verified. Status → review (ADR-4 approval pending Alexv). |
 | 2026-11-10 | CODE REVIEW (loop): 0 decisions, 32 patches (all applied), 11 deferred, 12 dismissed. The fence guard was blind to `GUID:` references and to Player Settings defines (both reproduced by mutation, fixed, re-verified red→green). A stale arming flag hijacked normal Play (reproduced, fixed). ADR-4's numbers corrected against the evidence, licence/cost row added, failure story and the defects 1.15 must not inherit spelled out. Fidelity re-measured on every tick: 0.000 cm including all crossfades (control 44–71 cm). Evidence scripts committed to `tools/verification/recording-spike/`. Decision unchanged; status stays review (ADR-4 approval + perceptual checks pending). |
+| 2026-11-10 | CLOSE (loop): console clean, EditMode 168/168, fence re-checked on disk, ADR-4's frame costs re-derived from the raw data, export re-probed. Photo Shoot re-run after the review's spike changes: 0 masked diffs, star and composition moves diagnosed as rig timing and live pose, not a regression. Editor restored and read back. Honest-tick notes and File List completed. Status stays review (ADR-4 approval + 3 perceptual checks pending). |
