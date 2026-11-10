@@ -41,3 +41,10 @@ or a pattern that worked, concrete enough to act on.
 - Masking digits in a Photo Shoot shots.txt diff also masks the star ratings, so '0 masked differences' can hide a 3-star -> 1-star move. Diff per-shot stars and the composition axis unmasked as well.
 - Photo Shoot framing shots a_close..i_from_behind fire on a real-time schedule, not anchored to the peak. Their PeakOffset drifts 0.03-0.4 s per run, and i_from_behind (1.3-1.7 s after the peak, on the steep timing tail) swings 1-3 stars from that alone.
 - When a review changes code that boots in every Editor play session (RuntimeInitializeOnLoadMethod in an Editor-compiled spike), an earlier no-regression rig run no longer covers the merged code. Re-run it at close.
+
+## From plan-epic-2 (2026-11-10)
+
+- Read-only questions about the 214 MB town .blend: run headless Blender (blender.exe -b --factory-startup <file> --python <script> -- <args>). It loads in ~2-6 s, renders an orthographic top-down with Workbench in ~10 s, and never touches Alexv's live Blender session.
+- Assets/Models/game map .fbx is a complete export of the shared folder's game map .blend (16,738 meshes, 5,677,935 tris, same bounds). 15,080 of those meshes are particle instances that exist only after depsgraph evaluation, so compare FBX counts against evaluated object_instances, never against bpy.data.meshes (1,658).
+- The town map is a ~810 x 570 m central plain (street block, row of houses, industrial yard, lake shore, offshore structure ~250 m out) inside a ring of ~1 km mountain tiles, with no dock or pier. Check _bmad-output/verification/plan-epic-2/map_topdown.png before placing anything in the world.
+- A recursive grep from the project root runs past the 2-minute tool timeout (Library/ and LFS binaries). Scope searches to _bmad-output/, loop/ or Assets/Scripts.
