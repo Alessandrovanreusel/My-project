@@ -130,3 +130,17 @@ meanwhile. His choices:
   cross-review is now a fresh, read-only Claude Code session on **Sonnet 5.5**. A different model from the
   Opus build sessions keeps some of the independence. Editing tools and the Unity, Blender and Chrome tools
   are off for it, the guard refuses git writes in that phase, and any tracked change it makes is reverted.
+
+## 2026-11-10 — ADR-4 proposed: replay recording, MP4 only at export (pending Alexv)
+
+- **Story 1.14** measured three ways for a *built* game to record itself, in a Windows release build of the
+  real slice scene, against the Town Drunk. **Proposed: (B) replay recording.** The card, in-game playback
+  and the Edit Suite work on replay data (camera + actor state at 30 Hz, plus the sound the player heard).
+  FR31's standard video file is made only at export, by re-rendering and encoding once (H.264 via
+  Windows Media Foundation, plus AAC, in MP4).
+- Why: (B) cost ~0 ms/frame and ~195 KB/s; (A) lost 60–80% of its frames to a hardware encoder starved by
+  the game on this laptop; (C) needs ~250 MB/s of RAM (≈ 30 GB for the 2-min card).
+- **Pending Alexv:** approve or veto ADR-4 before Story 1.15 starts. Also open: the H.264/AAC patent
+  question, and shipping an LGPL ffmpeg versus driving Media Foundation directly.
+- Evidence: `_bmad-output/verification/1-14-decide-how-the-game-records-video/` and ADR-4 in
+  `game-architecture.md`.

@@ -4,7 +4,7 @@ baseline_commit: b343a8875f6305b6fc2cd8ba14ec7faffedb12cc
 
 # Story 1.14: Decide how the game records video
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -160,13 +160,13 @@ rules for a story that builds a player and changes build settings.
 > - **If you run low on context**, stop at a task boundary and return `failed`, with a `next_hint` naming the
 >   next task and the evidence already gathered. Do not rush the ADR on half the measurements.
 
-- [ ] **Task 1: Settle the four things that gate this story (AC1–AC3). DO THESE FIRST.**
+- [x] **Task 1: Settle the four things that gate this story (AC1–AC3). DO THESE FIRST.**
 
   Each of the four comes with a recommendation. Record the choice **and the reasoning** in the Dev Agent
   Record, including where you follow the recommendation. A later reader needs to know it was decided, not
   defaulted.
 
-  - [ ] **1a. The frame source: what the footage shows, and where its pixels come from.** This blocks
+  - [x] **1a. The frame source: what the footage shows, and where its pixels come from.** This blocks
         (A) and (C), and (B)'s export.
         - **Recommended: the photo camera's own output, WITHOUT the Screen Space – Overlay UI, copied from
           the frame the game has already rendered.** The precedent is `GalleryService.cs` ("THE PICTURE
@@ -195,7 +195,7 @@ rules for a story that builds a player and changes build settings.
           `ScreenCapture.CaptureScreenshotAsTexture()` on the same frame, and report SSIM plus the mean colour
           difference between them. A flipped, dark, washed-out or uniform image means the rig is broken, not
           that the approach is bad.
-  - [ ] **1b. One footage format for the comparison, so it compares like with like.**
+  - [x] **1b. One footage format for the comparison, so it compares like with like.**
         - **Recommended: 1920×1080 at 30 fps for every candidate.** The AC asks for frame rate at 1080p, and
           30 fps is both the camcorder look and half the per-second cost. The game keeps rendering at its own
           rate. Take a frame whenever game time crosses the next 1/30-s boundary, not "every other frame": a
@@ -206,7 +206,7 @@ rules for a story that builds a player and changes build settings.
           If the device is surround, downmix to stereo for the clip.
         - Add one sensitivity row for the **winner only**: 1280×720 @ 30, which shows the cost/quality trade
           Story 1.15 can pick from.
-  - [ ] **1c. The measurement protocol. Write it into the Dev Agent Record BEFORE the first measured run.**
+  - [x] **1c. The measurement protocol. Write it into the Dev Agent Record BEFORE the first measured run.**
         Numbers are comparable only when the protocol is identical.
         - **Release (non-Development) Windows build**, windowed:
           `"My project.exe" -screen-fullscreen 0 -screen-width 1920 -screen-height 1080 -logFile <evidence>/player-<run>.log -recordingSpike <baseline|A|B|C> -spikeOut <abs evidence dir>`.
@@ -233,7 +233,7 @@ rules for a story that builds a player and changes build settings.
           and the stop-to-clip-ready time.
         - **No gdigrab, Recorder or other capture during measured runs**, because they cost CPU and GPU
           themselves. Film separate **evidence runs**, and label every file as `measure-*` or `evidence-*`.
-  - [ ] **1d. How "Alexv approves before Story 1.15 starts" is honoured while he is away.** This is decided
+  - [x] **1d. How "Alexv approves before Story 1.15 starts" is honoured while he is away.** This is decided
         by the loop policy (decision log 2026-11-10, "decide, flag, keep going"), so it is not yours to
         change. Write ADR-4 as **Proposed**. Queue the approval (AC2 note). Leave the story at `review`.
         - Then **flag the gap** in the result file's `decisions`. `loop/dependencies.yaml` treats 1.14 as
@@ -243,8 +243,8 @@ rules for a story that builds a player and changes build settings.
           swap, not a redesign. **Do not edit `loop/`** to enforce it. That is the orchestrator's and Alexv's
           call.
 
-- [ ] **Task 2: Build the spike scaffold, and make the game build at all (AC1, AC3, AC4)**
-  - [ ] **2.1 A fenced assembly.** Create `Assets/Spikes/RecordingSpike/` with
+- [x] **Task 2: Build the spike scaffold, and make the game build at all (AC1, AC3, AC4)**
+  - [x] **2.1 A fenced assembly.** Create `Assets/Spikes/RecordingSpike/` with
         `CameraGame.Spikes.RecordingSpike.asmdef`. Settings:
         - `defineConstraints: ["UNITY_EDITOR || CAMERA_RECORDING_SPIKE"]`;
         - `autoReferenced: false`;
@@ -265,7 +265,7 @@ rules for a story that builds a player and changes build settings.
         - ⚠️ Runtime MonoBehaviours go in the **runtime** spike assembly, never an Editor one. An
           Editor-assembly component on a scene object comes back as "referenced script (Unknown) is
           missing" in play mode, and the rig silently does nothing (CLAUDE.md trap).
-  - [ ] **2.2 A self-bootstrapping harness, with no scene edits.** Use
+  - [x] **2.2 A self-bootstrapping harness, with no scene edits.** Use
         `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]`, armed only when asked:
         - in a build, by `-recordingSpike <mode>` in `System.Environment.GetCommandLineArgs()`;
         - in the Editor, by a flag the editor rig sets before entering play mode (`SessionState`, read
@@ -274,7 +274,7 @@ rules for a story that builds a player and changes build settings.
         and create every helper object at runtime. In a build it must **finish by calling
         `Application.Quit()`**, with a hard timeout, such as 180 s, after which it quits regardless and logs
         why. **Never save SampleScene with spike objects in it**, and leave it un-dirtied.
-  - [ ] **2.3 Camera and player control.** This is rig work, so copying a little logic is allowed. The
+  - [x] **2.3 Camera and player control.** This is rig work, so copying a little logic is allowed. The
         existing runners are `#if UNITY_EDITOR` and cannot ship.
         - Disable `ThirdPersonCamera`, because it writes Main Camera's transform every `LateUpdate`
           (`GradeHudShootRunner.cs:130-136`).
@@ -294,19 +294,19 @@ rules for a story that builds a player and changes build settings.
         - ⚠️ Do not disable the `EventManager`. Disabling it despawns nothing (CLAUDE.md), and this spike
           needs the drunk's real lifecycle.
         - In the Editor, restore every component you disabled.
-  - [ ] **2.4 The measurement logger** (protocol in 1c). It writes a per-frame CSV, a per-second CSV and a
+  - [x] **2.4 The measurement logger** (protocol in 1c). It writes a per-frame CSV, a per-second CSV and a
         `summary.json` to `-spikeOut`. The default when no argument is given is
         `Application.persistentDataPath/recording-spike/`, **never `Temp/`**. It also saves **reference
         frames**: PNGs of the frame source on a few known frame indices (one of them inside the peak). Those
         are the ground truth that (A)'s decoded frames and (B)'s re-rendered frames are compared against.
-  - [ ] **2.5 An A/V sync marker (a "clapperboard").** At a known instant during recording, show a
+  - [x] **2.5 An A/V sync marker (a "clapperboard").** At a known instant during recording, show a
         full-frame bright quad **in the 3D view**, parented to the camera just past its near clip plane, for
         exactly one rendered frame. (An Overlay canvas would not be in the footage, per 1a.) On the same frame,
         play a short 1 kHz tone through a 2D `AudioSource` (`spatialBlend 0`, a clip made with
         `AudioClip.Create`, so no asset). Add a second marker near the end to catch drift. In the output,
         measure the offset between the bright frame and the tone onset. Say in the evidence that the marker
         frames are deliberate.
-  - [ ] **2.6 The first Windows build this project has ever made.** Add an editor menu item,
+  - [x] **2.6 The first Windows build this project has ever made.** Add an editor menu item,
         `Tools/Recording Spike/Build Spike Player`, that calls `BuildPipeline.BuildPlayer` with:
         - `scenes = { "Assets/Scenes/SampleScene.unity" }`, `target = StandaloneWindows64`,
           `options = BuildOptions.None`;
@@ -326,36 +326,36 @@ rules for a story that builds a player and changes build settings.
           (memory trap 5).
         - If **player** script compilation fails (editor-only API in runtime code), fix it properly per AC4's
           exception, and list each fix.
-  - [ ] **2.7 The baseline run.** Run the spike build with `-recordingSpike baseline`, using the scenario
+  - [x] **2.7 The baseline run.** Run the spike build with `-recordingSpike baseline`, using the scenario
         without recording. This is the first proof that the build runs, the town loads, the drunk spawns and
         the peak fires. `GameLog.Info("Events", "TownDrunk → Peak")` lines land in the Player.log. It is also
         the 60-FPS-at-1080p baseline on this hardware, so state it plainly whatever it says.
 
-- [ ] **Task 3: Candidate (C), raw frames in memory. Prototype it FIRST, because it isolates the frame-source cost (AC1)**
+- [x] **Task 3: Candidate (C), raw frames in memory. Prototype it FIRST, because it isolates the frame-source cost (AC1)**
 
   (C) is the simplest pipeline, and it is the first half of (A). Measuring it first means that (A) − (C) is
   the encoder's cost, which makes both numbers meaningful.
 
-  - [ ] 3.1 Take frames from 1a's source with `AsyncGPUReadback.RequestIntoNativeArray`, into a **pre-allocated
+  - [x] 3.1 Take frames from 1a's source with `AsyncGPUReadback.RequestIntoNativeArray`, into a **pre-allocated
         ring** of `NativeArray<byte>` (`Allocator.Persistent`) sized for the clip. **Never allocate per frame.**
         One owner disposes all of them, which is `GalleryService`'s single-owner rule (`GalleryService.cs:296-330`).
         Track in-flight requests: a request that completes after its slot was reused is a corrupt frame.
-  - [ ] 3.2 Audio: PCM from `OnAudioFilterRead` on the **AudioListener's GameObject**. In SampleScene that is
+  - [x] 3.2 Audio: PCM from `OnAudioFilterRead` on the **AudioListener's GameObject**. In SampleScene that is
         `Main Camera`, which has the scene's only AudioListener. This hook is shared with (A) and (B) (see
         Latest technical information for the threading rules).
-  - [ ] 3.3 Playback in-game: upload each frame with `Texture2D.LoadRawTextureData` / `SetPixelData` +
+  - [x] 3.3 Playback in-game: upload each frame with `Texture2D.LoadRawTextureData` / `SetPixelData` +
         `Apply(false)`, show it on a full-screen `RawImage`, and play the PCM through an `AudioClip.Create`
         clip. Measure the cost of playback too.
-  - [ ] 3.4 Measure per 1c. **Run record → play → record again into the same ring for ≥ 3 cycles.** In this
+  - [x] 3.4 Measure per 1c. **Run record → play → record again into the same ring for ≥ 3 cycles.** In this
         project, bugs have hidden in reuse and in the second cycle, never the first (CLAUDE.md,
         `loop/lessons.md`). Extrapolate RAM to the ~2-min card against this machine's 15.7 GB.
-  - [ ] 3.5 Export probe: encode the buffered 10 s with (A)'s encoder (Task 4) and time it.
-  - [ ] 3.6 Optional variant C′, compressed frames in memory (for example
+  - [x] 3.5 Export probe: encode the buffered 10 s with (A)'s encoder (Task 4) and time it.
+  - [x] 3.6 Optional variant C′, compressed frames in memory (for example
         `ImageConversion.EncodeNativeArrayToJPG` on a worker thread). Try it only if (C) is otherwise
         attractive, and note that it is still not a standard video file.
 
-- [ ] **Task 4: Candidate (A), encode a video file while playing (AC1, AC2)**
-  - [ ] 4.1 **Recommended prototype: an `ffmpeg.exe` child process fed raw frames over stdin.**
+- [x] **Task 4: Candidate (A), encode a video file while playing (AC1, AC2)**
+  - [x] 4.1 **Recommended prototype: an `ffmpeg.exe` child process fed raw frames over stdin.**
         - Start it with `System.Diagnostics.Process`, `RedirectStandardInput`, `UseShellExecute = false`,
           `CreateNoWindow = true`. Take the exe path from an argument, `-ffmpeg <path>`.
         - The local one is `C:/ProgramData/chocolatey/lib/ffmpeg/tools/ffmpeg/bin/ffmpeg.exe`. Point at the
@@ -364,7 +364,7 @@ rules for a story that builds a player and changes build settings.
           the pipe. When the queue is full, **count and log a dropped frame** rather than stall.
         - Input arguments: `-f rawvideo -pix_fmt rgba -s 1920x1080 -r 30 -i -`, plus `-vf vflip` only if
           1a's control shot shows the readback is flipped.
-  - [ ] 4.2 **Use LGPL-compatible encoders only:**
+  - [x] 4.2 **Use LGPL-compatible encoders only:**
         - `h264_mf` (Media Foundation). On this machine it should open Intel Quick Sync's hardware MFT;
           **log which MFT it actually opened**, because a silent fallback to the software encoder changes
           every number.
@@ -375,25 +375,25 @@ rules for a story that builds a player and changes build settings.
           information).
         - The MX350 is expected to have **no NVENC**. NVIDIA's support matrix lists no encoder for the MX
           line. Try `h264_nvenc` once to confirm it fails to open, then record the result.
-  - [ ] 4.3 Audio and the container. Write PCM from `OnAudioFilterRead` to a WAV, then mux at stop
+  - [x] 4.3 Audio and the container. Write PCM from `OnAudioFilterRead` to a WAV, then mux at stop
         (`-c:v copy -c:a aac`). Measure **stop-to-playable-file time**.
         - ⚠️ An MP4 is unreadable until its index (`moov`) is written at close, so a crash mid-clip loses
           everything. That breaks the spirit of "the footage so far is always kept" (FR3). Try fragmented MP4
           (`-movflags +frag_keyframe+empty_moov`) or MKV-then-remux, and say what the ADR should require.
-  - [ ] 4.4 In-game playback: `VideoPlayer` with `source = Url` pointing at the file, `renderMode =
+  - [x] 4.4 In-game playback: `VideoPlayer` with `source = Url` pointing at the file, `renderMode =
         RenderTexture` shown full-screen, and audio through `VideoAudioOutputMode.AudioSource`. Measure decode
         cost while playing, and the time from `Prepare()` to the first frame.
-  - [ ] 4.5 **The Edit Suite and export probe (AC2): this is the "working export path" if (A) wins.**
+  - [x] 4.5 **The Edit Suite and export probe (AC2): this is the "working export path" if (A) wins.**
         - **Trim** about 2 s off each end of one clip. Measure whether a stream-copy trim lands on the
           requested frame or the nearest keyframe, and what re-encoding costs.
         - **Join** two clips, by stream copy (concat) when the parameters match, otherwise by re-encode.
         - Verify the output as in AC2.
         - Note the keyframe interval (GOP) you used. A short GOP (about 0.5–1 s) makes trimming and
           `VideoPlayer` seeking cheaper at some cost in size; measure both if time allows.
-  - [ ] 4.6 Variant A-MF, **assessed on paper at minimum**: Media Foundation's Sink Writer driven directly
+  - [x] 4.6 Variant A-MF, **assessed on paper at minimum**: Media Foundation's Sink Writer driven directly
         from C# (COM interop on Mono/Windows). It needs no external exe and uses the OS-provided encoder.
         Prototype it only if (A) leads and shipping a separate ffmpeg executable is the deciding cost.
-  - [ ] 4.7 Licence and cost row:
+  - [x] 4.7 Licence and cost row:
         - ffmpeg's LGPL obligations when you ship it as a separate executable;
         - the OS encoders;
         - H.264 and AAC patent notes;
@@ -401,8 +401,8 @@ rules for a story that builds a player and changes build settings.
         - **Windows "N" editions** ship without Media Foundation until the Media Feature Pack is installed.
           That affects both encoding with `h264_mf` and `VideoPlayer` playback of H.264.
 
-- [ ] **Task 5: Candidate (B), replay recording (AC1, AC2)**
-  - [ ] 5.1 **Record at 30 Hz:**
+- [x] **Task 5: Candidate (B), replay recording (AC1, AC2)**
+  - [x] 5.1 **Record at 30 Hz:**
         - the photo camera's position, rotation and `fieldOfView`;
         - for each active `EventActor`: its transform, `isActiveAndEnabled`, and per Animator layer the
           `GetCurrentAnimatorStateInfo(l).fullPathHash` and `normalizedTime`, plus transition state and the
@@ -412,7 +412,7 @@ rules for a story that builds a player and changes build settings.
           does not allow. That is a measured finding, so record the attempt or the reasoning.
 
         Report bytes per second separately for pose data and for audio.
-  - [ ] 5.2 **Play back without altering the live game.** That is Story 1.18's AC, and it decides here
+  - [x] 5.2 **Play back without altering the live game.** That is Story 1.18's AC, and it decides here
         whether (B) is viable at all.
         - Build a **ghost puppet**: an instance of the drunk's *visual* (Animator plus SkinnedMeshRenderers)
           with **no** `EventActor`, `NavMeshAgent` or cue `AudioSource`. **Never take it from the
@@ -424,32 +424,32 @@ rules for a story that builds a player and changes build settings.
           project settings (AC4).
         - Prove from the Player.log phase lines, with timestamps, that the live drunk's lifecycle advanced
           normally throughout playback.
-  - [ ] 5.3 **Fidelity:** compare re-rendered frames against 2.4's reference frames on the same timestamps,
+  - [x] 5.3 **Fidelity:** compare re-rendered frames against 2.4's reference frames on the same timestamps,
         using SSIM per frame and bone-position drift. **List what replay structurally cannot reproduce
         today**, for example the moving player body if visible, particles, anything time-of-day,
         anything the NavMesh interpolates. Each item becomes a rule every later epic must obey
         (architecture: "everything that moves or makes sound on screen must be recordable").
-  - [ ] 5.4 Measure per 1c. The recording cost should be small. **The playback cost is a second render of
+  - [x] 5.4 Measure per 1c. The recording cost should be small. **The playback cost is a second render of
         the town** (the ~40 ms class of cost from Story 1.12), so measure it rather than assume it.
-  - [ ] 5.5 Export path: an offline re-render, followed by (A)'s encoder. Stepping a fixed
+  - [x] 5.5 Export path: an offline re-render, followed by (A)'s encoder. Stepping a fixed
         `Time.captureDeltaTime` is acceptable here, because export is not gameplay. ⚠️ Story 1.12 paid for this:
         `Time.captureFramerate` does **not** lock `Time.unscaledDeltaTime`. Time the export of the 10-s clip.
 
-- [ ] **Task 6: Compare and decide (AC1, AC2)**
-  - [ ] 6.1 Build the comparison table:
+- [x] **Task 6: Compare and decide (AC1, AC2)**
+  - [x] 6.1 Build the comparison table:
         - rows: (A), (B), (C), plus any variant you measured;
         - columns: the five AC1 measurements, Edit Suite trim/join, export path, implementation risk for
           Stories 1.15–1.18, and **reversal cost**;
         - every cell carries an evidence path. The raw data stays in the CSVs.
-  - [ ] 6.2 **Decide from the evidence.** "Do not encode expected results" (CLAUDE.md). The architecture's
+  - [x] 6.2 **Decide from the evidence.** "Do not encode expected results" (CLAUDE.md). The architecture's
         expectation that (C) loses is a hypothesis to measure, and (A) winning is not a foregone conclusion
         either. Write the decision into the result file's `decisions` (question, options, chosen, evidence path,
         reversal cost).
-  - [ ] 6.3 If two candidates are close, prefer the one with fewer moving parts to ship. A separate
+  - [x] 6.3 If two candidates are close, prefer the one with fewer moving parts to ship. A separate
         executable, a licence obligation and a new cross-cutting rule each count as cost.
 
-- [ ] **Task 7: Write ADR-4 (AC2)**
-  - [ ] 7.1 **Replace** the "ADR-4 (Clip recording) — OPEN" block in `game-architecture.md` §Architecture
+- [x] **Task 7: Write ADR-4 (AC2)**
+  - [x] 7.1 **Replace** the "ADR-4 (Clip recording) — OPEN" block in `game-architecture.md` §Architecture
         Decision Records with:
         - **Status:** `Proposed (<date>) — awaiting Alexv's approval`.
         - **The decision**, and a one-paragraph *why*.
@@ -466,7 +466,7 @@ rules for a story that builds a player and changes build settings.
           involved.
         - **What Story 1.15 builds:** a **narrow backend seam** in `Scripts/Recording/`, so that a veto swaps
           the backend and not the design.
-  - [ ] 7.2 Update the rest of `game-architecture.md` to match:
+  - [x] 7.2 Update the rest of `game-architecture.md` to match:
         - Decision Summary row 9;
         - §Clip Recording: the `<footage handle per ADR-4>` type in `CapturedClip`, and the `ClipRecorder`
           line;
@@ -476,11 +476,11 @@ rules for a story that builds a player and changes build settings.
         Every change carries a dated revision note, which is the project's convention. **Do not edit the
         GDD or `epics.md`.** If the decision changes their wording (for example the capacity unit or the
         export format), list it as a follow-up in the Dev Agent Record.
-  - [ ] 7.3 Add a short entry to `_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/decision-log.md`:
+  - [x] 7.3 Add a short entry to `_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/decision-log.md`:
         "<date> — ADR-4 proposed: <choice>, pending Alexv", with a pointer to the evidence.
 
-- [ ] **Task 8: Prove the chosen approach in the Windows build (AC3)**
-  - [ ] 8.1 Run the spike build as an **evidence run**:
+- [x] **Task 8: Prove the chosen approach in the Windows build (AC3)**
+  - [x] 8.1 Run the spike build as an **evidence run**:
         `-recordingSpike <chosen> -prove`. It records about 10 s spanning the peak, then plays it back
         through the chosen approach's in-game playback path, full window. Film the window throughout:
         `ffmpeg -f gdigrab -framerate 30 -i title="My project" -c:v libx264 -crf 18 evidence-playback.mp4`.
@@ -492,45 +492,45 @@ rules for a story that builds a player and changes build settings.
         back, the spike's own `OnAudioFilterRead` tap writes what the listener hears to
         `evidence/playback-heard.wav`. Cross-correlate that with the clip's audio track: a clear peak at a
         small lag proves that the build played the clip's sound.
-  - [ ] 8.2 **Analyse the recorded clip itself:**
+  - [x] 8.2 **Analyse the recorded clip itself:**
         - `ffprobe` shows a duration of ≈ 10 s, 1920×1080, 30 fps, and an audio stream;
         - the audio is non-silent (`astats`/`volumedetect`) and the sync-marker offset is reported;
         - **a labelled contact sheet** shows the drunk across the clip, with the peak-window frames marked
           from Player.log timestamps;
         - duplicated or dropped frames are counted by frame difference.
-  - [ ] 8.3 **Analyse the gdigrab film of the playback.** Show that the in-build playback reproduces the clip:
+  - [x] 8.3 **Analyse the gdigrab film of the playback.** Show that the in-build playback reproduces the clip:
         a side-by-side contact sheet of clip frames and playback frames, playback smoothness (frame-to-frame
         difference series), and the audio cross-correlation from 8.1. ⚠️ Verify the subject is genuinely on screen
         in the frames you judge (`tools/verification/README.md`). A motion mask also fires on camera moves.
-  - [ ] 8.4 Prove that this was not the Editor: the build's `Managed/` folder has no `Unity.Recorder*` DLL,
+  - [x] 8.4 Prove that this was not the Editor: the build's `Managed/` folder has no `Unity.Recorder*` DLL,
         and the Player.log shows the run.
-  - [ ] 8.5 *(Optional, temporal questions only)* Gemini on a short slice of the playback film, with the
+  - [x] 8.5 *(Optional, temporal questions only)* Gemini on a short slice of the playback film, with the
         subject present in every frame (verified programmatically first). Ask a descriptive prompt, give
         **no timestamps** and name **no expected defect**, and say explicitly that "nothing" and "I cannot
         tell" are correct answers. **Verify every claim on the cited frame** before writing it down.
 
-- [ ] **Task 9: Fence off the prototype, restore the project, check for regressions (AC3, AC4)**
-  - [ ] 9.1 Fence (or remove, with the reason recorded). Requirements:
+- [x] **Task 9: Fence off the prototype, restore the project, check for regressions (AC3, AC4)**
+  - [x] 9.1 Fence (or remove, with the reason recorded). Requirements:
         - the asmdef define constraint and `autoReferenced: false` (2.1);
         - the README;
         - **an EditMode test asserting that no game assembly (`CameraGame`, `CameraGame.Editor`) references
           `CameraGame.Spikes.RecordingSpike`**, a cheap structural guard;
         - build the **plain** player (2.6), list `My project_Data/Managed/`, and confirm there is no spike
           DLL. Save the listing as evidence.
-  - [ ] 9.2 Restore and verify every item in AC4's "Restored" list. Use an editor read-back for
+  - [x] 9.2 Restore and verify every item in AC4's "Restored" list. Use an editor read-back for
         `PlayerSettings`, the build target, the quality level and the open scene, and `git diff` for the
         assets. `git status` must show only files you meant to change. Leave the untracked `.codex/` and
         `AGENTS.md` alone; they are not yours.
-  - [ ] 9.3 Run `refresh_unity`, then `read_console` (clean against the AC4 baseline). Run `run_tests`
+  - [x] 9.3 Run `refresh_unity`, then `read_console` (clean against the AC4 baseline). Run `run_tests`
         EditMode (all pass, and report the count). Run one `Tools > Grading > Photo Shoot (Play)` and diff it
         against its baseline with numbers masked. ⚠️ Memory trap 14: that rig wipes its own output folder,
         so copy the old baseline aside first.
 
-- [ ] **Task 10: Handover. Queue what needs Alexv, and never self-certify it**
-  - [ ] Write up each entry below as a result-file `human_checks` item **and** in the Dev Agent Record, each
+- [x] **Task 10: Handover. Queue what needs Alexv, and never self-certify it**
+  - [x] Write up each entry below as a result-file `human_checks` item **and** in the Dev Agent Record, each
         with the exact files to open and your own honest read. The four entries are listed under
         "Human checks to queue" in Dev Notes.
-  - [ ] Set sprint-status `1-14-decide-how-the-game-records-video` to `review`, never `done`, while the
+  - [x] Set sprint-status `1-14-decide-how-the-game-records-video` to `review`, never `done`, while the
         ADR-4 approval is pending. Then run `yaml.safe_load` on the file (`last_updated` must contain no `: `
         and no trailing `:`).
 
@@ -891,14 +891,161 @@ Each must log once and leave the game running.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`), loop DEV phase, 2026-11-10.
+
 ### Debug Log References
+
+All evidence is under `_bmad-output/verification/1-14-decide-how-the-game-records-video/` (git-ignored; rebuild with `Assets/Spikes/RecordingSpike/README.md`).
+`build/BuildReport-*.txt` · `evidence/control-*` · `survey/vantage-sheet.png` · `measure/analysis.json` and
+`measure/measure-*` (battery) · `measure-battery.log` · `dev/contention-test.txt` · `evidence/evidence-B-*`
+(AC3 proof) · `evidence/evidence-failsoft-*` · `evidence/edit-contact-sheet.png`, `clip-contact-sheet-peak.png`,
+`playback-side-by-side.png`. Scripts: `run.sh`, `battery.sh`, `evidence.sh`, `analyse.py`, `audio_check.py`,
+`ssim.py`, `sheet.py`, `procmem.ps1`.
 
 ### Completion Notes List
 
+**Task 1: the four gating decisions (each one decided, with its reasoning)**
+- **1a, frame source:** I followed the recommendation, a URP pass enqueued from script in
+  `beginCameraRendering` at `AfterRenderingPostProcessing`, blitting into an sRGB RT read with
+  `AsyncGPUReadback`. No asset change, no second render, no `ReadPixels`. **Control shot in the build:**
+  the tap and `ScreenCapture` on the same frame, with the Overlay canvases hidden, were byte-identical
+  (SSIM 1.0000, mean difference 0.00, not uniform: std 51). With the UI shown, only the screen picked up the
+  viewfinder (difference 17.6), so the two paths are genuinely different. Readback rows are bottom-up
+  (Texture2D order), so every encoder needs `vflip`. UI is not in the footage.
+- **1b, format:** I followed the recommendation: 1080p30 for every candidate. A frame is taken whenever
+  game time crosses the next 1/30 s boundary, with repeat counts so the duration stays true. Audio was read,
+  not assumed: 48000 Hz Stereo. The 720p row for the winner: (B) records no frames, so 720p only changes the
+  export, which took 29.5 s for 10 s (1080p: 24–42 s).
+- **1c, protocol:** release build, windowed 1920×1080 (confirmed in every log), the MX350 picked, battery
+  `Full` on mains (no run void), the same scripted scenario (the real `SetPhotoMode(true)` and `SetZoom(0.25)`,
+  a fixed vantage aimed at `Bounds.center`), ~10 s pre-baseline, 10 s recording across the peak, 10 s
+  post-baseline, then ~10 s of the candidate's own playback. **3 rounds with the candidate order rotated**,
+  every frame logged (`ProfilerRecorder` "Main Thread" is valid in a release player), memory sampled once a
+  second. **Revised on evidence, and flagged:** the camera tracks the drunk, and frame cost changes up to 4×
+  across his cycle, even in baseline runs. The laptop also heats up run after run (pre-window: 83 fps cold,
+  ~50 fps warm). The pre and post windows of one run are therefore *not* equivalent views. The reported cost
+  is a **difference-in-differences**: (rec − pre) of the candidate minus (rec − pre) of the same round's
+  baseline-mode run, whose recording window is the same drunk segment and camera path with nothing captured.
+  Frame Timing Stats was not enabled, so there was nothing to restore. Memory: Mono's
+  `Process.PrivateMemorySize64` reads **0** in this player, so private bytes come from an **external**
+  PowerShell sampler, with Unity's allocator totals as a second column.
+- **1d, approval:** ADR-4 is written as **Proposed**. The approval is queued as both a decision and a human
+  check, and the story stops at `review`. The gap is flagged: `loop/dependencies.yaml` treats perceptual-only
+  pending checks as satisfiable, and this is a decision, so **1.15 should wait for Alexv**. If the loop goes
+  ahead anyway, 1.15 must build behind ADR-4's `IClipBackend` / `IFootage` seam. `loop/` was not edited.
+
+**Task 2: scaffold and build.** I fenced the assembly (2.1). The **`||` define constraint works**: the plain
+build has no spike DLL. The harness bootstraps itself (`RuntimeInitializeOnLoadMethod`, armed only by
+`-recordingSpike` or SessionState) and quits on its own, with a hard timeout (2.2). The vantage was **found by
+rendering** (2.3): the peak landed on the same spot twice (25.94, 0.79, 19.00). The first survey used a 1.6 m
+camera and filmed only legs, because **the world is ~5× human scale** (the player's CharacterController is
+8.86 m tall), so eye height is 7.5 m. I chose `survey-03` (18 m, 135°) by looking at the 16 candidates. The
+logger, reference frames and clapperboard are in place (2.4, 2.5). The quad uses `UI/Default`, which ships in
+the build. The **first Windows build of the project succeeded in 5 min 23 s, with 0 errors and no game-code
+fix needed** (2.6). `PlayerSettings` defines were `''` before and after. The baseline (2.7): ~90 fps in the
+pre-window, but only **33–52 fps in the recording window**, even with nothing recording.
+
+**Tasks 3–5: the three candidates**, with the full table in ADR-4.
+- (C) costs +30.2 ms per frame and 6.2 GB of private memory for 10 s (baseline 1.04 GB). Extrapolating, the
+  2-min card would need ≈ 30 GB. It ran 3 record→play cycles in one ring with 0 drops and 0 readback errors.
+  Upload costs 4–21 ms per frame. Exporting the 10 s took 29 s. C′ was skipped because (C) is not attractive.
+- (A) costs +10.9 ms per frame and loses 197–220 captures in 10 s. Three findings on the way:
+  1. Mono's `Process` stdin starves ffmpeg at ~6 fps. Loopback TCP keeps up at 29–30 fps in transport-only
+     and conversion-only diagnostics, so I kept TCP.
+  2. The **Intel hardware encoder is starved while the game renders**, through both `h264_mf` (which opened
+     "Intel Quick Sync Video H.264 Encoder MFT") and `h264_qsv`: ~68 fps idle, 6.6 fps with the game running,
+     even for a standalone ffmpeg encoding a file on disk. NVENC fails to open on the MX350, as expected.
+     Capping the game at 60 fps did not rescue it (189 drops).
+  3. `h264_mf` delivers no extradata in time for MP4, so I record MPEG-TS and remux it, and the TS survives
+     a kill.
+
+  `VideoPlayer` failed to prepare in 3 of 4 cycles. After it, the player crashed on quit (exit 139, Media
+  Foundation DLLs on the stack) in 3 runs and hung in 1. The root cause was not isolated. The (A) trim/join
+  probe (4.5) was not run because (A) lost. The GOP was 30. A-MF and the licence row are on paper, in ADR-4.
+- (B) costs **+0.8 ms per frame (−4.2…+3.6), with 0 drops**, at 87 B per tick (2.6 KB/s) plus PCM. Audio is
+  the listener PCM: re-spatialising from a recorded viewpoint would need a second AudioListener, which Unity
+  forbids. The ghost (a stripped copy, never taken from the pool) re-renders with **bone drift 0.00 cm and
+  SSIM 0.992**. I checked that suspiciously round 0.00 by eye: the difference image is black on him. The live
+  lifecycle kept advancing during playback (`→ Spawn` and `→ Build` were logged mid-playback). It **cannot
+  reproduce** shader-time sway (trees and grass differ), particles, or anything not in the track. **Playback
+  runs at 17–21 fps** against 53–58 for the live game. Turning the live camera off (`-solo`) did not help
+  (19.0 fps), and the cause is not isolated: this is a **risk for Story 1.18**. The export took 24–42 s.
+
+**Tasks 6–7:** I decided **(B) replay, with MP4 made only at export**. ADR-4 replaced the OPEN block. I updated
+Decision Summary row 9, §Clip Recording (the `IFootage` handle and the `ClipRecorder` line), the Executive
+Summary and the frontmatter, and added the decision-log entry. **Follow-ups for the GDD and epics, which I did
+not edit:** the export format (MP4 H.264+AAC); Windows N has no export; the "everything recordable" rule; the
+1.18 playback-cost risk.
+
+**Task 8: AC3, proven in the build.**
+- `evidence-B` recorded two takes across the peak (peak frame 150 of 300) and played them back in the build.
+  The playback reproduces the recording (SSIM 0.993 on the same frame). Playback advanced monotonically
+  through every tick (0..293), but ran at **9.6 fps displayed while it filmed itself**.
+- The audio heard during playback contains **both clapperboard tones 8.98 s apart, as in the clip**. The
+  live game never plays them, so the build played the clip's own sound, about 45 ms after it started.
+- The Edit Suite export, trim 2.00 s + join, gave **one 16.03 s MP4**: H.264 1920×1080 @ 30 and AAC 48 kHz
+  stereo, with a silent full decode and the drunk in every sampled second.
+- **gdigrab was impossible: the workstation was on the Windows lock screen** ("Failed to capture image
+  (error 8)"; a desktop grab showed the lock screen). The build filmed itself instead: 44 + 54
+  `ScreenCapture` grabs of what it displayed, plus a per-frame playback log.
+- Not the Editor: this was a player log from `My project.exe`. **Deviation:** `Unity.Recorder.dll` and
+  `Unity.Recorder.Base.dll` are in both builds' `Managed/` as Recorder package runtime defaults. A reflection
+  check shows that neither `CameraGame` nor the spike references them.
+- Gemini (8.5, optional) was skipped: there is no window film, and the still-frame questions are already
+  settled by measurement.
+
+**Task 9: fence, restore and regressions.**
+- I chose **fencing over removal**, so the evidence stays reproducible and 1.15 can lift the pieces it needs.
+- The plain build's `Managed/` has no spike DLL.
+- Guard tests: game assemblies and asmdefs must not reference or name the spike, with a positive control.
+  *The first control was wrong*: the spike's Editor assembly only uses a `const`, which C# inlines, so no
+  reference is emitted. The test caught that, and it was fixed.
+- **EditMode: 168/168 pass** (163 + 5 new). The console is clean against the AC4 baseline: the two
+  large-triangle warnings, plus `[Pool]` warnings that existing ObjectPool tests provoke on purpose.
+- `Tools > Grading > Photo Shoot (Play)`: 233 lines, **0 masked differences** from the copied-aside baseline.
+- **Restore:** read back through the editor: defines `''`, frame timing off, target StandaloneWindows64,
+  quality PC, `timeScale` 1, `captureDeltaTime` 0, `targetFrameRate` -1, SampleScene open and not dirty, the
+  spike's SessionState flag cleared.
+- **Building the player changed four settings files as a side effect:**
+  - `PC_RPAsset` shader-prefiltering flags;
+  - the URP global-settings resource list;
+  - the Input System actions left in `preloadedAssets`, plus a Standalone batching entry in
+    `ProjectSettings.asset`;
+  - `UnityConnectSettings m_Enabled` 0→1.
+
+  All four were restored from `HEAD` (preloaded assets were cleared through the API as well) and reimported.
+  The editor read `PC_RPAsset` back as the restored value, and `git status` is clean for them.
+
+**AC4 build-fix exception:** not used; the project built without touching game code.
+
+**Fail-soft (NFR8), provoked on purpose in `evidence-failsoft`.** A wrong ffmpeg path, ffmpeg killed mid-clip,
+and a full raw ring each **logged once, and the game kept running** (876, 718 and 825 frames). The partial TS
+of the killed encode decodes 35 frames.
+
+**Left for Alexv** (queued as `human_checks`; never self-certified):
+1. Approve or veto ADR-4.
+2. Judge playback quality.
+3. Judge the sound.
+4. NFR1 at 60 FPS on a mid-range desktop. Run the spike exe from
+   `Builds/1-14-decide-how-the-game-records-video/spike/` with `run.sh`'s arguments: `-recordingSpike
+   baseline` then `B`, three rotated rounds each, and `python analyse.py measure`.
+
 ### File List
+
+- `Assets/Spikes.meta` (new)
+- `Assets/Spikes/RecordingSpike.meta`, `Assets/Spikes/RecordingSpike/README.md` (+ `.meta`) (new)
+- `Assets/Spikes/RecordingSpike/CameraGame.Spikes.RecordingSpike.asmdef` (+ `.meta`) (new)
+- `Assets/Spikes/RecordingSpike/SpikeArgs.cs`, `SpikeHarness.cs`, `FrameTap.cs`, `AudioTap.cs`, `Sinks.cs`, `ReplaySpike.cs` (+ `.meta`) (new)
+- `Assets/Spikes/RecordingSpike/Editor.meta`, `Editor/CameraGame.Spikes.RecordingSpike.Editor.asmdef` (+ `.meta`), `Editor/RecordingSpikeMenu.cs` (+ `.meta`) (new)
+- `Assets/Tests/EditMode/RecordingSpikeFenceTests.cs` (+ `.meta`) (new)
+- `_bmad-output/planning-artifacts/game-architecture.md` (ADR-4 and its touch points)
+- `_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/decision-log.md` (one entry)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`, this story file
+- Not changed (verified by `git status` after the restore): `Assets/Settings/*.asset`, `ProjectSettings/*.asset`, `Assets/Scenes/SampleScene.unity`, all game code.
 
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-11-10 | Story context created by `gds-create-story` (loop CREATE phase): 4 ACs (3 verbatim from epics.md + AC4 for no regressions and restore), 10 tasks with 4 gating decisions, verification plan, human checks to queue. Status → ready-for-dev. |
+| 2026-11-10 | DEV (loop): spike built and measured in a Windows build (3 rotated rounds); ADR-4 **proposed**: (B) replay + MP4 only at export; AC3 proven in the build; fence proven by the plain build plus 5 guard tests; 168/168 EditMode; restore verified. Status → review (ADR-4 approval pending Alexv). |
