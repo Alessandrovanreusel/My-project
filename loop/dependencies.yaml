@@ -33,6 +33,17 @@ story_depends_on:
   1-16-grade-a-clip: [1-15-record-a-clip]
   1-17-the-memory-card: [1-15-record-a-clip]
   1-18-watch-your-clips: [1-17-the-memory-card]
+  # Epic 2 (planned 2026-11-10). 2-1 settles the player's scale against the town (ADR-5); every
+  # later story places things in the world (routes, NavMesh, volumes, access geometry, audio radii) at
+  # that scale, so redoing it after a scale change means placing them again. 2-4's districts are the
+  # data that 2-5's vantage points and 2-6/2-7's ambience are organised by.
+  2-1-settle-the-players-scale-in-the-town: []
+  2-2-walk-the-whole-town: [2-1-settle-the-players-scale-in-the-town]
+  2-3-the-whole-town-holds-its-frame-rate: [2-1-settle-the-players-scale-in-the-town]
+  2-4-districts-you-can-hear: [2-1-settle-the-players-scale-in-the-town]
+  2-5-climb-to-a-better-angle: [2-2-walk-the-whole-town, 2-4-districts-you-can-hear]
+  2-6-sounds-to-steer-by: [2-4-districts-you-can-hear]
+  2-7-the-town-swells-at-the-peak: [2-4-districts-you-can-hear]
 
 # Approval gates: units that must not START until Alexv has signed something off. Unlike his
 # perceptual checks (batched, dependents build on them), a gate is a real blocker - an AC that says
