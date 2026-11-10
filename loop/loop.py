@@ -36,6 +36,14 @@ from pathlib import Path
 
 import yaml
 
+# The console may not be UTF-8 (a pipe on Windows is cp1252), and the log uses "→" and "—". A crash in
+# print() must never take the loop down, so encode as UTF-8 and replace anything unprintable.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT = Path(__file__).resolve().parent.parent
 LOOP = ROOT / "loop"
 PROMPTS = LOOP / "prompts"
@@ -197,6 +205,12 @@ def commit_tracked_leftovers(message: str) -> bool:
     git("add", "-u")
     git("commit", "-m", f"{message}\n\n{ATTRIBUTION}")
     return True
+
+
+def dirty_tracked() -> list[str]:
+    """Tracked files with uncommitted changes (renames report their new path)."""
+    out = git("status", "--porcelain", "--untracked-files=no").stdout
+    return [l[3:].split(" -> ")[-1].strip().strip('"') for l in out.splitlines() if l.strip()]
 
 
 def untracked_project_files() -> list[str]:
@@ -557,6 +571,9 @@ def run_cross_review(u: Unit, us: dict) -> str | None:
     cmd = [CLAUDE, "-p", "--dangerously-skip-permissions", "--model", REVIEW_MODEL,
            "--output-format", "stream-json", "--verbose", "--disallowedTools", REVIEW_DISALLOWED]
     log(f"{u.id}: cross-review by a read-only Claude session ({REVIEW_MODEL}) → {rel(logfile)}")
+    # Remember what was ALREADY changed, so the backstop below undoes only the reviewer's own edits.
+    # (Measured 2026-11-10: a blanket `git checkout -- .` here reverted an unrelated uncommitted edit.)
+    before = {p: (ROOT / p).read_bytes() for p in dirty_tracked() if (ROOT / p).is_file()}
     waited = 0
     while True:
         code, _ = run_process(cmd, render("cross-review", ctx, with_rules=False), logfile,
@@ -572,9 +589,17 @@ def run_cross_review(u: Unit, us: dict) -> str | None:
             waited += LIMIT_WAIT_S
             continue
         break
-    if git("status", "--porcelain", "--untracked-files=no").stdout.strip():
-        report(f"{u.id}: the read-only reviewer changed tracked files; reverted them")
-        git("checkout", "--", ".")
+    undone = []
+    for p in dirty_tracked():
+        if p in before:
+            if (ROOT / p).is_file() and (ROOT / p).read_bytes() != before[p]:
+                (ROOT / p).write_bytes(before[p])
+                undone.append(p)
+        else:
+            git("checkout", "--", p, check=False)
+            undone.append(p)
+    if undone:
+        report(f"{u.id}: the read-only reviewer changed {', '.join(undone[:6])}; undone")
     if not answer.strip():
         report(f"{u.id}: cross-review produced no findings text (exit {code}); skipped, see {rel(logfile)}")
         return None
