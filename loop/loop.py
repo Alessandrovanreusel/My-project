@@ -23,6 +23,7 @@ import os
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -51,6 +52,9 @@ IMPL = ROOT / "_bmad-output" / "implementation-artifacts"
 SPRINT_FILE = IMPL / "sprint-status.yaml"
 
 UNITY_EXE = r"C:\Program Files\Unity\Hub\Editor\6000.3.8f1\Editor\Unity.exe"
+UNITY_HUB = r"C:\Program Files\Unity Hub\Unity Hub.exe"
+EDITOR_LOG = Path(os.environ.get("LOCALAPPDATA", "")) / "Unity" / "Editor" / "Editor.log"
+LICENCE_RE = re.compile(r"Access token is unavailable|Found 0 entitlement groups|No valid Unity Editor license", re.I)
 CLAUDE = shutil.which("claude") or "claude"
 CODEX = shutil.which("codex")
 ATTRIBUTION = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -199,22 +203,70 @@ def sync_master() -> None:
 
 # ----------------------------------------------------------------------------- unity
 
+class InfraStop(Exception):
+    """The machine, not the story, is broken (Unity cannot start). Stop everything and tell Alexv."""
+
+
+def process_running(image: str) -> bool:
+    r = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {image}", "/NH"], capture_output=True, text=True)
+    return image.lower() in r.stdout.lower()
+
+
 def unity_running() -> bool:
-    r = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Unity.exe", "/NH"], capture_output=True, text=True)
-    return "Unity.exe" in r.stdout
+    return process_running("Unity.exe")
+
+
+def bridge_ports() -> set[int]:
+    ports = {6400}
+    for f in (Path.home() / ".unity-mcp").glob("unity-mcp-port*.json"):
+        try:
+            ports.add(int(json.loads(f.read_text(encoding="utf-8")).get("unity_port")))
+        except Exception:
+            pass
+    return ports
+
+
+def bridge_up() -> bool:
+    """True once the MCP for Unity bridge inside the editor accepts connections, i.e. tools will work."""
+    for port in bridge_ports():
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=2):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def ensure_unity() -> None:
+    """Make sure an editor with this project is open AND its MCP bridge answers. Raise InfraStop if not."""
     if unity_running():
-        return
+        for _ in range(60):          # it may be importing or mid domain-reload
+            if bridge_up():
+                return
+            time.sleep(10)
+        raise InfraStop("UNITY: the editor is running but its MCP bridge never answered (a modal dialog?)")
+    if not process_running("Unity Hub.exe"):
+        log("starting Unity Hub (the editor gets its licence through it)")
+        subprocess.Popen([UNITY_HUB], creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+        time.sleep(45)
     log("Unity is not running: starting the editor")
+    launched = time.time()
     subprocess.Popen([UNITY_EXE, "-projectPath", str(ROOT)], cwd=ROOT,
                      creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
-    for _ in range(60):
-        time.sleep(5)
-        if unity_running():
-            break
-    time.sleep(120)   # import, compile, and let the MCP bridge come up
+    time.sleep(20)
+    for _ in range(90):              # up to 15 minutes for import + compile + bridge
+        fresh_log = EDITOR_LOG.exists() and EDITOR_LOG.stat().st_mtime >= launched - 5
+        text = EDITOR_LOG.read_text(encoding="utf-8", errors="replace") if fresh_log else ""
+        if LICENCE_RE.search(text):
+            raise InfraStop("Unity cannot start: licence unavailable. Open Unity Hub and sign in, then start the loop again")
+        if not unity_running():
+            raise InfraStop(f"Unity exited during startup; see {EDITOR_LOG}")
+        if bridge_up():
+            time.sleep(20)           # let the first compile settle
+            log("Unity is up and its MCP bridge answers")
+            return
+        time.sleep(10)
+    raise InfraStop("UNITY: the editor started but its MCP bridge did not answer within 15 minutes")
 
 
 def restart_unity() -> None:
@@ -403,8 +455,8 @@ def run_process(cmd: list[str], prompt: str, logfile: Path, timeout_s: float, en
 
 
 def claude_session(u: Unit, phase: str, prompt: str, logfile: Path) -> tuple[int, str]:
-    cmd = [CLAUDE, "-p", "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose",
-           "--disallowedTools", DISALLOWED]
+    cmd = [CLAUDE, "-p", "--dangerously-skip-permissions", "--chrome", "--output-format", "stream-json",
+           "--verbose", "--disallowedTools", DISALLOWED]
     return run_process(cmd, prompt, logfile, HOURS.get(phase, 4) * 3600, child_env(u.id, phase))
 
 
@@ -634,7 +686,11 @@ def smoke(state: dict) -> int:
     u = Unit("story", "smoke", 0)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     result_path = RESULTS / "smoke" / f"smoke-{stamp}.json"
-    ensure_unity()
+    try:
+        ensure_unity()
+    except InfraStop as e:
+        print(f"SMOKE STOPPED BEFORE THE SESSION: {e}")
+        return 2
     prompt = (PROMPTS / "smoke.md").read_text(encoding="utf-8").replace("{result_path}", rel(result_path))
     code, tail = claude_session(u, "smoke", prompt, LOGS / f"{stamp}-smoke.jsonl")
     res = read_result(result_path)
@@ -684,7 +740,13 @@ def main() -> int:
                 report(f"**{msg}**")
                 notify(msg, urgent=True)
                 return 0
-            outcome = run_unit(u, state)
+            try:
+                outcome = run_unit(u, state)
+            except InfraStop as e:
+                save_state(state)
+                report(f"**STOPPED — machine problem**: {e}")
+                notify(f"loop stopped: {e}"[:200], urgent=True)
+                return 2
             log(f"{u.id}: {outcome}")
             if outcome == "infra-stop":
                 return 2

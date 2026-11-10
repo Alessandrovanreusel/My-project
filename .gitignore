@@ -103,3 +103,5 @@ Desktop.ini
 /loop/runtime/
 # Windows builds made by loop sessions (Story 1.14 onward)
 /Builds/
+# Python bytecode (loop/ tooling)
+__pycache__/
