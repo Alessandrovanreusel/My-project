@@ -66,7 +66,7 @@ namespace CameraGame.Spikes.RecordingSpike
         private static readonly string[] PhaseNames = { "setup", "pre", "rec", "post", "play", "wait", "rec2", "play2", "export", "rec3", "play3" };
         private byte _phase;
         private ProfilerRecorder _mainThread;
-        private readonly StringBuilder _sec = new StringBuilder("t,phase,private_mb,working_set_mb,candidate_buffer_mb,candidate_used_mb,bytes_written_mb,dropped,queue,audio_callbacks\n");
+        private readonly StringBuilder _sec = new StringBuilder("t,phase,unity_reserved_mb,unity_allocated_mb,candidate_buffer_mb,candidate_used_mb,bytes_written_mb,dropped,queue,audio_callbacks\n");
         private float _nextSec;
         private System.Diagnostics.Process _self;
         private readonly StringBuilder _events = new StringBuilder();
@@ -95,6 +95,8 @@ namespace CameraGame.Spikes.RecordingSpike
         private float[] _pcm = new float[0];
         private EventActor _actor;
         private double _finishMs; private int _muxExit;
+        private readonly List<ReplayTrack> _takes = new List<ReplayTrack>();
+        private readonly List<float[]> _takePcm = new List<float[]>();
         private float _postStart;
 
         // ---------- playback ----------
@@ -282,7 +284,7 @@ namespace CameraGame.Spikes.RecordingSpike
                 long used = _ring != null ? _ring.UsedBytes : _track != null ? (long)_track.Count * _track.BytesPerTick : 0;
                 long written = _sink != null ? _sink.BytesPiped : 0;
                 _sec.Append(F(Time.unscaledTime)).Append(',').Append(PhaseNames[_phase]).Append(',')
-                    .Append(F(_self.PrivateMemorySize64 / 1048576f)).Append(',').Append(F(_self.WorkingSet64 / 1048576f)).Append(',')
+                    .Append(F(UnityEngine.Profiling.Profiler.GetTotalReservedMemoryLong() / 1048576f)).Append(',').Append(F(UnityEngine.Profiling.Profiler.GetTotalAllocatedMemoryLong() / 1048576f)).Append(',')
                     .Append(F(buf / 1048576f)).Append(',').Append(F(used / 1048576f)).Append(',').Append(F(written / 1048576f)).Append(',')
                     .Append(_dropped + (_sink != null ? _sink.Dropped : 0)).Append(',').Append(_sink != null ? _sink.QueueDepth : 0).Append(',')
                     .Append(_audio != null ? _audio.Callbacks : 0).Append('\n');
@@ -344,7 +346,12 @@ namespace CameraGame.Spikes.RecordingSpike
                 _sum[$"c{_cycle}_transport"] = Q(_a.Transport);
             }
             else if (_a.Mode == "C") _ring.Reset();
-            else if (_a.Mode == "B") _track.Reset();
+            else if (_a.Mode == "B")
+            {
+                // Keep every take: the Edit Suite probe trims and joins them afterwards.
+                if (_cycle > 1) { _takes.Add(_track); _track = new ReplayTrack(ClipFrames + 10, _track.Layers); }
+                else _track.Reset();
+            }
 
             _audio.Begin();
             _recStart = Time.unscaledTime;
@@ -355,6 +362,7 @@ namespace CameraGame.Spikes.RecordingSpike
             _audio.End();
             var sw = System.Diagnostics.Stopwatch.StartNew();
             _pcm = _audio.Snapshot();
+            _takePcm.Add(_pcm);
             int ch = _audio.Channels, rate = _audio.SampleRate;
             Log($"REC stop cycle={_cycle} captures={_captures} outFrames={_nextVf} dups={_dupFrames} dropped={_dropped + (_sink != null ? _sink.Dropped : 0)} readbackErrors={_readbackErrors} peakVf={_peakVf} audioFloats={_pcm.Length} audioPeak={_audio.Peak:0.000} overflow={_audio.Overflowed}");
             string wav = clipBase + "-audio.wav";
@@ -630,7 +638,9 @@ namespace CameraGame.Spikes.RecordingSpike
                     if (vf >= _nextVf || tick >= _track.Count) break;
                     while (tick + 1 < _track.Count && vfAcc + _track[tick].repeats <= vf) { vfAcc += _track[tick].repeats; tick++; }
                     _replay.Apply(_track[tick]);
-                    int ri = _cycle == 1 ? RefIndex(vfAcc, _track[tick].repeats) : -1;
+                    // Any reference frame whose index this playback frame has reached (playback may skip ticks).
+                    int ri = -1;
+                    if (_cycle == 1) for (int q = 0; q < _refVf.Length; q++) if (!_rerenderTaken[q] && _refVf[q] < vfAcc + _track[tick].repeats) { ri = q; break; }
                     if (ri >= 0 && !_rerenderTaken[ri])
                     {
                         _rerenderTaken[ri] = true;
@@ -694,7 +704,8 @@ namespace CameraGame.Spikes.RecordingSpike
         // ---------- export probes (Tasks 3.5, 5.5) ----------
         private IEnumerator ExportProbe()
         {
-            if (_a.Mode != "B" && _a.Mode != "C") yield break;
+            if (_a.Mode == "B" && _a.EditExport) { yield return EditExport(); yield break; }
+            if ((_a.Mode != "B" && _a.Mode != "C") || !_a.Export) yield break;
             string outBase = Path.Combine(_out, $"{_a.Tag}-export");
             string vf = (_a.VFlip ? "-vf vflip " : "");
             var sink = new FfmpegSink(FrameBytes, 4);
@@ -738,6 +749,59 @@ namespace CameraGame.Spikes.RecordingSpike
             _sum["export_encoder_line"] = Q(sink.EncoderLine);
             _sum["export_finish_ms"] = F((float)fin);
             Log($"EXPORT {_a.Mode}: {frames} frames in {sw.Elapsed.TotalMilliseconds:0} ms -> {outBase}.mp4 (mux exit {p.ExitCode}) encoder='{sink.EncoderLine}'");
+            sink.Dispose();
+        }
+
+        /// <summary>(B)'s Edit Suite + FR31 export, on the machinery the game would ship: trim ~2 s off each
+        /// end of take 1 (by tick range), join take 2 whole, re-render both through the ghost, encode ONE
+        /// standard MP4 with the matching PCM slices as its sound.</summary>
+        private IEnumerator EditExport()
+        {
+            var all = new List<ReplayTrack>(_takes) { _track };
+            if (all.Count < 2) { Log("EDIT EXPORT needs -cycles 2"); yield break; }
+            int trim = 2 * _a.Fps;
+            var segs = new List<(ReplayTrack t, int from, int to, float[] pcm)>
+            { (all[0], trim, all[0].Count - trim, _takePcm[0]), (all[1], 0, all[1].Count, _takePcm[1]) };
+            if (_replay == null) _replay = new ReplayPlayer(_cam, _mgr, _a.Width, _a.Height);
+            if (_actor != null) _replay.BuildGhost(_actor);
+            string outBase = Path.Combine(_out, $"{_a.Tag}-edit");
+            var sink = new FfmpegSink(FrameBytes, 4);
+            sink.Start(_a.FfmpegPath, $"-y -hide_banner -loglevel verbose -f rawvideo -pix_fmt rgba -s {_a.Width}x{_a.Height} -framerate {_a.Fps} -i {{IN}} {(_a.VFlip ? "-vf vflip " : "")}-c:v h264_mf -hw_encoding 1 -rate_control cbr -b:v 8M -g 30 -pix_fmt nv12 -f mpegts \"{outBase}-video.ts\"", outBase + "-ffmpeg.log", _a.Transport);
+            while (!sink.Ready && !sink.Failed) yield return null;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int ch = _audio.Channels, rate = _audio.SampleRate, frames = 0;
+            var pcm = new List<float>();
+            var log = new StringBuilder();
+            foreach (var (t, from, to, src) in segs)
+            {
+                int vf0 = 0; for (int i = 0; i < from; i++) vf0 += t[i].repeats;
+                int segFrames = 0;
+                for (int i = from; i < to; i++)
+                {
+                    _replay.Apply(t[i]);
+                    _replay.PlayCam.Render();
+                    int slot; while (!sink.TryAcquire(out slot)) System.Threading.Thread.Sleep(1);
+                    var req = AsyncGPUReadback.RequestIntoNativeArray(ref sink.Slot(slot), _replay.Target, 0, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB, null);
+                    req.WaitForCompletion();
+                    sink.Submit(slot, t[i].repeats); segFrames += t[i].repeats;
+                    if ((i & 15) == 15) yield return null;
+                }
+                long a0 = (long)vf0 * rate / _a.Fps * ch, a1 = a0 + (long)segFrames * rate / _a.Fps * ch;
+                for (long k = a0; k < a1 && k < src.Length; k++) pcm.Add(src[k]);
+                log.Append($"segment ticks {from}..{to} of {t.Count} -> {segFrames} frames ({segFrames / (float)_a.Fps:0.00} s), audio samples {a0}..{a1}; ");
+                frames += segFrames;
+            }
+            double fin = sink.Finish(60000);
+            string wav = outBase + "-audio.wav";
+            AudioTap.WriteWav(wav, pcm.ToArray(), ch, rate);
+            var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_a.FfmpegPath,
+                $"-y -hide_banner -loglevel error -i \"{outBase}-video.ts\" -i \"{wav}\" -c:v copy -c:a aac -b:a 160k -shortest -movflags +faststart \"{outBase}.mp4\"")
+            { UseShellExecute = false, CreateNoWindow = true });
+            p.WaitForExit();
+            _sum["edit_export_ms"] = F((float)sw.Elapsed.TotalMilliseconds);
+            _sum["edit_export_frames"] = frames.ToString();
+            _sum["edit_export_segments"] = Q(log.ToString());
+            Log($"EDIT EXPORT: {log}total {frames} frames in {sw.Elapsed.TotalMilliseconds:0} ms -> {outBase}.mp4 (mux exit {p.ExitCode}, encoder '{sink.EncoderLine}')");
             sink.Dispose();
         }
 
