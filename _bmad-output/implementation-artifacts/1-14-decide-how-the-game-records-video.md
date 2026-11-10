@@ -4,7 +4,7 @@ baseline_commit: b343a8875f6305b6fc2cd8ba14ec7faffedb12cc
 
 # Story 1.14: Decide how the game records video
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

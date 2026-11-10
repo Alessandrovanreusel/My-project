@@ -1,0 +1,21 @@
+{
+    "name": "CameraGame.Spikes.RecordingSpike",
+    "rootNamespace": "CameraGame.Spikes.RecordingSpike",
+    "references": [
+        "CameraGame",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_EDITOR || CAMERA_RECORDING_SPIKE"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
