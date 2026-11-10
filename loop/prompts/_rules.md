@@ -41,6 +41,10 @@ locatable, look like a good photograph or a good clip. Alexv chose **batch them*
 - Do every automated part first: captures, measurements, frame analysis, Gemini where it fits.
 - Then add a `human_checks` entry: which AC, exactly what to look at or listen to, the evidence
   paths, and your own honest read of it.
+- `human_checks` is the unit's **complete** list of checks still open when your phase ends, not
+  only the ones you added. Carry over the earlier phases' checks (the story file records them),
+  updated if your work changed what he should look at. The orchestrator replaces the list with
+  yours. `decisions` and `lessons` are the opposite: only the new ones from this phase.
 - **Never mark a perceptual AC verified yourself**, and never phrase it as passed. The story can
   still close: it waits in `review` with the check queued, and later stories may build on it.
 

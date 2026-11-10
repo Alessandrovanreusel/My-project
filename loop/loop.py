@@ -821,6 +821,17 @@ def merge_unit(u: Unit, us: dict, state: dict) -> bool:
     return True
 
 
+def absorb_result(us: dict, res: dict) -> None:
+    """Fold one phase's result file into the unit's running record."""
+    us["decisions"] += res.get("decisions") or []   # new decisions only, per _rules.md
+    # Each phase reports the unit's COMPLETE list of open checks (_rules.md), so the newest list
+    # replaces the old one. Appending gave Alexv every check three times (Story 1.14: 12 for 4).
+    # An empty list never clears them: only Alexv closes a check.
+    if res.get("human_checks"):
+        us["human_checks"] = list(res["human_checks"])
+    us["lessons"] += [l for l in res.get("lessons") or [] if l not in us["lessons"]]
+
+
 def run_unit(u: Unit, state: dict) -> str:
     """Drive one unit to merged / parked / stopped. Returns that outcome."""
     us = unit_state(state, u)
@@ -854,9 +865,7 @@ def run_unit(u: Unit, state: dict) -> str:
         finish_phase_git(u, phase)
         us["history"].append({"phase": phase, "status": res["status"], "summary": res.get("summary", ""),
                               "minutes": res.get("_minutes"), "log": res.get("_log"), "at": now()})
-        us["decisions"] += res.get("decisions") or []
-        us["human_checks"] += res.get("human_checks") or []
-        us["lessons"] += res.get("lessons") or []
+        absorb_result(us, res)
         report(f"{u.id} {phase} a{res.get('_attempt')} → **{res['status']}** ({res.get('_minutes')} min): "
                f"{res.get('summary', '')[:300]}")
 
