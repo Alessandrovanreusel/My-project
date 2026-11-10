@@ -44,6 +44,20 @@ locatable, look like a good photograph or a good clip. Alexv chose **batch them*
 - **Never mark a perceptual AC verified yourself**, and never phrase it as passed. The story can
   still close: it waits in `review` with the check queued, and later stories may build on it.
 
+## Approvals that must come before other work starts
+
+Some ACs make Alexv's sign-off a **gate**: *"Alexv approves X before Story Y starts"*. Unlike a
+perceptual check, later work must not build on it unapproved. When your story has one:
+
+- Do everything up to the sign-off, write the item as *Proposed — awaiting Alexv's approval*
+  (never Accepted), and add it to `decisions` and `human_checks` as usual.
+- Add a gate for the unit that must wait to `loop/dependencies.yaml` under `gates:` (copy the
+  existing entry's shape: `id`, `why`, `read`), unless one is already there, and commit it. The
+  orchestrator then never starts that unit, and does other work until he approves.
+- Approvals he has given are the lines `APPROVED <id> …` in `loop/runtime/approvals.txt`. When your
+  story builds on an approved item that is still written as *Proposed*, change it to *Accepted*,
+  citing that line. Never write that file yourself.
+
 ## Blockers
 
 Return `"status": "blocked"` with a one-line `blocker` only when you genuinely cannot make

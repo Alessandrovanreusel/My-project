@@ -168,6 +168,10 @@ the difference between findings and fiction, and each was measured. The short ve
 Read `loop/README.md` before touching it. In an interactive session:
 - **Do not edit `loop/runtime/`** (state, queue, reports, the private ntfy topic) while the loop is
   running. Check with `Get-Process python` or `python loop/loop.py --dry-run`.
+  **One exception, `loop/runtime/approvals.txt`:** when Alexv says "approve <id>" (an id from section 0
+  of `loop/runtime/human-queue.md`, e.g. ADR-4), append the line `APPROVED <id> <date> — <his words>`.
+  The loop re-reads it before every pick, so the gated work starts without a restart. A veto is not a
+  line in that file: it means changing the plan with him (correct course), then removing the gate.
 - `.claude/hooks/loop_guard.py` only acts when `CAMERA_LOOP=1`, so it never affects you here.
 - Loop sessions get their rules from `loop/prompts/_rules.md`. They decide and flag instead of asking
   Alexv, and they queue perceptual checks instead of certifying them. That is Alexv's standing

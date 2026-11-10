@@ -33,3 +33,14 @@ story_depends_on:
   1-16-grade-a-clip: [1-15-record-a-clip]
   1-17-the-memory-card: [1-15-record-a-clip]
   1-18-watch-your-clips: [1-17-the-memory-card]
+
+# Approval gates: units that must not START until Alexv has signed something off. Unlike his
+# perceptual checks (batched, dependents build on them), a gate is a real blocker - an AC that says
+# "Alexv approves X before Y starts". The loop never starts a gated unit; it does work that does not
+# depend on it, pings his phone once, and re-reads loop/runtime/approvals.txt before every pick.
+# A gate opens when that file has a line `APPROVED <id>` (Claude writes it when he says "approve <id>").
+gates:
+  1-15-record-a-clip:
+    - id: ADR-4
+      why: "Story 1.14 AC2 - Alexv approves ADR-4 (how the built game records its own gameplay) before Story 1.15 starts"
+      read: "ADR-4 in _bmad-output/planning-artifacts/game-architecture.md (Architecture Decision Records), and the Story 1.14 file's Dev Agent Record"

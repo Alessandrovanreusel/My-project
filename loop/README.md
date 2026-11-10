@@ -19,8 +19,9 @@ From the project folder, in PowerShell:
 
 When you come back, read these two files:
 
-- **`loop/runtime/human-queue.md`**: blockers, the decisions it took for you (tick or veto each), and
-  the checks that need your eyes, each with the evidence to look at.
+- **`loop/runtime/human-queue.md`**: approvals that are holding work back (section 0, the most
+  urgent), blockers, the decisions it took for you (tick or veto each), and the checks that need your
+  eyes, each with the evidence to look at.
 - **`loop/runtime/reports/<date>.md`**: one line per phase. What ran, how long it took, the outcome.
 
 Everything in `loop/runtime/` stays on this PC. It is git-ignored, because this repository is public.
@@ -60,6 +61,7 @@ unit breaks it down; when every story in an epic has merged, a **retro** unit wr
 |---|---|
 | A skill or story asks you to decide | Decides from evidence, writes it in the queue, carries on |
 | An AC needs your eyes or ears | Gathers the evidence, queues it, lets later stories build on it |
+| An AC says you must approve something before a later story starts | Never starts that story; does other work, pings your phone once, and starts it the moment you approve |
 | Compile errors, failing tests, review findings | Fixes them itself |
 | A phase fails | Retries in a fresh session with a hint, up to 3 times, then parks the unit |
 | A real blocker (login, purchase, licence, missing asset) | Parks the unit, pings your phone, moves to work that doesn't depend on it |
@@ -67,6 +69,11 @@ unit breaks it down; when every story in an epic has merged, a **retro** unit wr
 | Claude usage limit | Waits 20 minutes and retries, for up to 30 hours |
 | Nothing left that it can do | Stops and pings you |
 
+**Approve something the loop is waiting for** (section 0 of the queue, e.g. ADR-4): tell Claude
+"approve ADR-4", or add the line `APPROVED ADR-4` to `loop/runtime/approvals.txt` yourself. You
+don't need to stop or restart anything. If only gated work is left, the loop waits and lets the PC
+sleep; it carries on when the PC is awake again. The gates themselves are listed in
+`loop/dependencies.yaml` under `gates:`.
 **Resume a parked unit:** fix the cause, then tell Claude "resume `<unit>` in the loop". It clears
 the `parked` entry in `loop/runtime/state.json`, and the next start picks the unit up on its branch.
 **Undo a unit:** every unit starts from the tag `loop/pre-<unit>`.

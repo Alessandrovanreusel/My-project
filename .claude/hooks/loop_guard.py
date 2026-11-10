@@ -9,7 +9,8 @@ because they reach outside the project:
   * sweeping unrelated files into a commit (`git add -A` / `.` / `commit -a`);
   * recursive deletes outside the project, or of the project's top-level folders;
   * machine-level changes (format, registry, power, execution policy);
-  * editing the agent's own guard rails (.claude settings and hooks, ~/.claude.json);
+  * editing the agent's own guard rails (.claude settings and hooks, ~/.claude.json), or approving
+    its own gated work (loop/runtime/approvals.txt is Alexv's);
   * outward-facing account actions: e-mail, Drive, calendar and other claude.ai connectors;
     artifact publishing; uploading local files or visiting checkout/billing pages in Chrome.
 
@@ -64,6 +65,7 @@ MACHINE_RULES = [
 ]
 
 GUARDED_PATHS = re.compile(r"(\.claude[/\\](settings|hooks)|\.claude\.json|\.codex[/\\](config|hooks))", re.I)
+APPROVALS = re.compile(r"approvals\.txt", re.I)   # Alexv's sign-offs: a loop session must never approve itself
 WRITEY = re.compile(r"(>|\bSet-Content\b|\bAdd-Content\b|\bOut-File\b|\bCopy-Item\b|\bMove-Item\b|\bRemove-Item\b|"
                     r"\brm\b|\bmv\b|\bcp\b|\bdel\b|\bsed\s+-i|\btee\b|\bNew-Item\b|\bpython\b|\bnode\b)", re.I)
 RECURSIVE_DELETE = re.compile(r"(\brm\s+(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)|Remove-Item[^\n|;]*-Recurse|\brd\s+/s|\brmdir\s+/s|\bdel\s+/s|shutil\.rmtree)", re.I)
@@ -95,6 +97,8 @@ def check_shell(cmd):
             return why
     if GUARDED_PATHS.search(cmd) and WRITEY.search(cmd):
         return "changing the agent's own settings or hooks"
+    if APPROVALS.search(cmd) and WRITEY.search(cmd):
+        return "touching loop/runtime/approvals.txt from a shell (only Alexv approves; read it with the Read tool)"
     if RECURSIVE_DELETE.search(cmd):
         if re.search(r"(~|\$HOME|\$env:USERPROFILE|%USERPROFILE%|\.\.[/\\]|[A-Za-z]:[/\\](?!.*My project)|(^|[\s'\"])/[a-zA-Z]/(?!.*My project))", cmd, re.I):
             return "recursive delete reaching outside the project"
@@ -134,6 +138,8 @@ def main():
         path = str(inp.get("file_path") or inp.get("notebook_path") or "")
         if GUARDED_PATHS.search(path.replace("\\", "/")):
             return deny("editing the agent's own settings or hooks")
+        if APPROVALS.search(path):
+            return deny("writing loop/runtime/approvals.txt (only Alexv approves gated work)")
         if path and outside_root(path) and "\\Temp\\claude\\" not in path and "/Temp/claude/" not in path:
             if not re.search(r"[/\\]\.claude[/\\]projects[/\\][^/\\]*My-project[/\\]memory[/\\]", path, re.I):
                 return deny(f"writing outside the project ({path})")
