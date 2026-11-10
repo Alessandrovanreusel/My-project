@@ -24,6 +24,7 @@ import re
 import secrets
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import time
@@ -143,14 +144,26 @@ def notify(msg: str, urgent: bool = False) -> None:
     """One line to Alexv's phone via ntfy. Only for blockers and full stops, never routine progress."""
     topic = config().get("ntfy_topic")
     log(f"NOTIFY{' (urgent)' if urgent else ''}: {msg}")
+    url = f"https://ntfy.sh/{topic}"
+    headers = {"Title": "Game loop", "Priority": "high" if urgent else "default",
+               "Tags": "rotating_light" if urgent else "pause_button"}
     try:
-        req = urllib.request.Request(
-            f"https://ntfy.sh/{topic}", data=msg[:200].encode("utf-8"), method="POST",
-            headers={"Title": "Game loop", "Priority": "high" if urgent else "default",
-                     "Tags": "rotating_light" if urgent else "pause_button"})
-        urllib.request.urlopen(req, timeout=15).read()
-    except Exception as e:  # a failed notification must never stop the loop
-        log(f"ntfy failed: {e}")
+        # Python's default certificate store on this machine is stale ("certificate has expired" for a
+        # valid Let's Encrypt chain, measured 2026-11-10). Verify against certifi's current bundle instead
+        # of turning verification off.
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except Exception:
+            ctx = ssl.create_default_context()
+        req = urllib.request.Request(url, data=msg[:200].encode("utf-8"), method="POST", headers=headers)
+        urllib.request.urlopen(req, timeout=15, context=ctx).read()
+    except Exception as e:  # fall back to Windows' own curl (schannel store); never let this stop the loop
+        r = subprocess.run([r"C:\Windows\System32\curl.exe", "-sS", "-o", "NUL", "-w", "%{http_code}",
+                            *sum((["-H", f"{k}: {v}"] for k, v in headers.items()), []),
+                            "--data-binary", msg[:200], url], capture_output=True, text=True)
+        if r.stdout.strip() != "200":
+            log(f"ntfy failed: {e}; curl fallback: {r.stdout.strip()} {r.stderr.strip()[:200]}")
 
 
 def stop_requested() -> bool:
