@@ -106,3 +106,23 @@ Chronological record of every design decision, change, and version transition.
 - **Story assumptions CONFIRMED:** Record is a toggle (press to start, press again to stop), clips include the game's sound, and the memory card starts at ~2 minutes of footage.
 - **Jira removed from the project** (Alexv). The planning artifacts are no longer mirrored to Jira project KAN. Removed: the "Jira Sync" section of `CLAUDE.md` and `AGENTS.md`, the Jira half of the post-edit reminder hook (its C# compile reminder is kept), the project-scope `atlassian` MCP server (`.mcp.json`, `.codex/config.toml`) and its permissions, the `jiraSync:` block in `epics.md`, and the KAN comments in `sprint-status.yaml`. The files in `_bmad-output/` are now the only tracker. The old KAN keys remain in git history (commit `1e3ab88`). This supersedes the "Jira sync once re-authenticated" next step above.
 - **Next:** `gds-create-story` for 1.14.
+
+## 2026-11-10 — The unattended loop (`loop/`)
+
+Alexv asked for a loop that builds every story without him, analyses the game with pictures, video
+and Gemini, can use Chrome, and only involves him for real blockers, skipping to independent work
+meanwhile. His choices:
+
+- **Scope: all epics.** This **overrides the GDD rule** "Do not start a later epic until Epic 1 has
+  proven the loop is fun", whose proof is an uninstructed first-time-player playtest that only a human
+  can run. The loop plans later epics just-in-time. In `loop/dependencies.yaml`, Epic 2 no longer waits
+  for Epic 1, because that dependency existed only to enforce this rule.
+- **Decisions reserved for him: decide, flag, keep going.** The loop chooses from evidence, records the
+  choice and its cost to reverse in `loop/runtime/human-queue.md`, and continues. He may veto later.
+- **Perceptual checks: batched.** These are never self-certified; dependent stories may build on them.
+- **Permissions: none** (`--dangerously-skip-permissions`). It was recommended against, and he chose it.
+  Mitigation: a PreToolUse guard hook for irreversible or outward-facing actions only.
+- **Git:** one branch per unit, merged to master when it passes, with a tag before each unit.
+- **Notifications:** ntfy phone push, one line per blocker or full stop; the topic stays off the public repo.
+- **A supervised pilot on Story 1.14 first,** then it runs until done, waiting out usage limits.
+- **Cross-review by OpenAI Codex**, read-only, as the "different LLM" CLAUDE.md recommends for code review.

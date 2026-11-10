@@ -1,0 +1,35 @@
+# Which work blocks which, for the unattended loop (loop/loop.py).
+#
+# Only REAL dependencies belong here: "this cannot be built until that exists". Preferred order
+# lives in epic_order; the loop always takes the first eligible item in that order, and skips past
+# anything blocked to the next item that does not depend on it.
+#
+# "Satisfied" means: done in sprint-status, OR merged by the loop with only Alexv's perceptual
+# checks still pending (he chose to let dependents build on those - see decision log 2026-11-10).
+
+# Preferred order. Epic 9 (The Edit Suite) is sequenced immediately after Epic 1.
+epic_order: [1, 9, 2, 3, 4, 5, 6, 7, 8]
+
+# An epic's stories cannot be PLANNED until every epic listed here is satisfied.
+# Taken from epics.md "Depends on" with one deliberate change: Epic 2 no longer waits for Epic 1.
+# That dependency only existed to enforce the GDD's "playtest the slice before adding breadth" rule,
+# which Alexv waived for the loop on 2026-11-10; importing the town map does not need the camcorder.
+epic_depends_on:
+  1: []
+  9: [1]
+  2: []
+  3: [1, 2]
+  4: [1, 3]
+  5: [1, 4]
+  6: [2, 4]
+  7: [3, 4]
+  8: [3, 7]
+
+# Story-level hard dependencies. Stories not listed depend on nothing beyond their epic.
+# The plan-epic phase adds entries here when it breaks a new epic into stories.
+story_depends_on:
+  1-14-decide-how-the-game-records-video: []
+  1-15-record-a-clip: [1-14-decide-how-the-game-records-video]
+  1-16-grade-a-clip: [1-15-record-a-clip]
+  1-17-the-memory-card: [1-15-record-a-clip]
+  1-18-watch-your-clips: [1-17-the-memory-card]

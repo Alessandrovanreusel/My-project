@@ -161,6 +161,18 @@ the difference between findings and fiction, and each was measured. The short ve
   it despawns nothing. A rig scenario captioned "nobody there" photographed a live subject and graded it
   94%. If a scenario needs an empty street, deactivate the live actors and put them back.
 
+## Unattended Loop
+
+`loop/` builds the backlog unattended: `loop/loop.py` runs each phase of each story in a fresh
+`claude -p` session on its own `loop/<unit>` branch, merges when the unit passes, and parks blockers.
+Read `loop/README.md` before touching it. In an interactive session:
+- **Do not edit `loop/runtime/`** (state, queue, reports, the private ntfy topic) while the loop is
+  running. Check with `Get-Process python` or `python loop/loop.py --dry-run`.
+- `.claude/hooks/loop_guard.py` only acts when `CAMERA_LOOP=1`, so it never affects you here.
+- Loop sessions get their rules from `loop/prompts/_rules.md`. They decide and flag instead of asking
+  Alexv, and they queue perceptual checks instead of certifying them. That is Alexv's standing
+  choice for the loop, not a licence for interactive sessions.
+
 ## Project Structure
 
 - `Assets/Scenes/` - Scene files (SampleScene.unity, Video Camera Game 2.0.unity)

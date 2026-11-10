@@ -97,3 +97,9 @@ Desktop.ini
 # Unity crash-recovery backups (auto-created after an unexpected shutdown; not real content)
 /Assets/_Recovery/
 /Assets/_Recovery.meta
+
+# Unattended loop (loop/loop.py): runtime state, logs, results, reports and the PRIVATE ntfy topic.
+# This repo is public - loop/runtime/config.local.json must never be committed.
+/loop/runtime/
+# Windows builds made by loop sessions (Story 1.14 onward)
+/Builds/
