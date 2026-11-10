@@ -351,6 +351,7 @@ namespace CameraGame.Spikes.RecordingSpike
                 // Keep every take: the Edit Suite probe trims and joins them afterwards.
                 if (_cycle > 1) { _takes.Add(_track); _track = new ReplayTrack(ClipFrames + 10, _track.Layers); }
                 else _track.Reset();
+                _fidLive.Clear(); _fidPeak.Clear();
             }
 
             _audio.Begin();
@@ -413,6 +414,7 @@ namespace CameraGame.Spikes.RecordingSpike
                     _sum[$"c{_cycle}_ticks"] = _track.Count.ToString();
                     _sum[$"c{_cycle}_pose_bytes"] = ((long)_track.Count * _track.BytesPerTick).ToString();
                     _sum["pose_bytes_per_tick"] = _track.BytesPerTick.ToString();
+                    if (_a.Fidelity) FidelitySweep();
                 }
             }
             _sum[$"c{_cycle}_stop_to_ready_ms"] = F((float)_stopToReadyMs);
@@ -500,7 +502,12 @@ namespace CameraGame.Spikes.RecordingSpike
                     });
                     break;
                 case "B":
-                    _track.Record(_cam, act, act != null ? act.GetComponentInChildren<Animator>() : null, rep);
+                    bool recorded = _track.Record(_cam, act, act != null ? act.GetComponentInChildren<Animator>() : null, rep);
+                    if (recorded && _a.Fidelity)
+                    {
+                        _fidLive.Add(act != null && act.isActiveAndEnabled ? Bones(act.GetComponentInChildren<SkinnedMeshRenderer>()) : null);
+                        _fidPeak.Add(act != null ? act.PeakOffset : float.NaN);
+                    }
                     if (ri >= 0) _tap.CaptureThisFrame(() => RequestRef(ri));
                     break;
                 default: // baseline: nothing is captured, but the bookkeeping runs identically
@@ -539,6 +546,101 @@ namespace CameraGame.Spikes.RecordingSpike
             {
                 if (!_refOk[i]) { Log($"ref {i} (vf {_refVf[i]}) missing"); continue; }
                 SavePng(_refBuf[i], Path.Combine(_out, $"{_a.Tag}-{prefix}-vf{_refVf[i]:000}.png"));
+            }
+        }
+
+        // ---------- review 2026-11-10: replay fidelity over EVERY tick (-fidelity) ----------
+        // ADR-4's "bone drift 0.00 cm" came from 3 reference frames (vf 60/165/255), none inside the 0.2-s phase
+        // crossfades EventActor starts with CrossFadeInFixedTime. This sends every recorded tick through the real
+        // playback path (ReplayPlayer.Apply) and compares the ghost's bones with the live bones read on that tick.
+        private readonly List<Vector3[]> _fidLive = new List<Vector3[]>();
+        private readonly List<float> _fidPeak = new List<float>();
+
+        private void FidelitySweep()
+        {
+            if (_replay == null) _replay = new ReplayPlayer(_cam, _mgr, _a.Width, _a.Height);
+            if (_actor != null) _replay.BuildGhost(_actor);
+            var ghostSmr = _replay.GhostSkins.Length > 0 ? _replay.GhostSkins[0] : null;
+            // control_prev_max_cm: the SAME metric against the PREVIOUS tick's live bones. It must be clearly non-zero
+            // (the drunk moves between ticks), which proves a 0.00 in max_cm is a real match, not a blind metric.
+            var sb = new StringBuilder("tick,vf,repeats,active,peak_offset,in_trans,hash,normT,next_hash,next_normT,trans_normT,trans_dur,mean_cm,max_cm,control_prev_max_cm\n");
+            int vf = 0, worstT = -1, worstS = -1, nT = 0, nS = 0, nC = 0;
+            float maxT = -1, maxS = -1; double sumT = 0, sumS = 0, sumC = 0;
+            for (int i = 0; i < _track.Count && i < _fidLive.Count; i++)
+            {
+                var tk = _track[i];
+                _replay.Apply(tk);
+                var L = tk.layers.Length > 0 ? tk.layers[0] : default;
+                var live = _fidLive[i];
+                var ghost = tk.active ? Bones(ghostSmr) : null;
+                float mean = float.NaN, max = float.NaN;
+                if (live != null && ghost != null && live.Length == ghost.Length)
+                {
+                    mean = 0; max = 0;
+                    for (int b = 0; b < live.Length; b++) { float d = Vector3.Distance(live[b], ghost[b]); mean += d; max = Mathf.Max(max, d); }
+                    mean = mean / live.Length * 100f; max *= 100f;
+                    if (L.inTrans) { nT++; sumT += max; if (max > maxT) { maxT = max; worstT = i; } }
+                    else { nS++; sumS += max; if (max > maxS) { maxS = max; worstS = i; } }
+                }
+                float ctrl = float.NaN;
+                var prev = i > 0 ? _fidLive[i - 1] : null;
+                if (prev != null && ghost != null && prev.Length == ghost.Length)
+                {
+                    ctrl = 0;
+                    for (int b = 0; b < prev.Length; b++) ctrl = Mathf.Max(ctrl, Vector3.Distance(prev[b], ghost[b]));
+                    ctrl *= 100f; nC++; sumC += ctrl;
+                }
+                sb.Append(i).Append(',').Append(vf).Append(',').Append(tk.repeats).Append(',').Append(tk.active ? 1 : 0).Append(',')
+                  .Append(F(_fidPeak[i])).Append(',').Append(L.inTrans ? 1 : 0).Append(',').Append(L.hash).Append(',').Append(F(L.normT)).Append(',')
+                  .Append(L.nextHash).Append(',').Append(F(L.nextNormT)).Append(',').Append(F(L.transNormT)).Append(',').Append(F(L.transDur)).Append(',')
+                  .Append(F(mean)).Append(',').Append(F(max)).Append(',').Append(F(ctrl)).Append('\n');
+                vf += tk.repeats;
+            }
+            File.WriteAllText(Path.Combine(_out, $"{_a.Tag}-c{_cycle}-fidelity.csv"), sb.ToString());
+            string note = $"FIDELITY cycle={_cycle}: {nS} steady ticks max-bone drift mean={(nS > 0 ? sumS / nS : -1):0.000}cm worst={maxS:0.000}cm (tick {worstS}); " +
+                          $"{nT} transition ticks mean={(nT > 0 ? sumT / nT : -1):0.000}cm worst={maxT:0.000}cm (tick {worstT}); " +
+                          $"CONTROL vs previous tick mean={(nC > 0 ? sumC / nC : -1):0.000}cm over {nC} ticks";
+            Log(note);
+            _sum[$"c{_cycle}_fidelity"] = Q(note);
+            if (worstT >= 0) DriftPicture(worstT, ghostSmr, "worst-transition");
+            if (worstS >= 0) DriftPicture(worstS, ghostSmr, "worst-steady");
+        }
+
+        /// <summary>The ghost re-rendered on tick <paramref name="i"/>, with the LIVE bones (red, large) and the
+        /// GHOST bones (green, small) drawn on, both projected through the recorded camera. Green on red = same pose.</summary>
+        private void DriftPicture(int i, SkinnedMeshRenderer ghostSmr, string label)
+        {
+            var tk = _track[i];
+            _replay.Apply(tk);
+            var ghost = Bones(ghostSmr); var live = _fidLive[i];
+            _replay.PlayCam.Render();
+            var buf = new NativeArray<byte>(FrameBytes, Allocator.Persistent);
+            var req = AsyncGPUReadback.RequestIntoNativeArray(ref buf, _replay.Target, 0, UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_SRGB, null);
+            req.WaitForCompletion();
+            var tex = new Texture2D(_a.Width, _a.Height, TextureFormat.RGBA32, false, false);
+            tex.SetPixelData(buf, 0);
+            buf.Dispose();
+            Dots(tex, live, new Color32(255, 0, 0, 255), 5);
+            Dots(tex, ghost, new Color32(0, 255, 0, 255), 2);
+            tex.Apply(false);
+            File.WriteAllBytes(Path.Combine(_out, $"{_a.Tag}-c{_cycle}-{label}-tick{i:000}.png"), tex.EncodeToPNG());
+            Destroy(tex);
+        }
+
+        private void Dots(Texture2D tex, Vector3[] pts, Color32 c, int r)
+        {
+            if (pts == null) return;
+            foreach (var p in pts)
+            {
+                var sp = _replay.PlayCam.WorldToScreenPoint(p);
+                if (sp.z <= 0) continue;
+                int x0 = (int)sp.x, y0 = (int)sp.y;
+                for (int dx = -r; dx <= r; dx++)
+                    for (int dy = -r; dy <= r; dy++)
+                    {
+                        int x = x0 + dx, y = y0 + dy;
+                        if (x >= 0 && y >= 0 && x < tex.width && y < tex.height) tex.SetPixel(x, y, c);
+                    }
             }
         }
 
@@ -767,7 +869,9 @@ namespace CameraGame.Spikes.RecordingSpike
                 }
             }
             double fin = sink.Finish(60000);
-            string wav = Path.Combine(_out, $"{_a.Tag}-c1-audio.wav");
+            // The export renders _track, the LAST take; mux that take's sound (review 2026-11-10: this read -c1-
+            // and paired take-2 video with take-1 audio in every -cycles 2 run).
+            string wav = Path.Combine(_out, $"{_a.Tag}-c{Math.Max(1, _takePcm.Count)}-audio.wav");
             var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_a.FfmpegPath,
                 $"-y -hide_banner -loglevel error -i \"{outBase}-video.ts\" -i \"{wav}\" -c:v copy -c:a aac -b:a 160k -shortest -movflags +faststart \"{outBase}.mp4\"")
             { UseShellExecute = false, CreateNoWindow = true });

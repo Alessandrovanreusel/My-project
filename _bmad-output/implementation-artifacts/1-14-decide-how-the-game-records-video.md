@@ -534,6 +534,232 @@ rules for a story that builds a player and changes build settings.
         ADR-4 approval is pending. Then run `yaml.safe_load` on the file (`last_updated` must contain no `: `
         and no trailing `:`).
 
+### Review Findings
+
+Code review 2026-11-10 (loop REVIEW phase, `a3a528d..ae7ed89`), by a fresh session that did not write the
+code. Three parallel layers: Blind Hunter (diff only), Edge Case Hunter (diff + project) and Acceptance
+Auditor (diff + story + evidence). Per the standing rule, the subjects were ADR-4, the fence and the tests.
+The spike harness was a tool, run and modified. Its defects matter only where they make an ADR claim wrong,
+or where 1.15 would inherit them. About 60 raw findings gave **0 decisions, 32 patches (all applied), 11
+deferred and 12 dismissed**. **The decision, (B) replay with MP4 only at export, survives the review
+unchanged.** Every frame-cost number recomputed exactly from `measure/analysis.json`.
+
+What was **run**, not read:
+- three fence mutations, each red, then restored;
+- a stale-flag reproduction, then a re-test;
+- a new **per-tick fidelity sweep**, two Editor runs of two takes each;
+- every sound, SSIM and export number, reproduced into `review/reproduced-numbers.txt`;
+- `ffprobe` and a full decode of the edit export;
+- an editor read-back of every restored setting;
+- the full EditMode suite.
+
+Evidence: `_bmad-output/verification/1-14-decide-how-the-game-records-video/review/`.
+
+**The fence (patches, applied and re-verified by running):**
+- [x] [Review][Patch] **The guard was blind to a `GUID:` reference, and checked only two assemblies.**
+      [Assets/Tests/EditMode/RecordingSpikeFenceTests.cs]
+      - Reproduced: I added `"GUID:d56b5e…"` (the asmdef Inspector's default form) to
+        `CameraGame.Editor.asmdef`. Unity resolved the reference (`CompilationPipeline` listed it), and all
+        5 guards stayed green.
+      - Fix: `NoAssemblyExceptTheSpikesOwnEditorAssembly_DeclaresAReferenceToTheSpike` asks the compilation
+        pipeline, covers every assembly, and has a positive control: the spike's own Editor assembly.
+      - Under the same mutation it went red with "CameraGame.Editor"; restored, it is green.
+- [x] [Review][Patch] **Nothing checked what keeps the spike out of a plain build.** Removing the define
+      constraint, or putting `CAMERA_RECORDING_SPIKE` in Player Settings, left every guard green.
+      [RecordingSpikeFenceTests.cs]
+      - Fix: `PlainPlayerBuild_DoesNotCompileTheSpike` reads
+        `CompilationPipeline.GetAssemblies(PlayerWithoutTestAssemblies)`.
+      - Positive control: with the define in the Standalone symbols, the spike appears in that list and
+        the test goes red. Cleared, it is green.
+      - The define was restored through the serialized PlayerSettings (`scriptingDefineSymbols: {}`), and
+        `git` shows ProjectSettings.asset byte-identical to HEAD.
+- [x] [Review][Patch] **A stale arming flag hijacked a normal Play press.**
+      [Assets/Spikes/RecordingSpike/SpikeArgs.cs, Editor/RecordingSpikeMenu.cs]
+      - Reproduced: a flag left in SessionState (what a refused `EnterPlaymode` leaves behind), then a plain
+        `manage_editor play`. The harness armed, disabled the chase camera, suppressed input and stopped
+        play mode. That contradicts "a normal play session never sees it".
+      - Fix: the menu stamps `EditorApplication.timeSinceStartup`, and the harness arms only within 120 s of
+        the stamp. Older flags are discarded with one log line.
+      - Re-tested: the stale flag now reads "discarded … this play session runs normally" (no harness,
+        chase camera on). The fresh menu path still arms (the final fidelity run).
+
+**ADR-4 accuracy (patches, applied to `game-architecture.md` ADR-4, Decision Summary row 9 and the decision
+log, each checked against the evidence):**
+- [x] [Review][Patch] **"(A) lost 60–80% of its frames" matched no measurement.**
+      - The true figures: 197–220 of 229–248 captures dropped (86–89%), leaving 27–32 distinct frames per
+        10-s take.
+      - "A take holds 4.2–6.5 s" was a harness artefact: the repeats owed at stop were never flushed. The
+        last capture's repeat count was 174, which is exactly 300 − 126 written.
+- [x] [Review][Patch] **(A)'s sound cell said "yes".** Its MP4s are 4.2–6.5 s long against 10 s of sound,
+      3–5 s out of sync at the end marker (reproduced).
+- [x] [Review][Patch] **(A)'s "20–40 fps" playback was measured while nothing played.** It is now "not
+      measurable".
+- [x] [Review][Patch] **"VideoPlayer failed 3/4" was the spike's 10-s prepare cap.** There was no error, and
+      the successful prepares took 3.6 and 9.3 s.
+- [x] [Review][Patch] **The export range "24–42 s / 2.4–4.2×" mixed in the 16-s edit.**
+      - A 10-s clip takes 40–42 s (4.0–4.2× real time).
+      - The edit took 24 s (1.5×).
+- [x] [Review][Patch] **(B)'s "nothing measurable, inside the noise" used (B)'s own spread at n = 3.** It now
+      says +0.8 ms, not distinguishable from 0, and a cost up to ~4 ms is not ruled out. Row 9 and the
+      decision log no longer say "~0 ms".
+- [x] [Review][Patch] **AC1's table had no licence/cost row: 12 cells, not 15.** The row is added, with the
+      paid "buy" option (AVPro, vendor docs only) and the ≈ 99 MB local binary size (an LGPL build's size is
+      unmeasured).
+- [x] [Review][Patch] **Duplicated frames were never reported, though AC1 asks for them.** The row is now
+      "dropped / repeated". (C)'s "0 lost" had 129–154 of 300 frames repeated.
+- [x] [Review][Patch] **(C)'s memory figures were conflated.** The theoretical 249 MB/s sat next to 6.2 GB of
+      private bytes. The ADR now gives both: 2.45 GB of frame buffers and 6.2 GB private memory.
+- [x] [Review][Patch] **The PCM was held as float32 (384 KB/s), not 16-bit as stated.** 192 KB/s is
+      what 16-bit storage would take.
+- [x] [Review][Patch] **The (A) cause was stated as fact.** "Shares the integrated GPU with the game" was
+      written as settled, but the game ran on the MX350. The mechanism is now "not isolated", with the
+      CPU-conversion figures, and the TCP transport is named.
+- [x] [Review][Patch] **The frame-source scope was overstated.** SSIM 1.0000 and `vflip` were measured only
+      at 1920×1080 on D3D11, and the target is a fixed 1080p. The ADR now scopes the claim to that setting.
+- [x] [Review][Patch] **The reversal cost was understated.** Playback and card code, and after Epic 9 the edit
+      model, are (B)-specific.
+- [x] [Review][Patch] **Cells had no evidence path.** SSIM, tones, r, A/V, export frames and timings were
+      re-run with the committed scripts and saved as `review/reproduced-numbers.txt`.
+      - (B) A/V is −60…+23 ms over all four takes; the ADR said −60…+10.
+      - r is −0.58…−0.73.
+      - SSIM is 0.991–0.993.
+
+**ADR-4 content the next stories need (patches, applied):**
+- [x] [Review][Patch] **The failure story was labelled "measured", but (B)'s own failures were never
+      provoked.** The spike's export loop waits on the main thread, throws on a missing exe and ignores
+      exit codes. Its `-shortest` mux cut a 301-frame export to **298** (reproduced). The requirements for
+      Epic 9's exporter are now written down.
+- [x] [Review][Patch] **A/V alignment is fragile.** The clapper tone landed at 0.21 s and 0.34 s instead of
+      0.50 s in the fail-soft runs (reproduced). The PCM clock starts at the next audio callback, while the
+      tick clock starts at the frame start. A take's PCM is ±2 DSP blocks off its tick duration (−37 ms
+      measured). The ADR now requires DSP-time stamps and PCM padded or trimmed to the tick timeline.
+- [x] [Review][Patch] **"Missing from replays" was wrong.** Anything not in the track renders *as it is at
+      playback time*.
+- [x] [Review][Patch] **The listener tap records UI, music and the REC beeps.** The ADR adds a rule: sounds
+      that must stay out of the footage set `bypassListenerEffects = true`.
+- [x] [Review][Patch] **Saved replays depend on content.** A renamed state or an edited clip changes or
+      breaks them, so the 1.17 disk format needs a content version.
+- [x] [Review][Patch] **The ghost was cloned from "the first live actor".** A clip from another session
+      could not rebuild it. The track now names the `EventDefinition`, and the ghost comes from its prefab.
+- [x] [Review][Patch] **Clips need their own sample rate and channel count.** `AudioManager`'s rate is 0,
+      "the device's rate".
+- [x] [Review][Patch] **Trims are tick-accurate, not frame-accurate, below 30 fps.** A tick that spans a cut
+      must have its repeat count split.
+- [x] [Review][Patch] **The Animator replay limits were not written down.**
+      - The track has no parameters, layer weights or IK.
+      - The spike passed seconds to the normalized `CrossFade`, which is harmless only while the ghost's
+        clock is frozen.
+- [x] [Review][Patch] **1.15 was told to lift the ffmpeg encoder before the licence was settled.** It now
+      belongs to the export story, gated on the LGPL check. The pieces 1.15 lifts are "written as new code,
+      not copied", and their known defects are listed: the asymmetric `forceRenderingOff` hide, incomplete
+      ghost stripping, lost frame-tap callbacks.
+- [x] [Review][Patch] **The playback numbers were not marked as single-actor**, and the track grows with
+      the number of actors. Both are now stated.
+
+**Reproducibility and the fidelity claim (patches, applied):**
+- [x] [Review][Patch] **The scripts behind every ADR number were git-ignored**, so the README's "rebuild
+      every piece of evidence" was impossible from a clone.
+      - They are committed to `tools/verification/recording-spike/` with repo-relative paths, and the
+        absolute user path is gone. The README points there.
+      - Re-ran `audio_check.py` from the new location, and it matched.
+- [x] [Review][Patch] **The single-take export muxed take-1 audio with the last take's video.**
+      [SpikeHarness.cs `ExportProbe`] It is fixed. `measure-B-r1-export.mp4` has the wrong pairing, but its
+      timing is still valid.
+- [x] [Review][Patch] **The README did not say the spike compiles in every Editor session** against
+      `CameraGame`. It now says a broken spike must never block Play mode: fix it minimally or delete it.
+- [x] [Review][Patch] **The "bone drift 0.00 cm" claim needed per-tick evidence.**
+      - It rested on 3 frames (vf 60/165/255), none inside the two 0.2-s crossfades at the peak. The
+        transition-replay code also passes a fixed-time duration to the normalized `CrossFade`.
+      - Hypothesis tested and **disproven**. The new `Tools > Recording Spike > Review - Replay Fidelity
+        Sweep (Play)` sends every tick of two takes through the real `ReplayPlayer.Apply`.
+      - Result: **0.000 cm on every tick, including all 15 crossfade ticks.** The control (ghost against the
+        previous tick's live pose) reads 44–71 cm, so the metric sees motion and the zero is real.
+      - The rendered worst-transition tick (`review/run2-with-control/…-worst-transition-*.png`; the
+        first-run image is in `run1-no-control/`) shows the live bones (red) under the ghost bones (green)
+        on the drunk's joints, mid-crossfade.
+      - The ADR now cites the sweep.
+
+**Corrections to the Dev Agent Record (not rewritten above; recorded here):**
+- Playback did not advance "through every tick (0..293)". It was monotonic but showed 96 of 294 distinct
+  ticks (c2: 107 of 248).
+- `evidence-B-rerender-vf060.png` is a later tick (SSIM 0.770): playback jumped from vf 58 to 61.
+- The crash stacks hold UnityPlayer, KERNEL32 and ntdll frames only. Media Foundation DLLs appear only in the
+  module list.
+- The Photo Shoot "0 masked differences" includes one timing-jitter line (`TimeToPeak -0.02s` against
+  `0.00s`), which is not a regression.
+- The verification plan's "the guard fails if you add the reference (try it once)" had not been done. This
+  review did it, and that is how it found the GUID hole.
+
+**Deferred (real, not fixable in this phase; copied to `deferred-work.md`):**
+- [x] [Review][Defer] **The shippable export binary is unproven.** [game-architecture.md ADR-4 export path]
+      — deferred to the export story. The edit export ran on the local GPL ffmpeg. That the BtbN LGPL build
+      contains `h264_mf` is unconfirmed, and A-MF was never built. Checking it means downloading and running
+      a third-party binary, which this unattended review did not do. The ADR now gates the export story on it.
+- [x] [Review][Defer] **The in-build playback has never been filmed in motion.** — deferred to a session
+      with an unlocked desktop. gdigrab failed on the lock screen during dev, and again at 22:05 during this
+      review (a desktop grab showed the lock screen). Re-run `tools/verification/recording-spike/evidence.sh`
+      while the desktop is unlocked.
+- [x] [Review][Defer] **The spike's export path is not fail-soft.** [SpikeHarness.cs `ExportProbe`/`EditExport`,
+      Sinks.cs] — throwaway code. The requirements are in ADR-4's failure story, for Epic 9's exporter.
+- [x] [Review][Defer] **The live drunk could respawn invisible.** [ReplaySpike.cs `OnBegin`/`Dispose`] —
+      hypothesis, not reproduced. `forceRenderingOff` is toggled only on begin, and dispose restores active
+      actors only. Recorded as a 1.18 requirement.
+- [x] [Review][Defer] **`FfmpegSink.Dispose` may free slots the worker thread still reads.** [Sinks.cs] —
+      hypothesis. It may contribute to (A)'s crash on quit, but (A) is rejected. Note for the export story.
+- [x] [Review][Defer] **Audio-tap edge cases.** [AudioTap.cs, SpikeHarness.cs] — the quad downmix treats
+      rear-left as centre; the listener is assumed to be on `Camera.main`; `unscaledTime` runs on during a
+      pause; the float clock loses precision over hours. All are design inputs for 1.15.
+- [x] [Review][Defer] **Ticks jitter by up to one game frame.** Perceptual. ADR-4 now asks for a timestamp
+      per tick, and the judder question sits in human check 2.
+- [x] [Review][Defer] **(B) playback runs at 17–21 fps, cause unknown.** Already ADR risk 1, for 1.18.
+- [x] [Review][Defer] **The bad-path fail-soft case logs twice** ("encoder unavailable" and "finalize
+      faulted"). Spike only.
+- [x] [Review][Defer] **The battery may have run on a locked workstation.** Hypothesis: the lock is evidenced
+      at 21:03 and the battery ran 20:11–20:58. If so, every candidate shared the condition (difference-in-
+      differences), and the NFR1 human check re-runs it on a desktop anyway.
+- [x] [Review][Defer] **Three rounds cannot fully balance four run positions** on a heating laptop. A limit of
+      the method, now stated as n = 3. It cannot change the ranking: (A) and (C) lose by 10–30 ms and by
+      memory.
+
+**Dismissed (12):**
+- The architecture's `status: complete` is the workflow's status, not the ADR's.
+- Row 7 "one asmdef": the spike is the documented exception.
+- "Live fps stated two ways": two different windows, both named.
+- SSIM 0.992 against 0.993: two runs, now a range.
+- "Take 2 = 301 frames is an off-by-one": it is the last tick's repeat on a time-based stop.
+- "(B)'s cost leaves out grading": `ShotGrader` is geometric, with no readback (`ShotGrader.cs:156`).
+- `Fps = 0` divide-by-zero: a spike argument nobody sets.
+- The spike's small leaks (an `AudioClip` per playback, the ghost left animating): spike-only.
+- "Export freezes the pose at 16 ticks per frame": disproven by the Edge Case Hunter, frame by frame.
+- "Transition ticks drift": disproven by the sweep.
+- "Settings restored only on disk": disproven by an editor read-back. UnityConnect `m_Enabled` is false,
+  batching is `[]` and preloaded assets are `[]`, in memory and on disk.
+- The `UNITY_EDITOR ||` risk is folded into the README patch above.
+
+**Status stays `review`, not `done`.** Every patch is applied, but AC2's approval clause is Alexv's and
+cannot be self-certified. The perceptual checks (playback quality, sound) are still queued. Re-verified after
+the patches:
+- EditMode **168/168** (the 5 fence tests rewritten, so the count is unchanged);
+- console at the AC4 baseline;
+- SampleScene open and not dirty;
+- defines `''`, frame timing off, StandaloneWindows64, quality PC, `timeScale` 1, `captureDeltaTime` 0,
+  `targetFrameRate` −1;
+- spike SessionState empty;
+- `git status`: only the files listed below.
+
+No game code was touched, so the Photo Shoot rig was not re-run. The spike's play-mode `Boot` still returns
+at once when no flag is set.
+
+Review changes:
+- `Assets/Tests/EditMode/RecordingSpikeFenceTests.cs`;
+- `Assets/Spikes/RecordingSpike/{SpikeArgs.cs,SpikeHarness.cs,Editor/RecordingSpikeMenu.cs,README.md}`;
+- `tools/verification/recording-spike/*` (new);
+- `game-architecture.md` (ADR-4, row 9);
+- `decision-log.md`;
+- `deferred-work.md`;
+- `sprint-status.yaml`;
+- this file.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -1049,3 +1275,4 @@ of the killed encode decodes 35 frames.
 |---|---|
 | 2026-11-10 | Story context created by `gds-create-story` (loop CREATE phase): 4 ACs (3 verbatim from epics.md + AC4 for no regressions and restore), 10 tasks with 4 gating decisions, verification plan, human checks to queue. Status → ready-for-dev. |
 | 2026-11-10 | DEV (loop): spike built and measured in a Windows build (3 rotated rounds); ADR-4 **proposed**: (B) replay + MP4 only at export; AC3 proven in the build; fence proven by the plain build plus 5 guard tests; 168/168 EditMode; restore verified. Status → review (ADR-4 approval pending Alexv). |
+| 2026-11-10 | CODE REVIEW (loop): 0 decisions, 32 patches (all applied), 11 deferred, 12 dismissed. The fence guard was blind to `GUID:` references and to Player Settings defines (both reproduced by mutation, fixed, re-verified red→green). A stale arming flag hijacked normal Play (reproduced, fixed). ADR-4's numbers corrected against the evidence, licence/cost row added, failure story and the defects 1.15 must not inherit spelled out. Fidelity re-measured on every tick: 0.000 cm including all crossfades (control 44–71 cm). Evidence scripts committed to `tools/verification/recording-spike/`. Decision unchanged; status stays review (ADR-4 approval + perceptual checks pending). |

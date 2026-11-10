@@ -15,6 +15,11 @@ namespace CameraGame.Spikes.RecordingSpike
     public sealed class SpikeArgs
     {
         public const string SessionKey = "CameraGame.RecordingSpike.Args";
+        // When the editor menu armed the flag (EditorApplication.timeSinceStartup). A flag older than this window
+        // is STALE - e.g. Play() wrote it but EnterPlaymode was refused (compile errors) - and is discarded, so it
+        // can never hijack a normal Play press (code review 2026-11-10 reproduced exactly that).
+        public const string ArmedAtKey = "CameraGame.RecordingSpike.ArmedAt";
+        public const double ArmWindowSeconds = 120;
 
         public string Mode = "";          // baseline | A | B | C | survey | control | failsoft
         public string OutDir = "";
@@ -33,6 +38,7 @@ namespace CameraGame.Spikes.RecordingSpike
         public bool Export = true;
         public bool EditExport;
         public bool Solo;                 // (B) full-screen playback with the live camera off: ONE town render           // (B) Edit Suite probe: trim clip 1, join clip 2, export ONE file
+        public bool Fidelity;             // review 2026-11-10: per-tick ghost-vs-live bone drift over the whole take (B only)
         public float Timeout = 240f;
         public Vector3 Vantage = new Vector3(float.NaN, 0, 0);
         public float Zoom = 0f;
@@ -48,8 +54,17 @@ namespace CameraGame.Spikes.RecordingSpike
             string[] argv = Environment.GetCommandLineArgs();
 #if UNITY_EDITOR
             string s = UnityEditor.SessionState.GetString(SessionKey, "");
-            if (!string.IsNullOrEmpty(s)) argv = s.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            else return a; // never arm from the editor's own command line
+            if (string.IsNullOrEmpty(s)) return a; // never arm from the editor's own command line
+            double armedAt = UnityEditor.SessionState.GetFloat(ArmedAtKey, -1f);
+            double age = UnityEditor.EditorApplication.timeSinceStartup - armedAt;
+            if (armedAt < 0 || age < 0 || age > ArmWindowSeconds)
+            {
+                UnityEditor.SessionState.EraseString(SessionKey);
+                UnityEditor.SessionState.EraseFloat(ArmedAtKey);
+                Debug.Log($"[RecordingSpike] discarded a stale arming flag (armed {(armedAt < 0 ? "never" : age.ToString("0") + " s ago")}); this play session runs normally.");
+                return a;
+            }
+            argv = s.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 #endif
             for (int i = 0; i < argv.Length; i++)
             {
@@ -73,6 +88,7 @@ namespace CameraGame.Spikes.RecordingSpike
                     case "-noexport": a.Export = false; break;
                     case "-editexport": a.EditExport = true; break;
                     case "-solo": a.Solo = true; break;
+                    case "-fidelity": a.Fidelity = true; break;
                     case "-timeout": a.Timeout = float.Parse(v, CultureInfo.InvariantCulture); i++; break;
                     case "-zoom": a.Zoom = float.Parse(v, CultureInfo.InvariantCulture); i++; break;
                     case "-failcase": a.FailCase = v; i++; break;

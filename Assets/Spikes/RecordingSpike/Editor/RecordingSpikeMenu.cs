@@ -93,6 +93,12 @@ namespace CameraGame.Spikes.RecordingSpike.Editor
             Play(args + " -spikeOut " + Esc(Path.Combine(Evidence, "dev-editor")) + " " + ExtraArgs());
         }
 
+        /// <summary>Code review 2026-11-10: ghost-vs-live bone drift on EVERY tick of two takes across the peak (the
+        /// story measured 3 frames, none in a crossfade). Editor play mode is fine here: this is animation
+        /// fidelity, not frame cost. Output in review/.</summary>
+        [MenuItem("Tools/Recording Spike/Review - Replay Fidelity Sweep (Play)")]
+        public static void FidelityReview() => Play("-recordingSpike B -spikeTag review-fidelity -cycles 2 -fidelity -noexport -timeout 240 -spikeOut " + Esc(Path.Combine(Evidence, "review")) + " " + ExtraArgs());
+
         /// <summary>Extra arguments (for example the chosen vantage) kept in a text file next to the evidence.</summary>
         public static string ExtraArgs()
         {
@@ -112,6 +118,7 @@ namespace CameraGame.Spikes.RecordingSpike.Editor
                 return;
             }
             SessionState.SetString(SpikeArgs.SessionKey, args);
+            SessionState.SetFloat(SpikeArgs.ArmedAtKey, (float)EditorApplication.timeSinceStartup);
             SessionState.SetString(ReturnKey, scene.path);
             EditorApplication.EnterPlaymode();
         }
@@ -125,6 +132,7 @@ namespace CameraGame.Spikes.RecordingSpike.Editor
                 if (string.IsNullOrEmpty(SessionState.GetString(SpikeArgs.SessionKey, ""))) return;
                 // Disarm so a normal play session never runs the harness, and confirm the scene is clean.
                 SessionState.EraseString(SpikeArgs.SessionKey);
+                SessionState.EraseFloat(SpikeArgs.ArmedAtKey);
                 string back = SessionState.GetString(ReturnKey, "");
                 SessionState.EraseString(ReturnKey);
                 var scene = EditorSceneManager.GetActiveScene();

@@ -181,7 +181,7 @@ These are NOT provided by the engine and must be decided in the next steps:
 | 6 | Memory card persistence | In-memory `CapturedClip` store capped in seconds of footage (evolves GalleryService); disk-ready seam; cross-session by Epic 9 | Video needs a hard bound; editing needs clips to survive. *(Revised 2026-11-10 — was "Gallery persistence: in-memory List<CapturedShot>; defers disk to Epic 4/5".)* |
 | 7 | Code organization | CameraGame.* namespaces; feature folders; one asmdef; SO event channel for ShotCaptured | Lean for solo dev; clean dependency seams without over-engineering. |
 | 8 | Audio / pooling | 3D AudioSource per actor (~25m rolloff, 1 mixer); generic ObjectPool<T> | Sufficient for the slice; satisfies no-leak metric. |
-| 9 | Clip recording | **ADR-4 — Proposed 2026-11-10, awaiting Alexv:** (B) replay recording; MP4 (H.264 via Media Foundation + AAC) only at export | Measured in a Windows build (Story 1.14): (B) costs ~0 ms/frame and ~195 KB/s, (A) lost 60–80% of frames to a starved encoder, (C) needs ~250 MB/s of RAM. *(Added 2026-11-10; revised 2026-11-10 by Story 1.14.)* |
+| 9 | Clip recording | **ADR-4 — Proposed 2026-11-10, awaiting Alexv:** (B) replay recording; MP4 (H.264 via Media Foundation + AAC) only at export | Measured in a Windows build (Story 1.14): (B) costs +0.8 ms/frame over 3 rounds (not distinguishable from 0) and ~195 KB/s as 16-bit, (A) dropped 86–89% of its captures to a starved encoder, (C) needs ~250 MB/s of RAM. *(Added 2026-11-10; revised 2026-11-10 by Story 1.14 and its code review.)* |
 
 ### Camera & State
 
@@ -300,36 +300,48 @@ added later without reshaping the model.
   encoder.
 
   **Why.** On the only machine measured (a laptop: i7-1165G7, MX350 + Iris Xe, see NFR1 below),
-  recording with (B) cost nothing measurable (+0.8 ms/frame, inside the run-to-run noise of −4.2…+3.6 ms)
-  and lost no frames. It stores about 2.6 KB/s of pose data plus 192 KB/s of 16-bit stereo sound (≈ 23 MB for
-  the ~2-min card), and it re-rendered the drunk exactly (bone drift 0.00 cm, SSIM 0.992 against the live
-  frame). (A) cost +10.9 ms/frame and lost 60–80% of its frames: the hardware H.264 encoder shares the
-  integrated GPU with the game and fell from ~68 fps idle to ~6 fps while the game ran. A standalone ffmpeg
-  encoding a file from disk fell to 6.6 fps too, so it is the machine, not the pipeline. (A)'s `VideoPlayer`
-  playback failed to prepare in 3 of 4 cycles, and the player crashed or hung on quit after it in 4 of 5
-  (A) runs. (C) cost +30.2 ms/frame and 6.2 GB of process memory for 10 s (the 2-min card would need
-  ≈ 30 GB, *extrapolated*), so it is rejected on memory alone.
+  recording with (B) cost **+0.8 ms/frame on average over 3 rounds (−4.2…+3.6)** and lost no frames. That is
+  not distinguishable from zero, but with n = 3 a cost of up to about 4 ms (a quarter of a 60 FPS frame) is
+  not ruled out either. It stores about 2.6 KB/s of pose data plus the sound (the spike held it as float32,
+  384 KB/s measured; 16-bit is 192 KB/s, ≈ 23 MB for the ~2-min card), and it re-rendered the drunk exactly:
+  ghost-vs-live bone drift **0.000 cm on every tick of two takes, including the 15 crossfade ticks** around
+  the peak (Editor play mode, two runs; a control against the previous tick reads 44–71 cm), and SSIM
+  0.991–0.993 against the live frame.
+  (A) cost +10.9 ms/frame, and of 229–248 capture attempts per 10-s take it dropped 197–220 (86–89%), so a
+  take held only **27–32 distinct frames** (about 3 per second). The Intel hardware H.264 encoder fell from
+  ~67 fps idle to 6.6 fps while the game ran, even for a standalone ffmpeg encoding a file from disk, so it is
+  not the game-to-ffmpeg pipeline. The game rendered on the MX350, and the mechanism was not isolated
+  (Optimus presents through the Iris Xe, and CPU-only RGBA→NV12 conversion also fell from 93 to 32 fps on
+  the 4 cores). (A)'s `VideoPlayer` did not prepare within the spike's 10-s cap in 3 of 4 cycles (no error
+  raised; the successful prepares took 3.6 and 9.3 s), and the player crashed or hung on quit after it in 4
+  of 5 (A) runs. (C) cost +30.2 ms/frame and held 2.45 GB of frame buffers for 10 s, with private memory at
+  6.2 GB against 1.04 GB for the baseline. The 2-min card would need ≈ 30 GB (*extrapolated*), so (C) is
+  rejected on memory alone.
 
   **Evidence** (1080p30 footage, Windows **release build**, windowed 1920×1080, 3 rounds with the order rotated;
   frame cost = difference-in-differences against a baseline run of the same scripted segment, because the
-  view the camera tracks changes the cost up to 4× across the drunk's cycle; tables in `measure/analysis.json`):
+  view the camera tracks changes the cost up to 4× across the drunk's cycle; tables in `measure/analysis.json`;
+  the sound, SSIM and export numbers are reproduced in `review/reproduced-numbers.txt`, and the per-tick
+  fidelity sweep is in `review/review-fidelity-c{1,2}-fidelity.csv`):
 
   | | (A) encode while playing | **(B) replay** | (C) raw frames in RAM |
   |---|---|---|---|
-  | Frame-time cost while recording | +10.9 ms (6.6–13.9) | **+0.8 ms (−4.2…+3.6)** | +30.2 ms (25.0–34.6) |
-  | Frames lost | 197–220 dropped captures; a 10 s take holds 4.2–6.5 s | **0** | 0 (game at 16 fps) |
-  | Memory / disk per second | ~1 MB/s MP4 on disk; 47 MB of slots | **2.6 KB/s pose + 192 KB/s PCM** | 249 MB/s RAM; 6.2 GB private for 10 s |
-  | Game sound in the footage | yes (same tap) | **yes**: non-silent, louder as he nears (r = −0.62…−0.73), A/V −60…+10 ms | yes |
-  | Playback in the build | `VideoPlayer` failed 3/4; crash/hang on quit | **re-render, SSIM 0.993 vs live; clip's own tones heard 8.98 s apart** | bit-exact; 4–21 ms upload/frame |
-  | Playback frame rate (laptop) | 20–40 fps | 17–21 fps (live game: 53–58) ⚠️ | 32–39 fps |
-  | Export to MP4 (10 s clip) | the file itself (stop-to-file 19–35 s) | **24–42 s offline re-render + encode** | 29 s encode |
+  | Frame-time cost while recording | +10.9 ms (6.6–13.9) | **+0.8 ms (−4.2…+3.6), n = 3** | +30.2 ms (25.0–34.6) |
+  | Frames dropped / repeated (of 300) | 197–220 captures dropped; 27–32 distinct frames per take | **0 dropped**; 1–42 repeated (game < 30 fps) | 0 dropped; 129–154 repeated (game at 16 fps) |
+  | Memory / disk per second | ~1 MB/s MP4 on disk; 47 MB of slots | **2.6 KB/s pose + 384 KB/s PCM as held (192 KB/s as 16-bit)** | 249 MB/s of frame buffers (2.45 GB for 10 s); 6.2 GB private |
+  | Game sound in the footage | captured, but the MP4s are 4.2–6.5 s long against 10 s of sound, 3–5 s out of sync at the end marker | **yes**: non-silent, louder as he nears (r = −0.58…−0.73), A/V −60…+23 ms | yes (A/V −15…+155 ms) |
+  | Playback in the build | `VideoPlayer` did not prepare within 10 s in 3 of 4 cycles; crash/hang on quit in 4 of 5 runs | **re-render, SSIM 0.991–0.993 vs live; the clip's own tones heard 8.98 s apart** | uploads the stored frames, 4–21 ms per frame |
+  | Playback frame rate (laptop) | not measurable: no clip played in 3 of 4 cycles | 17–21 fps (live game in the same window: 53–58) ⚠️ | 32–39 fps |
+  | Export to MP4 | the file itself (stop-to-file 19–35 s) | **10-s clip: 40–42 s re-render + encode (4.0–4.2× real time); the 16-s edit: 24 s (1.5×); 720p: 2.95×** | 10-s clip: 29 s encode |
+  | Licence / cost (live recording + export) | ffmpeg as a separate LGPL exe (obligations below; the local GPL build is ≈ 99 MB, an LGPL build's size unmeasured), or A-MF (OS encoder, unbuilt); H.264/AAC patents open. Buy option: AVPro Movie Capture, $100–500, vendor docs only | **record and play: Unity APIs only, nothing to licence. Export: the same encoder question as (A)** | record and play: nothing. Export: the same encoder question as (A) |
 
   **Footage format.** *On the card:* a replay track at 30 Hz. Each tick holds the photo camera's position,
   rotation and FOV, and for each event actor its liveness, transform and per-Animator-layer state (full-path
   hash, normalized time, and, while in transition, the next state, its time, and the transition's progress
-  and duration). That is 87 B/tick for the drunk. Alongside it goes 48 kHz stereo PCM from
-  `OnAudioFilterRead` on the AudioListener's GameObject, kept as 16-bit. A tick also stores its *repeat count*,
-  so a game running below 30 fps still yields a true-duration clip. *On export:* MP4, H.264 via Media Foundation
+  and duration). That is 87 B/tick for the drunk, one actor; the track grows linearly with the actors on
+  screen. Alongside it goes 48 kHz stereo PCM from `OnAudioFilterRead` on the AudioListener's GameObject; the
+  spike held it as float32, and 1.15 should keep it as 16-bit. A tick also stores its *repeat count*, so a
+  game running below 30 fps still yields a true-duration clip. *On export:* MP4, H.264 via Media Foundation
   (CBR 8 Mbps, GOP 30 = 1 s, NV12, Constrained Baseline as the Intel MFT produced it), AAC-LC 160 kbps
   48 kHz stereo, 1920×1080 @ 30. The encoder writes MPEG-TS, which is remuxed to MP4 at the end (`h264_mf`
   delivers no extradata in time for an MP4 header, and TS survives a kill: 35 frames decoded from a killed
@@ -339,19 +351,28 @@ added later without reshaping the model.
   precedent: a camcorder films the scene, not its own REC dot). For any live frame the game needs (thumbnails,
   reference frames), use the proven technique. A URP pass enqueued from script in `beginCameraRendering` (no
   renderer-asset change) at `AfterRenderingPostProcessing` copies the camera colour into an sRGB RT, which is
-  then read with `AsyncGPUReadback`. Never use `ReadPixels`. It was byte-identical to the screen with the
-  overlays hidden (SSIM 1.0000, `evidence/control-*`). Its rows come back bottom-up, so encoders need `vflip`.
+  then read with `AsyncGPUReadback`. Never use `ReadPixels`. At 1920×1080 windowed on D3D11 (the only setting
+  measured) it was byte-identical to the screen with the overlays hidden (SSIM 1.0000, `evidence/control-*`).
+  There its rows came back bottom-up, so encoders needed `vflip`; on another graphics API, check
+  `SystemInfo.graphicsUVStartsAtTop` rather than assuming it. The spike's target is a fixed 1920×1080, so a
+  non-16:9 window would be stretched: size it from the camera.
 
   **Memory card (AR6, NFR3).** Capacity in seconds = Σ tick repeats ÷ 30. Deleting a clip disposes its track
-  and PCM buffers, and `MemoryCardService` is their single owner. Story 1.17's disk seam: one binary track
-  file plus one 16-bit WAV per clip (~195 KB/s).
+  and PCM buffers, and `MemoryCardService` is their single owner. Keep the PCM in a pooled native or
+  preallocated buffer, not a fresh managed array per take (the spike's `Snapshot()` allocated one, ~46 MB per
+  2 min as float). Story 1.17's disk seam: one binary track file plus one 16-bit WAV per clip (~195 KB/s).
+  Each clip records its own sample rate and channel count, because `AudioManager`'s rate is 0 ("the device's
+  rate"), so clips from different devices or sessions can differ.
 
-  **Epic 9 (trim and join).** Edits are tick ranges plus matching PCM slices, so they are frame-accurate with
-  no keyframes and no re-encode. The in-game preview is the same replay playback, and export re-renders the
-  edit list once. *Demonstrated in the build:* take 1 trimmed by exactly 2.00 s at each end (300 → 180
-  frames), joined with take 2 (301 frames), giving one 16.03 s MP4 (H.264 1920×1080 @ 30 + AAC 48 kHz). A
-  full decode printed nothing, and the drunk is in every sampled second (`evidence/evidence-B-edit.mp4`,
-  `edit-contact-sheet.png`).
+  **Epic 9 (trim and join).** Edits are tick ranges plus matching PCM slices, so no keyframes and no re-encode
+  are needed. They are frame-accurate where the ticks at a cut have a repeat count of 1, which is every tick
+  at ≥ 30 fps. Below 30 fps a tick that spans a cut must have its repeat count split, which the spike did not
+  do. The in-game preview is the same replay playback, and export re-renders the edit list once.
+  *Demonstrated in the build:* take 1 trimmed by exactly 2.00 s at each end (300 → 180 frames), joined with
+  take 2 (301 frames), giving one 16.03 s MP4 (H.264 1920×1080 @ 30 + AAC 48 kHz). A full decode printed
+  nothing, and the drunk is in every sampled second (`evidence/evidence-B-edit.mp4`, `edit-contact-sheet.png`).
+  ⚠️ That export ran on the local **GPL** ffmpeg, so the *pipeline* is proven and the *shippable binary* is not
+  (next item).
 
   **Export path (FR31) and licence: explicit open items for Alexv.**
   - ffmpeg as a *separate executable*, an **LGPL** build (BtbN `win64-lgpl`), which a build step copies in from
@@ -359,32 +380,61 @@ added later without reshaping the model.
     LGPL obligations: offer the exact corresponding source, put the notice in About/EULA, allow reverse
     engineering in the EULA, don't rename the binaries. *Unconfirmed:* that the BtbN LGPL binary includes
     `h264_mf` (its scripts do not disable auto-detection). Run `ffmpeg -encoders` on it before relying on it.
+    **The export story is gated on that check.** The AAC encoder used was ffmpeg's native `aac`.
   - Alternative **A-MF**: drive Media Foundation's Sink Writer from C# (no extra executable, OS encoder).
-    This was assessed on paper only. It is a drop-in behind the export seam.
+    This was assessed on paper only and has never been built. It would sit behind the same export seam.
   - **Patents:** H.264 (Via LA) and AAC are a business decision, not settled here. Whether calling Windows'
     own encoder is covered is unconfirmed. VP9/AV1 are the royalty-free alternatives (unmeasured).
   - **Windows N/KN:** no Media Foundation means export is unavailable there (fail-soft message). Recording
-    and playback are unaffected, because (B) never touches Media Foundation.
+    and playback are unaffected, because (B) never touches Media Foundation (reasoned, not run on an N edition).
   - Unity Recorder's runtime DLLs (`Unity.Recorder*.dll`) ship in every build as package defaults. No game or
     spike code references them, and they cannot record in a player.
 
-  **Failure story (NFR8)** — *measured* (`evidence/evidence-failsoft-*`). A missing encoder, an encoder killed
-  mid-clip, and a full buffer each log once while the game keeps running. A failed export leaves the clip on the
-  card. A crash mid-recording loses the in-memory take unless Story 1.17 streams ticks and PCM to disk as it records.
+  **Failure story (NFR8).** *Measured* (`evidence/evidence-failsoft-*`), on (A)'s live encoder and (C)'s
+  buffer: a missing encoder, an encoder killed mid-clip and a full buffer each logged while the game kept
+  running. *Not measured, and not yet true:* (B)'s own failures. The spike's export loop waits on the main
+  thread (`while (!TryAcquire) Sleep(1)`, a 60-s `Finish`, `WaitForExit()` with no timeout), throws if the
+  encoder executable is missing (the same `Win32Exception` (A)'s path caught), never checks ffmpeg's exit
+  code, and muxes with `-shortest`, which silently cut a 301-frame export to 298
+  (`review/reproduced-numbers.txt`). The export Epic 9 ships must run off the main thread with timeouts, check
+  every exit code, keep the clip on the card when export fails, and never truncate. A crash mid-recording
+  loses the in-memory take unless Story 1.17 streams ticks and PCM to disk as it records.
 
   **Consequences (cross-cutting rule, to add under Cross-cutting Concerns when approved): everything that
   moves or makes sound on screen must be recordable.**
-  - Every `AudioSource` keeps `bypassEffects` and `bypassListenerEffects` off, or the listener tap misses it.
-  - Every event actor exposes its transform and Animator state, and has an un-pooled visual for the ghost.
+  - Every game `AudioSource` keeps `bypassEffects` and `bypassListenerEffects` off, or the listener tap misses
+    it. The reverse holds too: the tap records **everything** the listener hears, including UI clicks,
+    music and the camcorder's own REC beeps. A sound that must stay out of the footage sets
+    `bypassListenerEffects = true` on purpose.
+  - Every event actor exposes its transform and Animator state. The track names the actor's
+    `EventDefinition`, and the ghost is built from that definition's prefab, not from a live instance, so a
+    clip loaded in a later session (1.17, Epic 9) can rebuild it. The spike recorded "the first live actor"
+    and cloned it.
+  - The track records the state hash, time and crossfade only. Today's `DrunkAnimator` has one layer, no
+    parameters, no blend trees and no IK. An event that uses any of them must add it to the track (parameters,
+    layer weights, IK targets). Replay a fixed-time crossfade with `CrossFadeInFixedTime`, or by its recorded
+    `durationUnit`: the spike passed seconds to the normalized `CrossFade`, which is harmless only while the
+    ghost's clock is frozen.
   - **Shader-time animation is not reproduced.** Tree and grass sway differed between live and replay
     frames. Either drive it from a recordable clock, or accept the difference.
-  - Particles, physics props and anything not in the track are missing from replays until recorded explicitly.
+  - Anything not in the track (particles, physics props, the player's body, other managers' actors) is
+    **not missing** from a replay: it appears *as it is at playback time*. Record it, or hide it from the
+    playback camera.
+  - A saved replay is only as stable as the content it references. Renaming an Animator state, editing a clip
+    or moving a prop changes or breaks old clips and their later export, so the 1.17 disk format carries a
+    content version.
 
   **Risks carried forward.** (1) **Replay playback is slow on this laptop** (17–21 fps against 53–58 for the
   live game in the same window). Turning the live camera off during full-screen playback did **not** help
   (19.0 fps), so the cost is not the double render and its cause was not isolated. Profile it in a
-  Development build before Story 1.18. (2) Export takes 2.4–4.2× real time here (720p: 2.95×). (3) A/V
-  offset of −60…+10 ms: align by DSP sample count in 1.15. (4) **NFR1's absolute 60 FPS** cannot be judged on
+  Development build before Story 1.18. All playback numbers come from one actor. (2) Export of a 10-s clip took
+  4.0–4.2× real time here (the 16-s edit 1.5×, 720p 2.95×). (3) **A/V alignment is fragile.** The measured
+  (B) takes were −60…+23 ms, but recording starts its clock at the start of a frame while the PCM starts at
+  the next audio callback. Synchronous work on that frame delayed the sound by 160–290 ms in the fail-soft
+  runs (`failsoft-ring`, `failsoft-badpath`), and a take's PCM can be ±2 DSP blocks off its tick duration
+  (−37 ms measured). 1.15 must stamp both by DSP time (`AudioSettings.dspTime`) and pad or trim the PCM to
+  the tick timeline. Ticks are taken on the first game frame after each 1/30-s boundary, so they jitter by up
+  to one game frame; store a timestamp per tick. (4) **NFR1's absolute 60 FPS** cannot be judged on
   this machine. Its no-recording baseline runs 33–52 fps in the recording window, so it waits for a
   mid-range desktop.
 
@@ -392,13 +442,30 @@ added later without reshaping the model.
   backend and not the design: `ClipRecorder` talks to an `IClipBackend` (`Begin`, `Sample` once per game
   frame, `End → IFootage`). `IFootage { float Seconds; long Bytes; void Dispose(); }` is the
   `<footage handle>` of `CapturedClip`, and `ReplayFootage` is the first implementation. Export sits behind
-  `IClipExporter` (ffmpeg-LGPL or A-MF). The spike's proven pieces to lift: the tick recorder with repeat
-  counts, the listener PCM tap, the stripped ghost, and the TCP-fed encoder process (Mono's `Process` stdin
-  starved ffmpeg at ~6 fps of 1080p; loopback TCP kept real time).
+  `IClipExporter` (ffmpeg-LGPL or A-MF). The spike's pieces to lift: the tick recorder with repeat counts,
+  the listener PCM tap and the stripped ghost, **written as new game code, not copied**. The spike version
+  carries these known defects:
+  - the A/V start offset and PCM-length mismatch (risk 3);
+  - the ghost cloned from a live, "first found" actor (Consequences);
+  - live actors hidden from the playback camera by toggling `forceRenderingOff` in
+    `beginCameraRendering` only. Restore it symmetrically in `endCameraRendering`, and on dispose for pooled
+    *inactive* actors too, or a drunk that despawns while hidden can come back invisible (reasoned, not
+    reproduced);
+  - ghost stripping that keeps `NavMeshObstacle`, `Rigidbody` and particle systems;
+  - frame-tap callbacks that are silently lost when the pass does not run.
+
+  The TCP-fed encoder process (Mono's `Process` stdin starved ffmpeg at ~6 fps of 1080p; loopback TCP kept
+  pace in the transport-only diagnostic) belongs to the export story, not 1.15. Lift it only after the
+  LGPL-binary check and Alexv's licence decision.
 
   **Reversal cost.** Before 1.15, nothing (only the spike exists). After 1.15–1.17, swapping to (A) is a new
-  `IClipBackend` plus `IFootage` (a file handle). It still faces the encoder-starvation finding on iGPU
-  machines. (C) is not viable at ~250 MB/s.
+  `IClipBackend` plus `IFootage` (a file handle), but the playback and card code that use replay data would be
+  rewritten too. After Epic 9, the edit model (tick ranges) is (B)-specific as well. (A) still faces the
+  encoder-starvation finding on iGPU machines. (C) is not viable at ~250 MB/s.
+
+  *(Revised 2026-11-10 by the Story 1.14 code review. The numbers were corrected against the evidence; the
+  licence/cost row was added; fidelity was re-measured on every tick; and the export failure story and the
+  defects 1.15 must not inherit are now spelled out. The decision is unchanged.)*
 
 ---
 

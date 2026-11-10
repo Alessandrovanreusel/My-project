@@ -138,8 +138,9 @@ meanwhile. His choices:
   and the Edit Suite work on replay data (camera + actor state at 30 Hz, plus the sound the player heard).
   FR31's standard video file is made only at export, by re-rendering and encoding once (H.264 via
   Windows Media Foundation, plus AAC, in MP4).
-- Why: (B) cost ~0 ms/frame and ~195 KB/s; (A) lost 60–80% of its frames to a hardware encoder starved by
-  the game on this laptop; (C) needs ~250 MB/s of RAM (≈ 30 GB for the 2-min card).
+- Why: (B) cost +0.8 ms/frame over 3 rounds (not distinguishable from zero) and ~195 KB/s as 16-bit; (A)
+  dropped 86–89% of its captures to a hardware encoder starved by the game on this laptop; (C) needs
+  ~250 MB/s of RAM (≈ 30 GB for the 2-min card). *(Figures corrected by the 2026-11-10 code review.)*
 - **Pending Alexv:** approve or veto ADR-4 before Story 1.15 starts. Also open: the H.264/AAC patent
   question, and shipping an LGPL ffmpeg versus driving Media Foundation directly.
 - Evidence: `_bmad-output/verification/1-14-decide-how-the-game-records-video/` and ADR-4 in
