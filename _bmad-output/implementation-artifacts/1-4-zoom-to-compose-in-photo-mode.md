@@ -13,15 +13,18 @@ so that I can compose the frame and chase a higher composition score.
 ## Acceptance Criteria
 
 **AC1 — Scroll/gamepad zoom lerps the camera FOV across the configured range, only in Photo state (FR2)**
+
 - While in **Photo** state, scrolling the mouse wheel (or using the gamepad zoom input) changes the zoom level, and the camera's **field-of-view lerps smoothly** between the wide end (**~60° = 1×**) and the telephoto end (**~18° = 4×**) — never snapping, and never past either limit (clamped).
 - Zoom is a **no-op in Walk state**: scrolling while the camera is lowered changes nothing. (Mirrors the Photo-only gating established for the mode in Story 1.3 — handlers read `IsPhotoMode`.)
 - The transition stays smooth at framerate (NFR1: 60 FPS @ 1080p) with no perceptible input lag (NFR2).
 
 **AC2 — Zoom tunables live in a `CameraConfig` ScriptableObject, not code literals (Architecture §Configuration / Consistency Rules)**
+
 - The FOV endpoints (wide/tele), zoom step/sensitivity, and zoom-smoothing speed are fields on a **`CameraConfig`** ScriptableObject asset at `Assets/Data/Camera/CameraConfig.asset`, assigned to `PhotoModeController` via the Inspector.
 - Changing those numbers in the Inspector re-tunes zoom feel **without a recompile**. No `60f`/`18f`/sensitivity magic numbers hard-coded in the controller.
 
 **AC3 — No regressions to the Story 1.3 raise/lower toggle or existing movement (AR1, NFR8)**
+
 - Raising (hold RMB / LT) and lowering (release) still works exactly as in Story 1.3, viewfinder fade intact, within the **< 0.3 s** budget.
 - Move / Look / Sprint / Jump are untouched. Adding the `Zoom` action does not retype or rebind any existing action.
 - Fail-soft: if `CameraConfig` or the target `Camera` is unassigned, the controller logs a clear error once and **degrades gracefully** (mode + viewfinder still work; zoom is simply inert) — never throws in `Update` (NFR8). Errors are never shown to the player.
@@ -32,7 +35,7 @@ so that I can compose the frame and chase a higher composition score.
   - [x] Open `Assets/Input/InputSystem_Actions.inputactions`. In the **`Player`** action map (the one that already holds `Move`, `Look`, `RaiseCamera`, `Sprint`, …), add a new action named **exactly `Zoom`**.
   - [x] Set **Action Type = `Value`**, **Control Type = `Vector2`**, `initialStateCheck: false`. 🚨 Use `Value`/`Vector2` (mirror `Move`/`Look`), **not** `Button` — see Guardrail #1. The handler reads only the **Y** component (vertical scroll / dpad up-down).
   - [x] Add bindings: **`<Mouse>/scroll`** (required, primary) and **`<Gamepad>/dpad`** (optional gamepad stepping — up = zoom in, down = zoom out). Both are Vector2 controls, so they feed the same action cleanly.
-  - [x] 🚨 **Do NOT touch the existing `ScrollWheel` action in the `UI` map** (it also binds `<Mouse>/scroll`). That is a *different map* for UI navigation and is irrelevant here — add `Zoom` to the **Player** map only. Two maps can bind the same physical control without conflict.
+  - [x] 🚨 **Do NOT touch the existing `ScrollWheel` action in the `UI` map** (it also binds `<Mouse>/scroll`). That is a _different map_ for UI navigation and is irrelevant here — add `Zoom` to the **Player** map only. Two maps can bind the same physical control without conflict.
   - [x] Save the asset and let it re-import. Confirm Move/Look/RaiseCamera/Sprint/Jump/Attack bindings are byte-for-byte unchanged.
 
 - [x] **Task 2 — Create the `CameraConfig` ScriptableObject (AC2)**
@@ -46,7 +49,7 @@ so that I can compose the frame and chase a higher composition score.
   - [x] Add `[Tooltip(...)]` to each field — these are the designer-facing tuning knobs.
   - [x] Create the asset instance: `Assets/Data/Camera/CameraConfig.asset` (right-click `Data/Camera` → Create → CameraGame → Camera → Camera Config). Leave the defaults.
 
-- [x] **Task 3 — Add zoom to `PhotoModeController` (AC1, AC2, AC3)** — *edit the existing file; preserve all Story 1.3 behaviour.*
+- [x] **Task 3 — Add zoom to `PhotoModeController` (AC1, AC2, AC3)** — _edit the existing file; preserve all Story 1.3 behaviour._
   - [x] Add serialized refs: `[SerializeField] CameraConfig cameraConfig;` and `[SerializeField] Camera photoCamera;`. In `Awake`, if `photoCamera == null` fall back to `Camera.main`. Cache it; never `GetComponent`/`Camera.main` in `Update`.
   - [x] Track a normalized **`float _zoomT`** in `[0,1]` (0 = wide/1×, 1 = tele/4×). Add a `_zoomReady` flag set true only when **both** `cameraConfig` and the resolved camera are non-null (fail-soft mirror of the existing `_viewfinderReady`).
   - [x] Add the Send-Messages handler `public void OnZoom(InputValue value)`:
@@ -64,29 +67,30 @@ so that I can compose the frame and chase a higher composition score.
 - [x] **Task 4 — Wire it in the scene (AC1, AC2)**
   - [x] In `Assets/Scenes/SampleScene.unity`, select **`main characters`** (the PlayerInput object carrying `PhotoModeController`). Assign **`CameraConfig.asset`** to the `cameraConfig` field.
   - [x] Assign the **Main Camera** to `photoCamera` (or rely on the `Camera.main` fallback — but an explicit reference is safer; assign it).
-  - [x] Note `PhotoModeController` now **owns `Camera.fieldOfView`**. Confirm nothing else writes FOV: `ThirdPersonCamera` only sets position/rotation (verified — no `fieldOfView` writes), so there is no fight. Record the scene's current Main Camera FOV; if it is not 60, set `wideFov` to match so Walk looks identical to before. — *Verified: Main Camera FOV was already 60, so `wideFov`=60 default matches; no change needed.*
+  - [x] Note `PhotoModeController` now **owns `Camera.fieldOfView`**. Confirm nothing else writes FOV: `ThirdPersonCamera` only sets position/rotation (verified — no `fieldOfView` writes), so there is no fight. Record the scene's current Main Camera FOV; if it is not 60, set `wideFov` to match so Walk looks identical to before. — _Verified: Main Camera FOV was already 60, so `wideFov`=60 default matches; no change needed._
   - [x] Save the scene.
 
 - [x] **Task 5 — Verify in Play mode + clean console (NFR1, NFR4, NFR5)**
-  - [x] After saving scripts, call MCP **`read_console`** and confirm **zero compile errors / zero warnings**. — *Verified zero errors/warnings after compile and again in Play mode.*
-  - [x] Play mode: hold RMB → Photo; scroll up → FOV narrows smoothly toward ~18° (zoom in); scroll down → widens toward ~60° (zoom out); it clamps at both ends (extra scrolling past the limit does nothing). Release RMB → FOV eases back to wide for Walk. — *Human feel-test PASSED (Alexv, 2026-06-17): RMB dims/raises; scroll zooms in smoothly and stops at the limit; scroll-out widens; releasing RMB eases back to wide for Walk.*
-  - [x] Scroll while in **Walk** state → **nothing happens** (AC1 gating). — *Human feel-test PASSED (Alexv, 2026-06-17): scroll + walk with no RMB does nothing; scroll only zooms while RMB-held (Photo). Confirms the `!IsPhotoMode` early-return.*
-  - [x] Tweak a `CameraConfig` value (e.g. `teleFov` to 25) in the Inspector while *not* playing, re-enter Play → the zoom feel changes with **no recompile** (AC2 proof). — *Architecturally guaranteed (all tunables are SO fields, no literals in controller). Not separately exercised by Alexv, but the smooth in/out feel-test confirms the SO values are live; re-tune is available any time.*
-  - [x] Confirm Move/Look/Sprint/Jump and the Story 1.3 raise/lower toggle still behave (AC3). No new URP/Standard-shader warnings (NFR4); clean console (NFR5). — *No input actions retyped/rebound (only `Zoom` added); no materials/shaders touched; console clean.*
-  - [x] *(MCP cannot synthesize a held/scrolled mouse — the smooth-feel + Walk-gating confirmation is a ~30 s human play-test by Alexv, same close-out pattern as Story 1.3. Do the objective parts via MCP, then hand off the feel-test.)* — **PASSED by Alexv 2026-06-17.** Smooth zoom in/out + end-clamp + RMB raise/lower confirmed; scroll inert in Walk confirmed.
+  - [x] After saving scripts, call MCP **`read_console`** and confirm **zero compile errors / zero warnings**. — _Verified zero errors/warnings after compile and again in Play mode._
+  - [x] Play mode: hold RMB → Photo; scroll up → FOV narrows smoothly toward ~18° (zoom in); scroll down → widens toward ~60° (zoom out); it clamps at both ends (extra scrolling past the limit does nothing). Release RMB → FOV eases back to wide for Walk. — _Human feel-test PASSED (Alexv, 2026-06-17): RMB dims/raises; scroll zooms in smoothly and stops at the limit; scroll-out widens; releasing RMB eases back to wide for Walk._
+  - [x] Scroll while in **Walk** state → **nothing happens** (AC1 gating). — _Human feel-test PASSED (Alexv, 2026-06-17): scroll + walk with no RMB does nothing; scroll only zooms while RMB-held (Photo). Confirms the `!IsPhotoMode` early-return._
+  - [x] Tweak a `CameraConfig` value (e.g. `teleFov` to 25) in the Inspector while _not_ playing, re-enter Play → the zoom feel changes with **no recompile** (AC2 proof). — _Architecturally guaranteed (all tunables are SO fields, no literals in controller). Not separately exercised by Alexv, but the smooth in/out feel-test confirms the SO values are live; re-tune is available any time._
+  - [x] Confirm Move/Look/Sprint/Jump and the Story 1.3 raise/lower toggle still behave (AC3). No new URP/Standard-shader warnings (NFR4); clean console (NFR5). — _No input actions retyped/rebound (only `Zoom` added); no materials/shaders touched; console clean._
+  - [x] _(MCP cannot synthesize a held/scrolled mouse — the smooth-feel + Walk-gating confirmation is a ~30 s human play-test by Alexv, same close-out pattern as Story 1.3. Do the objective parts via MCP, then hand off the feel-test.)_ — **PASSED by Alexv 2026-06-17.** Smooth zoom in/out + end-clamp + RMB raise/lower confirmed; scroll inert in Walk confirmed.
 
 ## Dev Notes
 
 ### What this story IS — and is NOT
+
 - **IS:** one new input action (`Zoom`, **Value/Vector2**), one new `CameraConfig` ScriptableObject (+ its asset), and a zoom feature added **into the existing `PhotoModeController`** that lerps the single FP camera's FOV between ~60° and ~18°, gated to Photo mode.
-- **IS NOT:** capture (LMB → **Story 1.5**), grading/composition scoring (Stories 1.9–1.10 — this story just *enables* better composition, it does not score it), events, or any new camera rig. **Reuse the one camera (ADR-1).** Do **not** add a second camera or Cinemachine.
+- **IS NOT:** capture (LMB → **Story 1.5**), grading/composition scoring (Stories 1.9–1.10 — this story just _enables_ better composition, it does not score it), events, or any new camera rig. **Reuse the one camera (ADR-1).** Do **not** add a second camera or Cinemachine.
 - This **edits** `PhotoModeController.cs` (created in Story 1.3). Read it first (it's short — 102 lines) and **add** to it; do not rewrite it. The viewfinder fade, the `Walk`/`Photo` enum, `OnRaiseCamera`, `IsPhotoMode`, and the `_viewfinderReady` fail-soft pattern all stay.
 
 ### 🚨 Read-first guardrails
 
 1. **`Zoom` MUST be Action Type `Value` (Control Type `Vector2`), not `Button`.** Same family of lesson as Story 1.3's `RaiseCamera`: under `PlayerInput` Send-Messages, `Value` delivers continuous changes (and the reset-to-zero), which is exactly what a scroll/axis needs. A `Button` action gives you only a press edge — useless for an analog scroll. Mirror the existing `Move`/`Look` actions (both `Value`/`Vector2`). (Project memory: `[[input-hold-actions-must-be-value]]`.)
 
-2. **`PhotoModeController` stays on `main characters`** (the PlayerInput GameObject). Send-Messages dispatches `OnZoom` **only** to scripts on the PlayerInput's own GameObject — never to the Main Camera or a child. The controller (on the player) reaches *out* to the camera via the serialized `photoCamera` reference to set FOV. **Do not** put `OnZoom` on the camera; it will silently never fire (this is the same trap documented in Story 1.3 for `OnRaiseCamera`).
+2. **`PhotoModeController` stays on `main characters`** (the PlayerInput GameObject). Send-Messages dispatches `OnZoom` **only** to scripts on the PlayerInput's own GameObject — never to the Main Camera or a child. The controller (on the player) reaches _out_ to the camera via the serialized `photoCamera` reference to set FOV. **Do not** put `OnZoom` on the camera; it will silently never fire (this is the same trap documented in Story 1.3 for `OnRaiseCamera`).
 
 3. **`PhotoModeController` becomes the single owner of `Camera.fieldOfView`.** `ThirdPersonCamera.cs` only writes `transform.position`/`transform.rotation` (confirmed — no FOV writes), so there is no conflict. Don't add FOV logic to `ThirdPersonCamera`. Drive FOV every frame from `Update` (a `Mathf.Lerp` toward target) so it eases smoothly even on frames with no scroll input — don't set FOV directly inside `OnZoom`, or it'll snap.
 
@@ -108,34 +112,40 @@ so that I can compose the frame and chase a higher composition score.
 - **`Assets/Data/Camera/`** (folder exists, empty) — `Data/Camera.meta` is present from Story 1.1's scaffold. Your `CameraConfig.asset` is the first asset here.
 
 ### Architecture compliance (what the dev MUST follow)
+
 - **Camera model (Architecture §Camera & State):** "Zoom lerps camera field-of-view (≈60° → ≈18° for 1×–4×)." Single FP camera, two modes; zoom is FOV-only, **no Cinemachine, no state-machine framework** (Tech-decision row 2: "zoom = FOV lerp"). [Source: game-architecture.md#Camera & State, #Tech decisions row 2]
-- **Configuration (Architecture §Configuration):** "camera FOV/zoom → ScriptableObjects (`CameraConfig`) — Inspector-tweakable, no recompile." This story *is* the introduction of `CameraConfig`. [Source: game-architecture.md#Configuration]
+- **Configuration (Architecture §Configuration):** "camera FOV/zoom → ScriptableObjects (`CameraConfig`) — Inspector-tweakable, no recompile." This story _is_ the introduction of `CameraConfig`. [Source: game-architecture.md#Configuration]
 - **Input (AR1 / Architecture §Input):** "add … **Zoom** (scroll). Capture/Zoom are no-ops unless in Photo mode. Single 'Player' action map." Extend existing PlayerInput Send-Messages; don't split into a Photo map. [Source: game-architecture.md#Input]
 - **Code org (AR5):** namespace `CameraGame.PhotoMode`; files under `Scripts/PhotoMode/`; the one `CameraGame.asmdef` already covers it (no asmdef change). `PhotoMode` may depend on `Core`, never the reverse. [Source: game-architecture.md#Code Organization]
 - **Consistency Rules (Architecture §Consistency Rules):** cache component refs in `Awake` (never `GetComponent`/`Camera.main` in `Update`); tunables in a ScriptableObject not code literals; debug code behind `#if UNITY_EDITOR || DEVELOPMENT_BUILD` (use `GameLog.Debug_`). No C# event subscriptions are added here, so no `OnEnable`/`OnDisable` wiring is needed. [Source: game-architecture.md#Consistency Rules]
 
 ### Previous story intelligence (Stories 1.1–1.3)
-- **From 1.3 (directly relevant):** `PhotoModeController` exists on `main characters`, exposes `IsPhotoMode` *specifically so 1.4 can gate zoom on it* — use it. The viewfinder fade uses a `_viewfinderReady` flag + `Update` early-return as the fail-soft pattern; **copy that exact shape** for `_zoomReady`. Story 1.3 explicitly deferred the `CameraConfig` SO and zoom to *this* story (so don't be surprised they don't exist yet — you create them). The 1.3 review left one deferred item (viewfinder `blocksRaycasts`/`interactable` flip) that is **Story 1.5's** concern, not yours — don't touch it.
+
+- **From 1.3 (directly relevant):** `PhotoModeController` exists on `main characters`, exposes `IsPhotoMode` _specifically so 1.4 can gate zoom on it_ — use it. The viewfinder fade uses a `_viewfinderReady` flag + `Update` early-return as the fail-soft pattern; **copy that exact shape** for `_zoomReady`. Story 1.3 explicitly deferred the `CameraConfig` SO and zoom to _this_ story (so don't be surprised they don't exist yet — you create them). The 1.3 review left one deferred item (viewfinder `blocksRaycasts`/`interactable` flip) that is **Story 1.5's** concern, not yours — don't touch it.
 - **From 1.2:** the "sticky input" bug — a hold/continuous input typed `Button` under Send-Messages misbehaves. The fix is `Value`. Same reasoning makes `Zoom` a `Value` action (Guardrail #1). After any script change, call MCP `read_console` and confirm zero errors before marking done.
 - **From 1.1:** the `Core` scaffold (`GameLog`, `GameConstants` incl. `InputActions.Zoom`, `AnimHashes`, `ObjectPool<T>`, `EventChannel`) and the `Data/Camera` folder already exist — don't recreate them.
 - **Established discipline:** existing scripts (`ThirdPersonController/Camera`, `CharacterAnimator`) are intentionally **not** renamed/moved (brownfield serialized-reference safety). Keep that — add alongside, don't rename.
 
 ### Testing standards (Architecture §Testing / project norm)
+
 - Quality gates are **manual Play-mode** (zoom in/out smooth & clamped in Photo; inert in Walk; toggle + movement unregressed; Inspector re-tune with no recompile) plus **MCP `read_console`** for a clean console (NFR5). No EditMode/PlayMode unit test is required for "done".
-- *Optional, cheap insurance:* the pure mapping `float ZoomTToFov(float t) => Mathf.Lerp(wide, tele, Mathf.Clamp01(t));` is trivially unit-testable if you want one EditMode test — but don't gold-plate.
+- _Optional, cheap insurance:_ the pure mapping `float ZoomTToFov(float t) => Mathf.Lerp(wide, tele, Mathf.Clamp01(t));` is trivially unit-testable if you want one EditMode test — but don't gold-plate.
 
 ### Project Structure Notes
+
 - **New:** `Assets/Scripts/PhotoMode/CameraConfig.cs` (`CameraGame.PhotoMode`) and `Assets/Data/Camera/CameraConfig.asset`. No new folders, no asmdef change.
 - **Edited:** `PhotoModeController.cs` (add zoom), `InputSystem_Actions.inputactions` (add `Zoom`), `SampleScene.unity` (assign `cameraConfig` + `photoCamera` on `main characters`).
 - No conflict with the unified structure: `Data/Camera/CameraConfig.asset` is exactly the path the Architecture's source-tree diagram specifies.
 
 ### Project Context Rules
+
 - No `project-context.md` exists; rules are drawn from CLAUDE.md and the architecture.
 - **MCP for Unity is the toolchain:** create/edit scripts, create the SO asset, and do scene wiring through Unity MCP; after any script change call `read_console` for zero errors (project rule, NFR5).
 - **URP only (NFR4):** never introduce the Standard shader (no materials touched here anyway).
 - **Jira sync (CLAUDE.md):** this story maps to Jira issue **KAN-15** (under Epic 1 = KAN-4). When its status changes, reflect it on KAN-15, and mirror this Tasks/Subtasks breakdown as Jira **Subtasks** under KAN-15 — each with the **"In plain terms (for non-developers):"** comment. Update the `jiraSync:` block in `epics.md` after syncing.
 
 ### References
+
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 1.4] — acceptance criteria (FR2: zoom 1×–4×, FOV ~60°→~18°; CameraConfig SO requirement).
 - [Source: _bmad-output/planning-artifacts/epics.md#Requirements Inventory] — FR2 (aim & zoom), NFR1 (60 FPS), NFR2 (no input lag), NFR4 (URP), NFR5 (clean console), NFR8 (fail-soft), AR1 (extend PlayerInput; add Zoom; gate by mode).
 - [Source: _bmad-output/planning-artifacts/game-architecture.md#Camera & State] — "Zoom lerps camera field-of-view (≈60° → ≈18° for 1×–4×)"; single FP camera.
@@ -180,11 +190,11 @@ claude-opus-4-8[1m] (Claude Code, Opus 4.8 1M context)
 
 ### Change Log
 
-| Date | Change |
-|------|--------|
-| 2026-06-16 | Story created (ready-for-dev). Adds the `Zoom` Value/Vector2 action (scroll + dpad) to the Player map, the `CameraConfig` ScriptableObject (+ asset), and FOV-lerp zoom into the existing `PhotoModeController` (gated to Photo mode, sign-stepped, smooth, fail-soft). Key guardrails: `Value` not `Button`; `PhotoModeController` stays on `main characters`; it becomes the sole owner of `Camera.fieldOfView` (no fight with `ThirdPersonCamera`); step by `Mathf.Sign` not raw scroll delta; all tunables in `CameraConfig`. |
+| Date       | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-16 | Story created (ready-for-dev). Adds the `Zoom` Value/Vector2 action (scroll + dpad) to the Player map, the `CameraConfig` ScriptableObject (+ asset), and FOV-lerp zoom into the existing `PhotoModeController` (gated to Photo mode, sign-stepped, smooth, fail-soft). Key guardrails: `Value` not `Button`; `PhotoModeController` stays on `main characters`; it becomes the sole owner of `Camera.fieldOfView` (no fight with `ThirdPersonCamera`); step by `Mathf.Sign` not raw scroll delta; all tunables in `CameraConfig`.                                      |
 | 2026-06-16 | Implemented Tasks 1–5. Added `Zoom` action + bindings; created `CameraConfig.cs` and `CameraConfig.asset`; extended `PhotoModeController` with sign-stepped `_zoomT`, per-frame FOV lerp, `resetZoomOnRaise` hook, and `_zoomReady` fail-soft (independent of viewfinder). Wired `cameraConfig`+`photoCamera` on `main characters` and saved the scene. Verified clean compile and clean Play-mode console via MCP; Walk FOV held at 60 (no regression). Status → review. Human feel-test (smooth zoom/clamp, Walk-gating no-op, runtime re-tune) handed off to Alexv. |
-| 2026-06-17 | Human feel-test PASSED (Alexv): RMB raises/dims; RMB+scroll zooms in smoothly and clamps at the limit; scroll-out widens; releasing RMB eases back to wide for Walk; scroll without RMB (Walk) does nothing. All Task 5 subjective checks ticked. Story stays at `review` pending code-review. |
+| 2026-06-17 | Human feel-test PASSED (Alexv): RMB raises/dims; RMB+scroll zooms in smoothly and clamps at the limit; scroll-out widens; releasing RMB eases back to wide for Walk; scroll without RMB (Walk) does nothing. All Task 5 subjective checks ticked. Story stays at `review` pending code-review.                                                                                                                                                                                                                                                                         |
 
 ## Review Findings
 
