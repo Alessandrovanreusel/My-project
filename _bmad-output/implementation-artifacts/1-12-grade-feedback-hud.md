@@ -4,7 +4,7 @@ baseline_commit: 94ed9461d6c6c35c47c8d0375d578a8334a1d11f
 
 # Story 1.12: Grade-feedback HUD
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -351,7 +351,8 @@ which is the point of doing it.
       deferred item, correctly raised rather than silently fixed. **Alexv's call: Story 1.12 does not expand
       to fix occlusion; instead capture a fresh unoccluded 5★ exemplar so AC3 is judged on a fair example.**
       Tracked as a patch item below. The occlusion defect itself stays deferred as its own future story.
-- [ ] [Review][Decision] **AC3 and AC4 remain unproven and only Alexv can close them — UNBLOCKED
+- [x] [Review][Decision] **AC3 and AC4 remain unproven and only Alexv can close them — CLOSED
+      2026-11-10: Alexv answered R1–R4 and Q2, all fine (see Change Log). UNBLOCKED
       2026-09-10.** The exemplars are re-shot and fair; nothing structural is left. This waits only on
       Alexv looking at six pictures. Original note follows.**
 
@@ -1253,7 +1254,10 @@ from the original questions — the six images named in the table predate both c
 call — the panel behind the text went from **72 % to 78 % opacity** instead of touching the colours again.
 Everything below has been re-shot with it. The panel is a touch darker; the world still shows through.*
 
-**Status: AC1, AC2 and AC5 are proven. AC3 and AC4 are open and only you can close them.**
+**Status (2026-11-10): ALL CLOSED.** AC1, AC2 and AC5 were proven by running; Alexv answered the re-ask
+(R1–R4) and the original Q2 on 2026-11-10, all fine, which closes AC3 and AC4. Story is `done`.
+
+~~Status: AC1, AC2 and AC5 are proven. AC3 and AC4 are open and only you can close them.~~
 
 ### ⚠️ START HERE — the re-ask (2026-09-12, re-shot 2026-09-27)
 
@@ -1476,3 +1480,4 @@ with a working reference implementation of the honest measurement sitting in the
 | 2026-09-12 | Handover rewritten with a **re-ask**: the readout has changed twice since Alexv last looked, so the original six-image ask would have been answered against a stale build. Four questions now, including the new one — are panels 2 and 3 sharing a colour still right? Story 1.13 gains Task 7: do not start it until 1.12 closes, so the banding is judged in isolation. |
 | 2026-09-12 | Review disproved four plausible findings rather than passing them on: strong/weak do NOT collapse for colour-blind players (Vienot simulation, worst case protanopia ΔE 20.2); a miss cannot be repainted amber (the miss branch returns first); `stars == 0` is unreachable (`StarsFor` returns 1-5); and an asset missing the new keys does NOT deserialize to black — Unity retains the field initialisers, verified by deleting them and reading the values back. |
 | 2026-09-27 | **Code review of the 2026-09-12 review's own patches** (never reviewed; uncommitted). The headline fix works end to end — a broken palette now warns at `GradeHud.Awake`, proven by pressing Play on a mutated asset — but the tests around it did not prove what they claimed: 5 of 6 validator pairs were deletable with the suite green, and the colour maths could be broken two ways unnoticed. Fixed and **proven by mutation** (each defect reintroduced and caught). The re-tuned amber was found to **still miss 4.5:1 (4.2:1)** because it had been chosen from the authored colour and never re-measured; **Alexv's call: raise the panel's opacity** — `0.72 → 0.78`, re-shot, every band now ≥ 4.64:1 on the same background. 163/163 EditMode. AC3/AC4 still open: the re-ask is updated for the darker panel. |
+| 2026-11-10 | **AC3 and AC4 closed by Alexv; story `done`.** Shown `panels_banded.png` and `panel_opacity_before_after.png` (the 2026-09-27 captures, confirmed non-blank before handing over). **R1** — the five panels read as different at a glance, so the 5★ and the 0 % shot are no longer confusable: the defect the 2026-09-11 check found is fixed, confirmed by the person who found it. **R2** — panels 3 and 4 sharing amber: fine. **R3** — text legible; he could see *no* difference between the 72 % and 78 % panel, so the opacity raise cost the camcorder look (AC4) nothing perceptible. **R4** — weak-but-counted still clearly not a miss. **Q2** (the "understand why" half of AC3, asked 2026-08-07 and never answered until now) — the hint lines tell him what to do next: fine. **Not checked, and not required:** the 2.8 s on-screen duration was offered as an optional in-game check and not played; no still can answer it, so if the readout feels too brief in real play that is a new finding, not a regression. Story 1.13 is now unblocked. |

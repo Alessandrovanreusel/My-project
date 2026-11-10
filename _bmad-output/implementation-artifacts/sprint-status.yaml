@@ -41,7 +41,7 @@
 # - When a story's status changes here, reflect it on the matching Jira issue.
 
 generated: 2026-06-04
-last_updated: 2026-09-27 (code review of the 2026-09-12 review's own patches, which had never been reviewed. 1 decision (Alexv: raise the HUD panel opacity 0.72 -> 0.78), 8 patches ALL APPLIED, 6 deferred, 8 dismissed. The validator works end to end (warns at Awake on a broken palette - proven in Play mode), but its tests could not catch 5 of 6 deleted pairs or a broken colour formula; fixed and proven by mutation. The re-tuned amber still measured 4.2:1 (never re-measured after the 09-12 re-tune); re-shot at 78% panel, every band >= 4.64:1 on the same background. 163/163 EditMode. STILL `review`: AC3/AC4 perceptual, re-ask updated for the darker panel. Jira NOT synced - Atlassian MCP needs re-auth) | 2026-09-12 (code review of the banding change `636b4cc..HEAD`. 22 findings -> 4 decisions (all
+last_updated: 2026-11-10 (story 1.12 -> done. Alexv answered the perceptual re-ask R1-R4 and the long-open Q2 ('understand why'), all fine: AC3 and AC4 closed. 1.13 unblocked, still ready-for-dev. Jira NOT synced - Atlassian MCP needs re-auth; KAN-23 must go to Done (41) and 1.13 must be created) | 2026-09-27 (code review of the 2026-09-12 review's own patches, which had never been reviewed. 1 decision (Alexv: raise the HUD panel opacity 0.72 -> 0.78), 8 patches ALL APPLIED, 6 deferred, 8 dismissed. The validator works end to end (warns at Awake on a broken palette - proven in Play mode), but its tests could not catch 5 of 6 deleted pairs or a broken colour formula; fixed and proven by mutation. The re-tuned amber still measured 4.2:1 (never re-measured after the 09-12 re-tune); re-shot at 78% panel, every band >= 4.64:1 on the same background. 163/163 EditMode. STILL `review`: AC3/AC4 perceptual, re-ask updated for the darker panel. Jira NOT synced - Atlassian MCP needs re-auth) | 2026-09-12 (code review of the banding change `636b4cc..HEAD`. 22 findings -> 4 decisions (all
 resolved by Alexv), 11 patches (ALL APPLIED), 1 deferred, 7 disproven. Headline: the banding works, but the
 test protecting it did not - setting strongColor=weakColor in the SHIPPED .asset left the suite 154/154 green
 with a clean console. Fixed by moving the guard to TryGetConfigProblem, which reads what the designer typed,
@@ -69,7 +69,7 @@ development_status:
   1-9-subject-capture-gate-grading: done                             # KAN-20
   1-10-composition-and-timing-scoring: done                          # KAN-21
   1-11-minimal-gallery: done                                          # KAN-22
-  1-12-grade-feedback-hud: review                                     # KAN-23
+  1-12-grade-feedback-hud: done                                       # KAN-23 (Jira still shows review - re-auth needed)
   1-13-soften-the-timing-multiplier: ready-for-dev                   # Jira NOT synced (token expired)
   epic-1-retrospective: optional
 
