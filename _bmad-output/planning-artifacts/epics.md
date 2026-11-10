@@ -6,132 +6,8 @@ inputDocuments:
   - _bmad-output/planning-artifacts/game-architecture.md
   - "CAMERA GAME SHARED FOLDER/Camera game.docx (concept context)"
   - "CAMERA GAME SHARED FOLDER/ (asset inventory context)"
-jiraSync:
-  site: alessandrovanreusel.atlassian.net
-  project: KAN
-  syncedOn: 2026-07-31
-  epics:
-    - { name: "Epic 1: First Playable Slice — The Catch Loop (MVP)", key: KAN-4 }
-    - { name: "Epic 2: The Living Town", key: KAN-5 }
-    - { name: "Epic 3: Event Content Pack #1", key: KAN-6 }
-    - { name: "Epic 4: Progression & Reputation", key: KAN-7 }
-    - { name: "Epic 5: Home Base", key: KAN-8 }
-    - { name: "Epic 6: Nature & Collection Layer", key: KAN-9 }
-    - { name: "Epic 7: Missions & Mystery", key: KAN-10 }
-    - { name: "Epic 8: Stealth Layer", key: KAN-11 }
-    - { name: "Epic 9: The Edit Suite", key: PENDING }  # added 2026-11-10 (sprint-change-proposal-2026-11-10) — sync when Atlassian MCP is re-authenticated
-  stories:  # all parented to KAN-4 (Epic 1)
-    - { name: "Story 1.1", key: KAN-12 }
-    - { name: "Story 1.2", key: KAN-13 }
-    - { name: "Story 1.3", key: KAN-14 }
-    - { name: "Story 1.4", key: KAN-15 }
-    - { name: "Story 1.5", key: KAN-16 }
-    - { name: "Story 1.6", key: KAN-17 }
-    - { name: "Story 1.7", key: KAN-18 }
-    - { name: "Story 1.8", key: KAN-19 }
-    - { name: "Story 1.9", key: KAN-20 }
-    - { name: "Story 1.10", key: KAN-21 }
-    - { name: "Story 1.11", key: KAN-22 }
-    - { name: "Story 1.12", key: KAN-23 }
-    - { name: "Story 1.13", key: NONE }  # superseded 2026-11-10 before it was ever synced — intentionally NOT created in Jira
-    # Stories 1.14–1.18 added 2026-11-10 (sprint-change-proposal-2026-11-10) — sync when Atlassian MCP is re-authenticated
-    - { name: "Story 1.14", key: PENDING }
-    - { name: "Story 1.15", key: PENDING }
-    - { name: "Story 1.16", key: PENDING }
-    - { name: "Story 1.17", key: PENDING }
-    - { name: "Story 1.18", key: PENDING }
-  subtasks:  # story Tasks/Subtasks mirrored as Jira Subtasks (parent = the story)
-    # Story 1.1 (parent KAN-12) — created 2026-06-04
-    - { name: "1.1 Task 1 — Create folder structure", key: KAN-24, parent: KAN-12 }
-    - { name: "1.1 Task 2 — CameraGame.asmdef", key: KAN-25, parent: KAN-12 }
-    - { name: "1.1 Task 3 — CameraGame.Editor.asmdef", key: KAN-26, parent: KAN-12 }
-    - { name: "1.1 Task 4 — Core shared infrastructure", key: KAN-27, parent: KAN-12 }
-    - { name: "1.1 Task 5 — Verify clean compile (Unity MCP)", key: KAN-28, parent: KAN-12 }
-    - { name: "1.1 Task 6 — Tests assembly scaffold (deferred)", key: KAN-29, parent: KAN-12 }
-    # Story 1.2 (parent KAN-13) — created 2026-06-04
-    - { name: "1.2 Task 1 — Confirm & standardize the slice scene", key: KAN-30, parent: KAN-13 }
-    - { name: "1.2 Task 2 — Verify colliders & traversal", key: KAN-31, parent: KAN-13 }
-    - { name: "1.2 Task 3 — Disable embedded Blender camera (AR8)", key: KAN-32, parent: KAN-13 }
-    - { name: "1.2 Task 4 — Bake the NavMesh (scaled agent)", key: KAN-33, parent: KAN-13 }
-    - { name: "1.2 Task 5 — Performance & clean-console check", key: KAN-34, parent: KAN-13 }
-    - { name: "1.2 Task 6 — End-to-end AC verification", key: KAN-35, parent: KAN-13 }
-    # Story 1.3 (parent KAN-14) — created 2026-06-05
-    - { name: "1.3 Task 1 — Add the RaiseCamera input action (Value type)", key: KAN-36, parent: KAN-14 }
-    - { name: "1.3 Task 2 — Create PhotoModeController (Walk/Photo enum)", key: KAN-37, parent: KAN-14 }
-    - { name: "1.3 Task 3 — Minimal viewfinder overlay + transition", key: KAN-38, parent: KAN-14 }
-    - { name: "1.3 Task 4 — Fail-soft wiring + regression guard", key: KAN-39, parent: KAN-14 }
-    - { name: "1.3 Task 5 — Verify in Play mode + clean console", key: KAN-40, parent: KAN-14 }
-    # Story 1.4 (parent KAN-15) — created 2026-06-16
-    - { name: "1.4 Task 1 — Add the Zoom input action (Value/Vector2)", key: KAN-41, parent: KAN-15 }
-    - { name: "1.4 Task 2 — Create CameraConfig ScriptableObject + asset", key: KAN-42, parent: KAN-15 }
-    - { name: "1.4 Task 3 — Add zoom (FOV lerp) to PhotoModeController", key: KAN-43, parent: KAN-15 }
-    - { name: "1.4 Task 4 — Wire CameraConfig + Camera in the scene", key: KAN-44, parent: KAN-15 }
-    - { name: "1.4 Task 5 — Verify in Play mode + clean console", key: KAN-45, parent: KAN-15 }
-    # Story 1.5 (parent KAN-16) — created 2026-06-17
-    - { name: "1.5 Task 1 — Repurpose the Attack action to Capture (LMB + gamepad RT)", key: KAN-46, parent: KAN-16 }
-    - { name: "1.5 Task 2 — Create the minimal ShotGrade result type", key: KAN-47, parent: KAN-16 }
-    - { name: "1.5 Task 3 — Create the ShotCapturedChannel event channel + asset", key: KAN-48, parent: KAN-16 }
-    - { name: "1.5 Task 4 — Create a CaptureConfig ScriptableObject for feedback tunables", key: KAN-49, parent: KAN-16 }
-    - { name: "1.5 Task 5 — Add capture to PhotoModeController (handler + flash fade)", key: KAN-50, parent: KAN-16 }
-    - { name: "1.5 Task 6 — Wire it in the scene (refs + AudioSource + flash UI)", key: KAN-51, parent: KAN-16 }
-    - { name: "1.5 Task 7 — Verify in Play mode + clean console", key: KAN-52, parent: KAN-16 }
-    # Story 1.6 (parent KAN-17) — created 2026-06-18
-    - { name: "1.6 Task 1 — Harden ObjectPool<T> vs EventManager contract", key: KAN-53, parent: KAN-17 }
-    - { name: "1.6 Task 2 — EventPhase enum + ISubject interface", key: KAN-54, parent: KAN-17 }
-    - { name: "1.6 Task 3 — EventDefinition ScriptableObject", key: KAN-55, parent: KAN-17 }
-    - { name: "1.6 Task 4 — EventPeakedChannel + asset", key: KAN-56, parent: KAN-17 }
-    - { name: "1.6 Task 5 — EventActor MonoBehaviour (FSM + ISubject + fail-soft)", key: KAN-57, parent: KAN-17 }
-    - { name: "1.6 Task 6 — EventManager (pooled, concurrency-capped)", key: KAN-58, parent: KAN-17 }
-    - { name: "1.6 Task 7 — Temporary verification harness + scene wiring", key: KAN-59, parent: KAN-17 }
-    - { name: "1.6 Task 8 — Verify in Play mode + clean console", key: KAN-60, parent: KAN-17 }
-    # Story 1.7 (parent KAN-18) — created 2026-06-24
-    - { name: "1.7 Task 1 — Import & verify husband + Drunk Pack (Generic-rig avatar copy)", key: KAN-61, parent: KAN-18 }
-    - { name: "1.7 Task 2 — Build the drunk Animator Controller", key: KAN-62, parent: KAN-18 }
-    - { name: "1.7 Task 3 — Add NavMesh route-following to EventActor (+ isOnNavMesh guard)", key: KAN-63, parent: KAN-18 }
-    - { name: "1.7 Task 4 — Create the EventRoute scene component", key: KAN-64, parent: KAN-18 }
-    - { name: "1.7 Task 5 — Create the TownDrunk EventDefinition asset", key: KAN-65, parent: KAN-18 }
-    - { name: "1.7 Task 6 — Build the EventActor_Drunk husband prefab", key: KAN-66, parent: KAN-18 }
-    - { name: "1.7 Task 7 — Wire the scene: route, repoint manager, place on NavMesh", key: KAN-67, parent: KAN-18 }
-    - { name: "1.7 Task 8 — Verify in Play mode + clean console", key: KAN-68, parent: KAN-18 }
-    # Story 1.8 (parent KAN-19) — created 2026-07-25
-    - { name: "1.8 Task 1 — Resolve the audio asset dependency (GATES THE STORY)", key: KAN-69, parent: KAN-19 }
-    - { name: "1.8 Task 2 — Add a persistent event-level loopCue to EventDefinition", key: KAN-70, parent: KAN-19 }
-    - { name: "1.8 Task 3 — Drive the cue from EventActor (start/stop/reset across pooling)", key: KAN-71, parent: KAN-19 }
-    - { name: "1.8 Task 4 — Configure the AudioSource on EventActor_Drunk.prefab", key: KAN-72, parent: KAN-19 }
-    - { name: "1.8 Task 5 — Minimal audio mixer routing (GameAudio.mixer)", key: KAN-73, parent: KAN-19 }
-    - { name: "1.8 Task 6 — Confirm nothing diegetic-breaking was added", key: KAN-74, parent: KAN-19 }
-    - { name: "1.8 Task 7 — Verify (headless polling + focused Play session)", key: KAN-75, parent: KAN-19 }
-    # Story 1.9 (parent KAN-20) — created 2026-07-25
-    - { name: "1.9 Task 1 — Solve subject discovery (GATES THE STORY)", key: KAN-76, parent: KAN-20 }
-    - { name: "1.9 Task 2 — Create GradingConfig ScriptableObject + asset", key: KAN-77, parent: KAN-20 }
-    - { name: "1.9 Task 3 — Write ShotGrader (frustum + coverage)", key: KAN-78, parent: KAN-20 }
-    - { name: "1.9 Task 4 — Occlusion test without a Transform on ISubject", key: KAN-79, parent: KAN-20 }
-    - { name: "1.9 Task 5 — Wire real grading into the capture path", key: KAN-80, parent: KAN-20 }
-    - { name: "1.9 Task 6 — Verify (gizmo overlay + Play session + clean console)", key: KAN-81, parent: KAN-20 }
-    # Story 1.10 (parent KAN-21) — created 2026-07-26
-    - { name: "1.10 Task 1 — Decide what \"distance from the peak\" means (GATES THE STORY)", key: KAN-82, parent: KAN-21 }
-    - { name: "1.10 Task 2 — Decide the prominence measure by MEASURING", key: KAN-83, parent: KAN-21 }
-    - { name: "1.10 Task 3 — Extend GradingConfig (composition + timing tunables)", key: KAN-84, parent: KAN-21 }
-    - { name: "1.10 Task 4 — Composition scoring (prominence, centred placement, cut-off)", key: KAN-85, parent: KAN-21 }
-    - { name: "1.10 Task 5 — Timing scoring", key: KAN-86, parent: KAN-21 }
-    - { name: "1.10 Task 6 — Blend, widen ShotGrade, keep the miss path honest", key: KAN-87, parent: KAN-21 }
-    - { name: "1.10 Task 7 — Verify by photographing it (timing poses + human review)", key: KAN-88, parent: KAN-21 }
-    # Story 1.11 (parent KAN-22) — created 2026-07-30
-    - { name: "1.11 Task 1 — Decide how the image, subject and time reach the gallery (GATES THE STORY)", key: KAN-89, parent: KAN-22 }
-    - { name: "1.11 Task 2 — CapturedShot and the disk-ready seam", key: KAN-90, parent: KAN-22 }
-    - { name: "1.11 Task 3 — GalleryConfig ScriptableObject + asset", key: KAN-91, parent: KAN-22 }
-    - { name: "1.11 Task 4 — GalleryService: subscribe, take the picture, store, evict", key: KAN-92, parent: KAN-22 }
-    - { name: "1.11 Task 5 — The gallery view and the input to open it", key: KAN-93, parent: KAN-22 }
-    - { name: "1.11 Task 6 — Wire the scene", key: KAN-94, parent: KAN-22 }
-    - { name: "1.11 Task 7 — Verify by running it, and look at what comes out", key: KAN-95, parent: KAN-22 }
-    # Story 1.12 (parent KAN-23) — created 2026-07-31
-    - { name: "1.12 Task 1 — Decide the five things that gate this story", key: KAN-96, parent: KAN-23 }
-    - { name: "1.12 Task 2 — Grading housekeeping this story owns (shared wording + FromPercent)", key: KAN-97, parent: KAN-23 }
-    - { name: "1.12 Task 3 — GradeHudConfig ScriptableObject + asset", key: KAN-98, parent: KAN-23 }
-    - { name: "1.12 Task 4 — GradeHud: subscribe, format once, show, fade", key: KAN-99, parent: KAN-23 }
-    - { name: "1.12 Task 5 — Build and wire the HUD in the scene", key: KAN-100, parent: KAN-23 }
-    - { name: "1.12 Task 6 — Verify by running it, and look at what comes out", key: KAN-101, parent: KAN-23 }
-    - { name: "1.12 Task 7 — Hand the perceptual check to Alexv (AC3, AC4)", key: KAN-102, parent: KAN-23 }
+# jiraSync removed 2026-11-10 - Jira was dropped from the project. The former epic/story/subtask -> KAN key
+# mapping is in git history, e.g. git show 1e3ab88:_bmad-output/planning-artifacts/epics.md
 ---
 
 # Camera Game - Epic Breakdown
@@ -204,7 +80,7 @@ FR26: A **stealth layer** adds proximity/eyeline detection on sensitive events; 
 
 FR29: **Clip editing** — the player can choose clips from the memory card, trim each one, arrange them in order on a timeline, and preview the edit as one video.
 FR30: **Saved edits** — finished edits are saved and can be re-watched and re-opened for editing.
-FR31: **[OPEN — confirm with the stakeholder] Export** — a finished edit can leave the game as a standard video file playable outside it. Online sharing remains deferred. *(Whether this is wanted affects ADR-4: exporting a file needs some form of video encoding, at least at export time.)*
+FR31: **Export** — a finished edit can leave the game as a standard video file playable outside it. Online sharing remains deferred. *(Confirmed by the stakeholder 2026-11-10. This binds ADR-4: whatever format clips use inside the game, there must be a working path to encode a standard video file, at least at export time.)*
 
 ### NonFunctional Requirements
 
@@ -274,9 +150,9 @@ _(FR1–FR8 labels revised 2026-11-10: they were walk ↔ photo toggle, photo-mo
 - FR28: **Epic 1** — Clip playback *(added 2026-11-10)*
 - FR29: **Epic 9** — Clip editing (trim, timeline, preview) *(added 2026-11-10)*
 - FR30: **Epic 9** — Saved edits *(added 2026-11-10)*
-- FR31: **Epic 9** — Export as a video file — **OPEN**, confirm with the stakeholder *(added 2026-11-10)*
+- FR31: **Epic 9** — Export as a video file *(added 2026-11-10; confirmed by the stakeholder the same day)*
 
-_All 31 FRs are mapped (FR31 is open). NFR1–NFR10 are cross-cutting and apply to every epic (enforced per-story in acceptance criteria and at code review). AR1–AR12 are realized primarily in Epic 1's foundation stories, with AR9 (map FBX export) gating Epic 2 and AR12 (the recording approach) gating Stories 1.15–1.18._
+_All 31 FRs are mapped. NFR1–NFR10 are cross-cutting and apply to every epic (enforced per-story in acceptance criteria and at code review). AR1–AR12 are realized primarily in Epic 1's foundation stories, with AR9 (map FBX export) gating Epic 2 and AR12 (the recording approach) gating Stories 1.15–1.18._
 
 ## Epic List
 
@@ -289,9 +165,9 @@ Prove the core loop is fun: a first-time player hears a cue, finds the Town Drun
 
 ### Epic 9: The Edit Suite
 This completes the "from capture to creation" arc the stakeholder asked for. The player picks clips from the memory card, trims them, arranges them on a timeline, and plays the result back as one short video they made. It starts as a menu screen; Epic 5 can give it a physical editing room in the home base later.
-**FRs covered:** FR29, FR30, FR31 (FR31 open — confirm with the stakeholder)
+**FRs covered:** FR29, FR30, FR31
 **Depends on:** Epic 1 (clips, and the ADR-4 recording format)
-**Sequenced:** immediately after Epic 1, ahead of Epic 2. It is listed here, out of numeric order, to show that sequence; it is numbered 9 only so existing epic numbers and Jira keys stay stable. *(Added 2026-11-10 — promoted from the GDD's deferred "full video-editing minigame".)*
+**Sequenced:** immediately after Epic 1, ahead of Epic 2. It is listed here, out of numeric order, to show that sequence; it is numbered 9 only so existing epic numbers stay stable. *(Added 2026-11-10 — promoted from the GDD's deferred "full video-editing minigame".)*
 
 ### Epic 2: The Living Town
 Give the proven loop a real, navigable world: import the full town map, zone it into districts with colliders and NavMesh, place reachable vantage points, and lay down directional ambient audio so the world reads as alive and cues are locatable.
@@ -630,8 +506,8 @@ quality, and licence/cost.
 **Given** the measurements,
 **When** an approach is chosen,
 **Then** it is recorded as **ADR-4** in the architecture with the evidence behind it, including how the Edit Suite
-(Epic 9) would trim and join clips on top of it and how (if ever) a clip leaves the game as a standard video file
-(FR31)
+(Epic 9) would trim and join clips on top of it and how a finished edit is exported as a standard video file
+(FR31 — confirmed by the stakeholder 2026-11-10, so the chosen approach must come with a working export path)
 **And** Alexv approves the choice before Story 1.15 starts.
 
 **Given** the chosen approach,
@@ -642,7 +518,7 @@ Editor, where Unity Recorder would mask the problem
 
 ### Story 1.15: Record a clip
 
-*Added 2026-11-10. Depends on Story 1.14 (ADR-4).*
+*Added 2026-11-10. Depends on Story 1.14 (ADR-4). Record-as-a-toggle and clips-with-game-sound were confirmed by the stakeholder on 2026-11-10.*
 
 As a player,
 I want to press a button to start and stop recording while my camera is raised,
@@ -720,7 +596,7 @@ So that every recording is a decision and the footage I keep is footage I chose.
 gallery's storage from Story 1.11 (FR8, AR6).
 
 **Given** the card's capacity, measured in **seconds of footage** in a designer-tunable config (starting value
-~2 minutes),
+~2 minutes, confirmed by the stakeholder 2026-11-10),
 **When** I am in Viewfinder state,
 **Then** the viewfinder shows the time remaining
 **And** when the card fills mid-recording, recording stops, the clip so far is kept, and the viewfinder shows
@@ -769,7 +645,7 @@ Per the GDD's scope discipline — *"Do not start a later epic until Epic 1 has 
 
 **Known seeds for when those epics are detailed:**
 
-- **Epic 9** *(added 2026-11-10)* — the first story makes clips survive between sessions (cashing in the memory card's disk seam, AR6). After that: trim a clip → arrange clips on a timeline → play back the edit → save and re-open an edit (FR29–FR30). Later candidates: a music bed, title cards, transitions, and export to a standard video file (FR31 — only if the stakeholder confirms it). ADR-4 (Story 1.14) decides how trimming and joining work (re-render versus re-encode).
+- **Epic 9** *(added 2026-11-10)* — the first story makes clips survive between sessions (cashing in the memory card's disk seam, AR6). After that: trim a clip → arrange clips on a timeline → play back the edit → save and re-open an edit (FR29–FR30). Then export to a standard video file (FR31 — confirmed by the stakeholder 2026-11-10, so it is committed, not a candidate). Later candidates: a music bed, title cards, transitions. ADR-4 (Story 1.14) decides how trimming and joining work (re-render versus re-encode).
 - **Epic 2** — the town map FBX export (AR9) is the first story and a hard blocker; districts, vantage points (FR14), colliders/NavMesh, and per-district ambient audio (FR15) follow.
 - **Epic 3** — each new event (oil-rig smoke break, cheating husband, fisher, graffiti) is one story = one `EventDefinition` + its animations; the engine from Story 1.6 is reused unchanged (FR16). Assets on hand: bandit, CEO, oil-rig worker FBX + a "bandit fight mode" walk.
 - **Epic 4** — `ReputationSystem` subscribes to `ClipRecordedChannel` (FR17–FR20); no rework of recording/grading needed. *(2026-11-10: was `ShotCapturedChannel`.)*

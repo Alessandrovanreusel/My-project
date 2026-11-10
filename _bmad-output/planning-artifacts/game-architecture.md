@@ -301,7 +301,10 @@ added later without reshaping the model.
   *Constraint:* it must run in a Windows **build**. Unity Recorder, which films the verification
   rigs, is Editor-only. *It must answer:* FPS cost at 1080p while recording, memory/disk per second
   of footage, whether game sound is captured, playback quality, how the Edit Suite (Epic 9) trims
-  and joins clips on top of it, and how (if ever) a clip leaves the game as a file (FR31, open).
+  and joins clips on top of it, and how a finished edit is exported as a standard video file
+  (FR31 — **confirmed by the stakeholder 2026-11-10**). So every candidate needs a working export
+  path: for (B) or (C) that means an encoder at export time, which brings (A)'s licence question
+  back in even if (A) loses for live recording.
   *Consequence if (B) wins:* add a cross-cutting rule to **Cross-cutting Concerns** — everything
   that moves or makes sound on screen must be recordable — because every later epic's systems
   would have to cooperate with replay.

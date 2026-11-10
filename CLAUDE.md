@@ -161,57 +161,6 @@ the difference between findings and fiction, and each was measured. The short ve
   it despawns nothing. A rig scenario captioned "nobody there" photographed a live subject and graded it
   94%. If a scenario needs an empty street, deactivate the live actors and put them back.
 
-## Jira Sync (BMad epics & stories) — REQUIRED
-
-This project's planning artifacts are mirrored to Jira. **Whenever you create, update, or
-re-validate epics or stories** — via any BMad/GDS workflow (`gds-create-epics-and-stories`,
-`gds-create-story`, `gds-correct-course`, `gds-sprint-planning`, etc.) or by editing
-`_bmad-output/planning-artifacts/epics.md` or story files — you **must also reflect those
-changes in Jira** in the same session.
-
-**Jira target (do not guess):**
-- Site: `alessandrovanreusel.atlassian.net`
-- Cloud ID: `5b116b91-787f-4ff7-9668-2cd92d337bcf`
-- Project key: **KAN** (team-managed / next-gen software project)
-- Issue types: epics → `Epic`, stories → `Story`, **story Tasks/Subtasks → `Subtask`**
-- Story→Epic link: set the story's **`parent`** field to the epic's key (team-managed projects
-  use `parent`, NOT a separate "Epic Link" custom field)
-- Subtask→Story link: set the subtask's **`parent`** field to the story's key (issuetype name
-  `Subtask`, id `10002`)
-- KAN workflow transition IDs (shared by all issue types): `11`=To Do, `21`=In Progress,
-  `31`=Wordt beoordeeld (review), `41`=Gereed (Done)
-
-**Source of truth for the file↔Jira mapping:** the `jiraSync:` block in the frontmatter of
-`epics.md` lists every epic/story (and the `subtasks:` sub-list) with its Jira key. Always read
-it before acting so you **update existing issues instead of creating duplicates**. After any
-change, update that block.
-
-**Two standing requirements (the user explicitly asked for both — always do them):**
-- **Create subtasks too.** Whenever a story has a Tasks/Subtasks breakdown, mirror each
-  top-level Task as a Jira **Subtask** under that story. Set each subtask's status to match the
-  story file (done Tasks → Done / `41`; deferred → leave at To Do). Only do this for stories
-  that actually have a detailed task breakdown (a story file exists).
-- **Plain-language comments on every issue.** Add a comment to every Epic, Story, and Subtask
-  starting with **"In plain terms (for non-developers):"** followed by a 1–2 sentence,
-  jargon-free explanation of what it does, so a non-developer can read the board. Base it on the
-  actual GDD/epics content — never invent. Do this as part of the same sync for any new issue.
-
-**Procedure each time epics/stories change:**
-1. Confirm the Atlassian MCP tools are available (search tools for `mcp__atlassian__*`). If they
-   are not, tell the user to run `/mcp` and authenticate the `atlassian` server first — do not
-   silently skip the sync.
-2. Read the `jiraSync:` mapping in `epics.md`.
-3. For each epic/story: **create** it if it has no key yet; **update** (summary/description) the
-   existing issue if its content changed; keep story `parent` links pointing at the right epic.
-4. Put acceptance criteria in each story's Description (markdown `contentFormat`).
-5. For each story with a task breakdown, **create/update its Subtasks** (parent = the story) and
-   set their statuses to match the story file.
-6. **Add the "In plain terms (for non-developers):" comment** to every new Epic/Story/Subtask.
-7. Verify with a JQL check (e.g. `parent = <epicKey>` for stories, `parent = <storyKey>` for
-   subtasks), then write the keys back into the `jiraSync:` block (including `subtasks:`).
-
-Treat the file and Jira as one unit of work — never leave them out of sync at the end of a turn.
-
 ## Project Structure
 
 - `Assets/Scenes/` - Scene files (SampleScene.unity, Video Camera Game 2.0.unity)

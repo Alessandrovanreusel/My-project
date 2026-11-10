@@ -99,3 +99,10 @@ Chronological record of every design decision, change, and version transition.
 - **Technical constraint logged:** the stakeholder's reference video was made with Unity Recorder, which is Editor-only, so it cannot be how a built game records itself. Story 1.14 is a spike that decides the approach by measurement (ADR-4) and proves it **in a Windows build** before any recording story starts.
 - **Open with the stakeholder:** FR31 (export a file?); confirm that Record is a toggle, that clips include game sound, and the ~2 min card.
 - **Next:** `gds-create-story` for 1.14; Jira sync once the Atlassian MCP is re-authenticated.
+
+## 2026-11-10 — Stakeholder answers; Jira dropped
+
+- **FR31 export CONFIRMED.** A finished edit must be exportable as a standard video file. This binds ADR-4: whichever recording approach Story 1.14 picks, it must come with a working export path. If replay or raw frames win for live recording, an encoder is still needed at export time, so the encoder licence question stays on the table either way.
+- **Story assumptions CONFIRMED:** Record is a toggle (press to start, press again to stop), clips include the game's sound, and the memory card starts at ~2 minutes of footage.
+- **Jira removed from the project** (Alexv). The planning artifacts are no longer mirrored to Jira project KAN. Removed: the "Jira Sync" section of `CLAUDE.md` and `AGENTS.md`, the Jira half of the post-edit reminder hook (its C# compile reminder is kept), the project-scope `atlassian` MCP server (`.mcp.json`, `.codex/config.toml`) and its permissions, the `jiraSync:` block in `epics.md`, and the KAN comments in `sprint-status.yaml`. The files in `_bmad-output/` are now the only tracker. The old KAN keys remain in git history (commit `1e3ab88`). This supersedes the "Jira sync once re-authenticated" next step above.
+- **Next:** `gds-create-story` for 1.14.

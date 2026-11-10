@@ -34,15 +34,10 @@
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 #
-# JIRA MIRROR (project KAN — see CLAUDE.md "Jira Sync"):
-# - epic-1=KAN-4, epic-2=KAN-5, epic-3=KAN-6, epic-4=KAN-7, epic-5=KAN-8,
-#   epic-6=KAN-9, epic-7=KAN-10, epic-8=KAN-11
-# - 1-1..1-12 stories = KAN-12..KAN-23 (in order)
-# - 1-13 = never created (superseded 2026-11-10); 1-14..1-18 and epic-9 = PENDING (Atlassian re-auth)
-# - When a story's status changes here, reflect it on the matching Jira issue.
+# (Jira mirror removed 2026-11-10 - Jira was dropped from the project; the old KAN keys are in git history.)
 
 generated: 2026-06-04
-last_updated: 2026-11-10 (CORRECT COURSE - video replaces photo, sprint-change-proposal-2026-11-10.md approved by Alexv. Added 1-14..1-18 (backlog; 1-14 is a spike that gates the rest) and epic-9 The Edit Suite (backlog, sequenced right after Epic 1). 1-13 superseded and removed from tracking (intent carried into 1-16). Jira NOT synced - Atlassian MCP needs re-auth; Epic 9 + 1-14..1-18 must be created, 1-13 must NOT be) | 2026-11-10 (story 1.12 -> done. Alexv answered the perceptual re-ask R1-R4 and the long-open Q2 ('understand why'), all fine - AC3 and AC4 closed. 1.13 unblocked, still ready-for-dev. Jira NOT synced - Atlassian MCP needs re-auth; KAN-23 must go to Done (41) and 1.13 must be created) | 2026-09-27 (code review of the 2026-09-12 review's own patches, which had never been reviewed. 1 decision (Alexv - raise the HUD panel opacity 0.72 -> 0.78), 8 patches ALL APPLIED, 6 deferred, 8 dismissed. The validator works end to end (warns at Awake on a broken palette - proven in Play mode), but its tests could not catch 5 of 6 deleted pairs or a broken colour formula; fixed and proven by mutation. The re-tuned amber still measured 4.2:1 (never re-measured after the 09-12 re-tune); re-shot at 78% panel, every band >= 4.64:1 on the same background. 163/163 EditMode. STILL `review` - AC3/AC4 perceptual, re-ask updated for the darker panel. Jira NOT synced - Atlassian MCP needs re-auth) | 2026-09-12 (code review of the banding change `636b4cc..HEAD`. 22 findings -> 4 decisions (all
+last_updated: 2026-11-10 (Jira REMOVED from the project at Alexv's request - the CLAUDE.md/AGENTS.md section, the post-edit Jira reminder, the atlassian MCP entries and the epics.md jiraSync block are gone; old KAN keys live in git history. Stakeholder answered both open questions - FR31 export CONFIRMED, and Record-as-toggle, clips-with-sound and the ~2 min memory card all confirmed) | 2026-11-10 (CORRECT COURSE - video replaces photo, sprint-change-proposal-2026-11-10.md approved by Alexv. Added 1-14..1-18 (backlog; 1-14 is a spike that gates the rest) and epic-9 The Edit Suite (backlog, sequenced right after Epic 1). 1-13 superseded and removed from tracking (intent carried into 1-16). Jira NOT synced - Atlassian MCP needs re-auth; Epic 9 + 1-14..1-18 must be created, 1-13 must NOT be) | 2026-11-10 (story 1.12 -> done. Alexv answered the perceptual re-ask R1-R4 and the long-open Q2 ('understand why'), all fine - AC3 and AC4 closed. 1.13 unblocked, still ready-for-dev. Jira NOT synced - Atlassian MCP needs re-auth; KAN-23 must go to Done (41) and 1.13 must be created) | 2026-09-27 (code review of the 2026-09-12 review's own patches, which had never been reviewed. 1 decision (Alexv - raise the HUD panel opacity 0.72 -> 0.78), 8 patches ALL APPLIED, 6 deferred, 8 dismissed. The validator works end to end (warns at Awake on a broken palette - proven in Play mode), but its tests could not catch 5 of 6 deleted pairs or a broken colour formula; fixed and proven by mutation. The re-tuned amber still measured 4.2:1 (never re-measured after the 09-12 re-tune); re-shot at 78% panel, every band >= 4.64:1 on the same background. 163/163 EditMode. STILL `review` - AC3/AC4 perceptual, re-ask updated for the darker panel. Jira NOT synced - Atlassian MCP needs re-auth) | 2026-09-12 (code review of the banding change `636b4cc..HEAD`. 22 findings -> 4 decisions (all
   resolved by Alexv), 11 patches (ALL APPLIED), 1 deferred, 7 disproven. Headline - the banding works, but the
   test protecting it did not - setting strongColor=weakColor in the SHIPPED .asset left the suite 154/154 green
   with a clean console. Fixed by moving the guard to TryGetConfigProblem, which reads what the designer typed,
@@ -57,60 +52,60 @@ tracking_system: file-system
 story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
-  # ----- Epic 1: First Playable Slice — The Catch Loop (MVP) [Jira KAN-4] -----
+  # ----- Epic 1: First Playable Slice — The Catch Loop (MVP) -----
   epic-1: in-progress
-  1-1-establish-project-scaffold-and-shared-infrastructure: done          # KAN-12
-  1-2-walkable-town-patch-with-traversal-and-navmesh: done            # KAN-13
-  1-3-raise-and-lower-the-camera-photo-mode-toggle: done              # KAN-14
-  1-4-zoom-to-compose-in-photo-mode: done                            # KAN-15
-  1-5-capture-a-photo: done                                           # KAN-16
-  1-6-event-actor-lifecycle-engine: done                            # KAN-17
-  1-7-the-town-drunk-event: done                                     # KAN-18
-  1-8-diegetic-cue-telegraphing: done                                 # KAN-19
-  1-9-subject-capture-gate-grading: done                             # KAN-20
-  1-10-composition-and-timing-scoring: done                          # KAN-21
-  1-11-minimal-gallery: done                                          # KAN-22
-  1-12-grade-feedback-hud: done                                       # KAN-23 (Jira still shows review - re-auth needed)
+  1-1-establish-project-scaffold-and-shared-infrastructure: done
+  1-2-walkable-town-patch-with-traversal-and-navmesh: done
+  1-3-raise-and-lower-the-camera-photo-mode-toggle: done
+  1-4-zoom-to-compose-in-photo-mode: done
+  1-5-capture-a-photo: done
+  1-6-event-actor-lifecycle-engine: done
+  1-7-the-town-drunk-event: done
+  1-8-diegetic-cue-telegraphing: done
+  1-9-subject-capture-gate-grading: done
+  1-10-composition-and-timing-scoring: done
+  1-11-minimal-gallery: done
+  1-12-grade-feedback-hud: done
   # 1-13-soften-the-timing-multiplier: superseded 2026-11-10 by 1-16 (see planning-artifacts/
   #   sprint-change-proposal-2026-11-10.md) - intentionally not tracked: the schema has no 'superseded'
-  #   status, and leaving it 'backlog' would stop epic-1 from ever reaching 'done'. Never created in Jira.
-  1-14-decide-how-the-game-records-video: backlog                    # Jira PENDING - technical spike, GATES 1-15..1-18
-  1-15-record-a-clip: backlog                                         # Jira PENDING
-  1-16-grade-a-clip: backlog                                          # Jira PENDING (carries 1-13's intent)
-  1-17-the-memory-card: backlog                                       # Jira PENDING
-  1-18-watch-your-clips: backlog                                      # Jira PENDING
+  #   status, and leaving it 'backlog' would stop epic-1 from ever reaching 'done'.
+  1-14-decide-how-the-game-records-video: backlog                    # technical spike, GATES 1-15..1-18
+  1-15-record-a-clip: backlog
+  1-16-grade-a-clip: backlog                                          # carries 1-13's intent
+  1-17-the-memory-card: backlog
+  1-18-watch-your-clips: backlog
   epic-1-retrospective: optional
 
-  # ----- Epic 9: The Edit Suite [Jira PENDING] (stories TBD just-in-time) -----
-  # Sequenced IMMEDIATELY AFTER Epic 1, ahead of Epic 2 - numbered 9 only so epic numbers and Jira keys
+  # ----- Epic 9: The Edit Suite (stories TBD just-in-time) -----
+  # Sequenced IMMEDIATELY AFTER Epic 1, ahead of Epic 2 - numbered 9 only so epic numbers
   # stay stable (sprint-change-proposal-2026-11-10).
   epic-9: backlog
   epic-9-retrospective: optional
 
-  # ----- Epic 2: The Living Town [Jira KAN-5] (stories TBD just-in-time) -----
+  # ----- Epic 2: The Living Town (stories TBD just-in-time) -----
   epic-2: backlog
   epic-2-retrospective: optional
 
-  # ----- Epic 3: Event Content Pack #1 [Jira KAN-6] (stories TBD just-in-time) -----
+  # ----- Epic 3: Event Content Pack #1 (stories TBD just-in-time) -----
   epic-3: backlog
   epic-3-retrospective: optional
 
-  # ----- Epic 4: Progression & Reputation [Jira KAN-7] (stories TBD just-in-time) -----
+  # ----- Epic 4: Progression & Reputation (stories TBD just-in-time) -----
   epic-4: backlog
   epic-4-retrospective: optional
 
-  # ----- Epic 5: Home Base [Jira KAN-8] (stories TBD just-in-time) -----
+  # ----- Epic 5: Home Base (stories TBD just-in-time) -----
   epic-5: backlog
   epic-5-retrospective: optional
 
-  # ----- Epic 6: Nature & Collection Layer [Jira KAN-9] (stories TBD just-in-time) -----
+  # ----- Epic 6: Nature & Collection Layer (stories TBD just-in-time) -----
   epic-6: backlog
   epic-6-retrospective: optional
 
-  # ----- Epic 7: Missions & Mystery [Jira KAN-10] (stories TBD just-in-time) -----
+  # ----- Epic 7: Missions & Mystery (stories TBD just-in-time) -----
   epic-7: backlog
   epic-7-retrospective: optional
 
-  # ----- Epic 8: Stealth Layer [Jira KAN-11] (stories TBD just-in-time) -----
+  # ----- Epic 8: Stealth Layer (stories TBD just-in-time) -----
   epic-8: backlog
   epic-8-retrospective: optional

@@ -382,7 +382,7 @@ Sequenced by dependency: **Epic 1 is the First Playable Slice**; every later epi
 | # | Epic | Goal | Key deliverables | Depends on | Pillars |
 |---|------|------|------------------|-----------|---------|
 | **1** | **First Playable Slice — The Catch Loop (MVP)** | Prove the core loop is fun | Camcorder (raise/zoom/record); clip grading (subject+composition+peak coverage); memory card + clip playback; reusable **NPC event-actor** system; the **Town Drunk** event; a small playable town patch | — | 1·2·3 |
-| **9** | **The Edit Suite** | Turn clips into videos | Pick clips from the memory card, trim, arrange on a timeline, play back, save edits; later: music bed, titles, transitions, export (open) | E1 | 3 |
+| **9** | **The Edit Suite** | Turn clips into videos | Pick clips from the memory card, trim, arrange on a timeline, play back, save edits; export to a video file; later: music bed, titles, transitions | E1 | 3 |
 | **2** | **The Living Town** | A real, navigable world | Town map FBX export + import, colliders & NavMesh; district zoning; traversal polish; ambient/directional audio beds; vantage points | E1 | 1 |
 | **3** | **Event Content Pack #1** | Breadth of moments | 3–5 more events reusing the event-actor system (e.g., oil-rig smoke break, cheating husband, fisher, graffiti); source/author the needed animations | E1, E2 | 1·2 |
 | **4** | **Progression & Reputation** | A reason to keep playing | Reputation economy & tiers; unlock gating (events/districts); the "town log"/collection; "new best" tracking; grade→reward | E1, E3 | 3 |
@@ -391,7 +391,7 @@ Sequenced by dependency: **Epic 1 is the First Playable Slice**; every later epi
 | **7** | **Missions & Mystery** (optional layer) | Light narrative spine | Mission-givers/hubs; clip-bounties; the town-mystery thread; footage-as-evidence investigation | E3, E4 | 1 |
 | **8** | **Stealth Layer** | Tension on sensitive events | Proximity/eyeline detection; "spotted" consequence (event aborts); sneak-to-shoot | E3, E7 | 1 |
 
-_Epic 9 is sequenced **immediately after Epic 1**, ahead of Epic 2. It is listed second in the table to show that, and numbered 9 only so the existing epic numbers and Jira keys stay stable (added 2026-11-10)._
+_Epic 9 is sequenced **immediately after Epic 1**, ahead of Epic 2. It is listed second in the table to show that, and numbered 9 only so the existing epic numbers stay stable (added 2026-11-10)._
 
 _Deferred beyond this plan (vision, not committed): online sharing, complete character roster, deep police-vs-criminal branching, multiplayer, mobile. (The full video-editing minigame was promoted from this list to Epic 9 on 2026-11-10.)_
 

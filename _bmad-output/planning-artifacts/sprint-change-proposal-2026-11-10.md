@@ -5,7 +5,7 @@ author: Alexv (facilitated by gds-correct-course)
 trigger: stakeholder feedback
 scope: Moderate
 mode: Incremental — 16 of 16 edit proposals reviewed and approved individually
-status: approved 2026-11-10 by Alexv — edits applied to all planning artifacts; Jira sync pending re-authentication
+status: approved 2026-11-10 by Alexv — edits applied to all planning artifacts; stakeholder questions answered; Jira dropped from the project the same day
 affects:
   - _bmad-output/planning-artifacts/epics.md
   - _bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/gdd.md
@@ -13,8 +13,12 @@ affects:
   - _bmad-output/planning-artifacts/game-architecture.md
   - _bmad-output/implementation-artifacts/sprint-status.yaml
   - _bmad-output/implementation-artifacts/1-13-soften-the-timing-multiplier.md
-  - Jira project KAN (pending re-authentication)
 ---
+
+> **Update, same day (2026-11-10, after approval):** the stakeholder answered both open questions (yes and yes —
+> see §3), and **Jira was removed from the project**. Everything below that talks about syncing to Jira describes
+> the plan as it stood when it was approved. The files in `_bmad-output/` are now the only tracker. See
+> *Implementation notes* at the end.
 
 # Sprint Change Proposal — Video Replaces Photo
 
@@ -172,13 +176,14 @@ No epic becomes obsolete. One epic is added.
   stated arc, and Epic 5 depends on Epic 4.
 - *Implement 1.13 anyway*, or *delete it*: rejected in favour of superseding it and keeping its intent.
 
-**Open questions for the stakeholder** (none of these blocks Story 1.14)
+**Questions for the stakeholder — ANSWERED 2026-11-10, both yes**
 
-1. **FR31: should a finished edit be able to leave the game as a real video file** (for example, to post
-   online)? This affects ADR-4: if yes, some encoding is needed, at least at export time.
-2. **Assumptions made in the stories, worth a quick confirmation:** Record is a **toggle** (press to start,
-   press to stop), like a real camcorder, rather than hold-to-record. Clips **include the game's sound**. The
-   memory card starts at **about 2 minutes** of footage, and this is tunable.
+1. ✅ **FR31: should a finished edit be able to leave the game as a real video file** (for example, to post
+   online)? **Yes.** FR31 is confirmed. This affects ADR-4: some encoding is needed, at least at export time, so
+   Story 1.14 must show a working export path for whichever approach it picks.
+2. ✅ **Assumptions made in the stories:** Record is a **toggle** (press to start, press to stop), like a real
+   camcorder, rather than hold-to-record. Clips **include the game's sound**. The memory card starts at **about
+   2 minutes** of footage, and this is tunable. **Yes**, all confirmed.
 
 ## 4. Detailed Change Proposals
 
@@ -579,7 +584,7 @@ one architecture decision (ADR-4) that the spike must settle before implementati
 | Product Owner / Scrum Master | Alexv, with this workflow | Apply the approved edits to epics.md, the GDD, the decision log, the architecture, sprint-status and the 1.13 file (done in this session on approval). Take the open questions (FR31; toggle/sound/2 min) to the stakeholder. |
 | Developer | `gds-create-story` → `gds-dev-story` | Create the Story 1.14 context file next, then run the spike. Stories 1.15–1.18 follow in order. |
 | Architect touchpoint | Alexv, at the end of Story 1.14 | Approve ADR-4 before Story 1.15 starts (Story 1.14 AC2). |
-| Jira sync | This session, once `/mcp` → `atlassian` is re-authenticated | Create **Epic 9** and **Stories 1.14–1.18** (parent KAN-4), with "In plain terms (for non-developers):" comments. Update the descriptions of KAN-4, KAN-7, KAN-8 and KAN-10. Clear the September backlog (KAN-23 → Done). Do **not** create 1.13. Write the keys back into `jiraSync`. Subtasks are created when each story gets its task breakdown (story file). |
+| ~~Jira sync~~ | — | **Cancelled 2026-11-10: Jira was removed from the project.** `sprint-status.yaml` and the story files are the only tracker. |
 
 **Sequence:** 1.14 (spike; gates the rest) → 1.15 → 1.16 → 1.17 → 1.18 → Epic 1 exit playtest → Epic 1
 retrospective (optional) → **Epic 9** → Epic 2 → …
@@ -608,8 +613,13 @@ retrospective (optional) → **Epic 9** → Epic 2 → …
   had complained. It was repaired mechanically: the continuation lines were indented, and those seven colons became
   ` -`. No words changed. It now parses, and the full 3,896-character history is preserved as one value. **For
   future log entries:** do not put `: ` (or a trailing `:`) inside `last_updated`.
-- **Jira:** not synced. The Atlassian MCP tools are unavailable until re-authentication. Every item to create is
-  marked `PENDING` in `epics.md` → `jiraSync`.
+- **Jira: removed from the project** (Alexv, same day). Removed: the "Jira Sync" section of `CLAUDE.md` and
+  `AGENTS.md`; the Jira half of `.claude/hooks/post_edit_reminders.py` and its `.codex/` copy (the C# compile
+  reminder is kept, and was tested by running the hook); the project-scope `atlassian` MCP server in `.mcp.json`
+  and `.codex/config.toml`, and its permissions in `.claude/settings.json`; the `jiraSync:` block in `epics.md`;
+  and the KAN comments in `sprint-status.yaml`. The old KAN keys remain in git history (commit `1e3ab88`).
+- **Stakeholder answers:** FR31 (export) confirmed, so Story 1.14 AC2, ADR-4 and the Epic 9 seeds now require a
+  working export path. Toggle, game sound and the ~2 min card are confirmed and noted on Stories 1.15 and 1.17.
 
 ## Appendix — Change-navigation checklist record
 
@@ -635,4 +645,4 @@ retrospective (optional) → **Epic 9** → Epic 2 → …
 | 6.1–6.2 Review | [x] | 16 of 16 proposals reviewed individually. |
 | 6.3 Approval | [x] | Approved by Alexv, 2026-11-10, with no conditions. |
 | 6.4 sprint-status | [x] | Applied (P16). |
-| 6.5 Handoff | [x] | Next: `gds-create-story` for 1.14. Jira sync waits on `/mcp` re-authentication. |
+| 6.5 Handoff | [x] | Next: `gds-create-story` for 1.14. (Jira sync cancelled: Jira was removed from the project.) |
