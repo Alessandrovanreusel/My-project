@@ -107,7 +107,7 @@ These are technical/setup requirements drawn from the Architecture document that
 - **AR6 (Memory card persistence):** An in-memory store of `CapturedClip` capped in seconds of footage (evolves `GalleryService`), designed with a disk-ready seam. Clips surviving between sessions lands no later than Epic 9's first story. *(Revised 2026-11-10: was "Gallery persistence: in-memory `List<CapturedShot>` via `GalleryService`, designed with a disk-ready seam for Epic 5".)*
 - **AR7 (Camera fork — ADR-1):** Walk state is **first-person** (not third-person), reusing the existing FP controller/camera; "raise camera" = mode toggle + FOV zoom on one rig. (A small GDD note is advisable.)
 - **AR8 (Import constraint):** The World FBX's embedded Blender camera must stay **disabled** on import (it overrides Main Camera via higher depth).
-- **AR9 (Asset pipeline — Epic 2 blocker):** The town map currently exists only as a 214 MB `.blend`; it needs a **Blender → FBX export** before Unity import.
+- **AR9 (Asset pipeline — Epic 2 blocker):** The town map currently exists only as a 214 MB `.blend`; it needs a **Blender → FBX export** before Unity import. *(2026-11-10, Epic 2 planning: measured as already met. `Assets/Models/game map .fbx` matches the shared folder's `game map .blend`: 16,738 meshes, 5,677,935 triangles, identical bounds, no camera. See `_bmad-output/verification/plan-epic-2/blend_vs_fbx.json`. Story 2.2 keeps a re-runnable check for the next time the `.blend` changes.)*
 - **AR10 (Animator setup):** A Unity **Animator** must be built for the husband from the Drunk Pack (idle, idle variations, walk, turns, run) to drive the Town Drunk lifecycle.
 - **AR11 (Project scaffold):** Create the folder/namespace structure (`Scripts/{Core, Player, PhotoMode, Grading, Events, Gallery}`, `Data/{Events, Grading, Camera, Channels}`) and the SO config assets before feature work.
 - **AR12 (Clip recording approach):** Decided by measurement in Story 1.14 and recorded as **ADR-4** before any recording story starts. It must work in a Windows **build**: Unity Recorder (`com.unity.recorder`), which films the verification rigs, is Editor-only and cannot ship. *(Added 2026-11-10.)*
@@ -174,6 +174,7 @@ Give the proven loop a real, navigable world: import the full town map, zone it 
 **FRs covered:** FR14, FR15
 **Foundation (AR):** AR9 (map FBX export)
 **Depends on:** Epic 1
+**Stories:** 2.1–2.7, detailed 2026-11-10. Story 2.1 settles the player's scale against the town (ADR-5) before anything is placed in it.
 
 ### Epic 3: Event Content Pack #1
 Add breadth of moments: 3–5 new event types built purely as `EventDefinition` data on the existing event-actor engine, with required animations sourced/authored (oil-rig smoke break, cheating husband, fisher, graffiti tagger).
@@ -639,14 +640,244 @@ suppression seam); and closing returns me exactly where I was
 
 ---
 
-## Epics 2–9: Detailed Just-In-Time
+## Epic 2: The Living Town
 
-Per the GDD's scope discipline — *"Do not start a later epic until Epic 1 has proven the loop is fun"* — Epics 2 through 9 are intentionally **not** broken into detailed stories yet. Their goals, FR coverage, and dependencies are fixed in the **Epic List** above. Re-run `gds-create-story` / this workflow to detail each one just-in-time, once Epic 1 validates how the core systems actually feel. **Epic 9 is sequenced first among them**, immediately after Epic 1 (2026-11-10).
+Give the proven loop a real, navigable world. The whole town map becomes walkable end to end, is zoned into districts that each sound like their own place, gains vantage points you can climb to, and carries directional ambience that never buries an event's cue. The world should read as alive, and cues should stay locatable.
+
+*Planned 2026-11-10 by the unattended loop (`plan-epic-2`), which may plan later epics before Epic 1's playtest (decision log, 2026-11-10). Three facts measured while planning shaped these stories. The evidence is in `_bmad-output/verification/plan-epic-2/`, made by headless Blender scripts that only read the map:*
+
+- *The FBX export that AR9 asked for already exists. `Assets/Models/game map .fbx` matches the newest `game map .blend` in the shared folder exactly: 16,738 meshes, 5,677,935 triangles, the same 3,144 × 3,732 m bounds, and no camera (`blend_vs_fbx.json`). `SampleScene` already holds the whole map, and Epic 1 only ever used its centre. So no story exports the map. Story 2.2 instead keeps a check that can be re-run whenever the `.blend` changes.*
+- *The map is a central plain of about 810 × 570 m inside a ring of mountain tiles, each about 1 km across. On the plain are a small street block, a row of houses, an industrial yard (a factory, containers, trucks, oil barrels) and a lake shore. A structure stands out on the water about 250 m from the shore, probably the oil rig (`map_topdown.png`, `zoom_plain_900m.jpg`, `zoom_water_500m.jpg`). All five GDD districts can be zoned on this, though downtown and residential are thin. Nothing on the map is a dock or a pier.*
+- *The characters are about 5× the town's scale. The player is 8.86 m tall, beside cars about 2.6 m long, containers about 5.8 m long and trees 4.9–7.6 m tall. This is logged in `deferred-work.md`, and Alexv noted "humanoid too tall" on 2026-06-05. A giant sees over every roof, which makes FR14's rooftop vantage points pointless. And if the scale changed later, every distance placed in this epic would have to be placed again. So Story 2.1 settles the scale first.*
+
+**Story sequencing:** Story 2.1 settles the scale that every later story places things in. Each story after it builds only on the stories before it. The cross-cutting NFRs apply as they do in Epic 1, and NFR1, NFR3, NFR7 and NFR8 are restated where they bite.
+
+### Story 2.1: Settle the player's scale in the town
+
+*Added 2026-11-10. Decided by measuring, as Story 1.14 was, and recorded as **ADR-5**. It comes first because every later story in this epic places things in the world at the scale this one settles. It takes up two `deferred-work.md` entries: "Character (humanoid) is too tall relative to the world" and "NavMesh bake dimensions are metric while world/agent are ~4×".*
+
+As a player,
+I want to be the right size for the town, with doors, cars and trees at a person's scale around me,
+So that the town reads as a real place, and climbing onto a roof or a hill shows me something I could not see from the street.
+
+**Acceptance Criteria:**
+
+**Given** the player, the Town Drunk and the town as they are now (characters about 8.86 m tall, beside cars about 2.6 m long, containers about 5.8 m long and trees 4.9–7.6 m tall),
+**When** the options are compared, at minimum **(A)** scale the characters to the town, **(B)** scale the town to the characters and **(C)** keep both as they are,
+**Then** each option is photographed from the player's eye at the same spots (beside a car, at a house door, under a tree, in the street block)
+**And** each is measured for: eye height against those objects; how long it takes to cross the plain and to reach the drunk's route, walking and sprinting; and every tuned number it would move. Those numbers include movement, jump, gravity, camera eye height, the NavMesh agent, the drunk's speed and cue radius, distances in the grading and camera configs, and the rigs' camera heights
+**And** the choice is recorded as **ADR-5** in the architecture, with that evidence and the cost of reversing it.
+
+**Given** the chosen option,
+**When** it is applied,
+**Then** every value it moves lives in config, not in code literals
+**And** the NavMesh is re-baked with an agent the size of the characters
+**And** the drunk still takes about 20–30 s over his route, with his ~1.5 s peak (FR11).
+
+**Given** Epic 1's loop after the change,
+**When** it is run through the real code paths,
+**Then** the drunk completes several pooled lifecycles on the NavMesh
+**And** his cue is audible out to the design's ~25 m at the new scale, and silent beyond it (FR10)
+**And** a well-framed capture of his peak still grades high and a miss still misses: the Photo Shoot rig, moved to the new eye height, shows no regression
+**And** raising the camera still takes under 0.3 s (NFR2), and walk, sprint and jump still work (FR13).
+
+**Given** before-and-after pictures from the player's eye at the same spots,
+**When** Alexv looks at them,
+**Then** he confirms the town now reads as a place where a person stands. This is a **human** check, and it stays open until he has done it.
+
+### Story 2.2: Walk the whole town
+
+*Added 2026-11-10. Planning found that the map in Unity already is the newest `.blend` (AR9), so this story checks that instead of exporting it. It also takes up the `deferred-work.md` entry "See-through walls".*
+
+As a player,
+I want to walk out of the slice patch to anywhere in the town (the street block, the houses, the industrial yard, the shore and up into the hills) without falling through, getting stuck or walking off the world,
+So that the whole town is mine to explore and to chase moments in.
+
+**Acceptance Criteria:**
+
+**Given** the newest town-map `.blend` in the shared folder,
+**When** a re-runnable editor check compares it with `Assets/Models/game map .fbx`,
+**Then** it reports whether the two match on mesh count, triangle count and bounds, and names anything that differs
+**And** if the map has changed, it is re-exported over `Assets/Models/game map .fbx` in place, keeping the file's GUID so the scene's references survive
+**And** camera import is switched off, so no Blender camera can ever override Main Camera (AR8, AR9).
+
+**Given** the player,
+**When** the real controller walks and sprints a route through every part of the town, driven by the same input methods the player's keys call and drawn as a trace on a top-down map,
+**Then** they never fall through the ground and never stick on open ground
+**And** nothing too small to be an obstacle (grass, flowers, pebbles) stops them like an invisible wall (FR13, FR15).
+
+**Given** the edges of the town (the mountain ring and the water),
+**When** the player walks into them,
+**Then** the terrain or the shoreline stops them: they never walk on the water's surface or off the world
+**And** if they ever end up below the world, they are put back on the last safe ground within ~2 s, and no error is shown (NFR8)
+**And** the oil rig out on the water is either reachable on foot or deliberately out of bounds. This story decides which and records it, because Epic 3's oil-rig event needs to know.
+
+**Given** the player pressed against any wall in the town,
+**When** they look at it,
+**Then** the view never shows what is behind the wall.
+
+**Given** the NavMesh, baked over the whole town at the agent size ADR-5 set,
+**When** an agent paths from the pub to a point in every part of the town,
+**Then** every path completes (drawn on the top-down map), so Epic 3's events can be staged anywhere (FR15)
+**And** the console stays clean, and the frame rate is no lower than at the start of the story (NFR1, NFR5).
+
+### Story 2.3: The whole town holds its frame rate
+
+*Added 2026-11-10. The slice already loads the whole map: 16,738 renderers, each with a MeshCollider, and 5.7 M triangles. 15,080 of those renderers are ground scatter from Blender particle systems. Once the whole town is open to the player, they can look across all of it.*
+
+As a player,
+I want the game to stay smooth wherever I go and whatever I look at, including the view across the whole plain from the hills,
+So that chasing a moment never stutters.
+
+**Acceptance Criteria:**
+
+**Given** a fixed route through every part of the town, including the widest views from the hills, with the drunk event active,
+**When** it is measured in a Windows release build at 1080p on `PC_RPAsset`,
+**Then** it holds 60 FPS (NFR1)
+**And** because this laptop is not NFR1's mid-range desktop, the result is measured as a change against a baseline run interleaved with it, and the absolute verdict is queued for Alexv.
+
+**Given** culling chosen by measuring (for example occlusion culling, cull distances for small ground scatter, LODs or batching),
+**When** it is applied,
+**Then** a run before it and a run after it, over the same route, show the gain on each stretch of the route
+**And** a contact sheet from that route shows nothing near the player popping in or out (NFR6).
+
+**Given** an event actor the player can see,
+**When** culling runs,
+**Then** the actor is never culled, and the grader's verdict on him is unchanged: the Photo Shoot rig shows no regression.
+
+**Given** a long session (about 30 minutes of walking the route on a loop),
+**When** the game's memory is sampled from outside the process,
+**Then** it stays flat (NFR3).
+
+### Story 2.4: Districts you can hear
+
+*Added 2026-11-10. Districts are zoned on the map as it is now. Planning found thin versions of downtown and residential, so building out district content is left to Alexv's work on the map, and this story adds none.*
+
+As a player,
+I want each part of town to sound like its own place, and to hear the change as I walk from one part to the next,
+So that I always know where I am without a map, and the town feels alive.
+
+**Acceptance Criteria:**
+
+**Given** the town map,
+**When** it is zoned,
+**Then** it holds the GDD's districts as far as the map supports them: downtown (the street block), residential (the houses), industrial (with the oil rig), the waterfront, and the mountains
+**And** each district is a data asset holding its name, its bounds and its GDD event category (crime, drama or nature), so that Epic 3 can seed events into districts and Epic 4 can unlock them (FR15)
+**And** a top-down capture shows every district's bounds, plus a walk through all of them coloured by the district the game resolved at each point.
+
+**Given** the player walks from one district into another,
+**When** they cross the boundary,
+**Then** the new district's ambient bed fades in and the old one fades out over a few seconds, set in config
+**And** there is never a hard cut, never silence and never two beds at full volume, measured along the walk from the game's own audio output.
+
+**Given** a spot that belongs to no district,
+**When** the player stands there,
+**Then** a default bed plays, and nothing errors (NFR8).
+
+**Given** the ambient beds,
+**When** they are made,
+**Then** placeholders follow the project's synthesised-placeholder convention (Story 1.8), and no asset is used whose licence would have to be accepted
+**And** districts are heard, not labelled: no on-screen name or marker is added, per the GDD's rule against map markers (FR10).
+
+**Given** a walk through every district,
+**When** Alexv listens,
+**Then** he confirms that each one sounds like its own place. This is a **human** check.
+
+### Story 2.5: Climb to a better angle
+
+*Added 2026-11-10. This story delivers FR14.*
+
+As a player,
+I want rooftops, hills and a spot on the waterfront that I can get up onto,
+So that when something happens below, I can frame it from above, clear of the cars, trees and walls that block the view at street level.
+
+**Acceptance Criteria:**
+
+**Given** the town,
+**When** vantage points are placed,
+**Then** every district has at least one, and among them are a rooftop, a hill and a spot on the waterfront (FR14)
+**And** each is reached on foot with the existing controls (walk, sprint, jump), with no new climbing mechanic
+**And** any access the map lacks (stairs, a ramp, a jetty) is added under its own scene root, never by editing the map FBX. A re-import of the map then cannot remove it, and Alexv can fold it into the `.blend` later.
+
+**Given** each vantage point,
+**When** a scripted walk drives the real controller from the street up to it,
+**Then** the player arrives without getting stuck or falling through, shown as a trace on the top-down map.
+
+**Given** the drunk's peak spot, and a stand-in subject in each district's open spaces (where Epic 3 will stage events),
+**When** the real grader frames each subject from the nearest vantage point and from street level on the same bearing,
+**Then** the vantage point sees the subject unoccluded and, with zoom, above the size gate, more often than the street view does
+**And** each of those frames is photographed with the grader's box drawn on it.
+
+**Given** the town at eye level,
+**When** Alexv looks around and climbs up,
+**Then** he confirms that each vantage point reads as somewhere you can climb, and that the view from up there is a better shot. These are **human** checks.
+
+### Story 2.6: Sounds to steer by
+
+*Added 2026-11-10. This story delivers FR15's "reactive directional ambient audio" and puts NFR7 to the test across the whole town.*
+
+As a player,
+I want the town's landmarks to sound from where they are (surf along the shore, machinery at the yard and the rig, traffic on the main road, wind in the hills), and an event's cue to cut through all of them,
+So that I can find my way by ear, and the moment I am hunting is never buried.
+
+**Acceptance Criteria:**
+
+**Given** each district,
+**When** its landmark sounds play,
+**Then** they are 3D and directional: as the player turns, the stereo balance of the game's output follows each source's bearing
+**And** their level falls with distance, measured from the game's own audio output, the way Story 1.8 measured the drunk's cue.
+
+**Given** the drunk's cue, within its radius, among the ambience,
+**When** both are playing,
+**Then** the ambience ducks under the cue by an amount set in config, so the cue stays the most prominent sound the player can locate at every point of a walk toward him (NFR7)
+**And** the ducking releases smoothly after he despawns.
+
+**Given** every district's sounds playing at once,
+**When** voice count and audio CPU are measured,
+**Then** they stay within budget, and the frame rate does not regress (NFR1).
+
+**Given** a walk through the town with the drunk active,
+**When** Alexv listens,
+**Then** he confirms that he can tell where landmarks are by ear, and that the drunk's cue still cuts through. This is a **human** check (NFR7).
+
+### Story 2.7: The town swells at the peak
+
+*Added 2026-11-10. The GDD's Art and Audio direction asks for this, and the architecture's validation flagged it "for Epic 1 polish or Epic 2". No epic had taken it, so it sits here.*
+
+As a player,
+I want a light, lo-fi music bed under the town that swells when an event I can hear reaches its peak,
+So that the money-shot moment feels like one, and I know to keep rolling.
+
+**Acceptance Criteria:**
+
+**Given** an event peaks within its cue radius of the player,
+**When** `EventPeakedChannel` fires,
+**Then** the music bed swells over about 1 s, holds through the peak window and settles back after it, with the ambience dipping under it
+**And** the curve and levels live in config (GDD Art & Audio)
+**And** the swell is driven by the channel, not by polling the event.
+
+**Given** an event peaks beyond its cue radius,
+**When** the player cannot hear it,
+**Then** nothing swells. The music must never give away an event the player could not have heard (FR10).
+
+**Given** several pooled lifecycles in a row,
+**When** each one peaks,
+**Then** each swell plays once and settles fully, never stacking and never sticking.
+
+**Given** a recording of the game's audio output across a lifecycle,
+**When** Alexv listens,
+**Then** he confirms that the swell feels like a payoff, not an intrusion. This is a **human** check.
+
+---
+
+## Epics 3–9: Detailed Just-In-Time
+
+Per the GDD's scope discipline — *"Do not start a later epic until Epic 1 has proven the loop is fun"* — the epics below are intentionally **not** broken into detailed stories yet. Their goals, FR coverage, and dependencies are fixed in the **Epic List** above. Re-run `gds-create-story` / this workflow to detail each one just-in-time, once Epic 1 validates how the core systems actually feel. **Epic 9 is sequenced first among them**, immediately after Epic 1 (2026-11-10). *(Epic 2 was detailed above on 2026-11-10 by the unattended loop, which Alexv allowed to plan later epics ahead of Epic 1's playtest. This heading read "Epics 2–9" until then.)*
 
 **Known seeds for when those epics are detailed:**
 
 - **Epic 9** *(added 2026-11-10)* — the first story makes clips survive between sessions (cashing in the memory card's disk seam, AR6). After that: trim a clip → arrange clips on a timeline → play back the edit → save and re-open an edit (FR29–FR30). Then export to a standard video file (FR31 — confirmed by the stakeholder 2026-11-10, so it is committed, not a candidate). Later candidates: a music bed, title cards, transitions. ADR-4 (Story 1.14) decides how trimming and joining work (re-render versus re-encode).
-- **Epic 2** — the town map FBX export (AR9) is the first story and a hard blocker; districts, vantage points (FR14), colliders/NavMesh, and per-district ambient audio (FR15) follow.
+- **Epic 2** — the town map FBX export (AR9) is the first story and a hard blocker; districts, vantage points (FR14), colliders/NavMesh, and per-district ambient audio (FR15) follow. *(Detailed 2026-11-10 as Stories 2.1–2.7 above. Planning measured that the export already exists, so the scale question took the first slot and Story 2.2 checks the map rather than exporting it.)*
 - **Epic 3** — each new event (oil-rig smoke break, cheating husband, fisher, graffiti) is one story = one `EventDefinition` + its animations; the engine from Story 1.6 is reused unchanged (FR16). Assets on hand: bandit, CEO, oil-rig worker FBX + a "bandit fight mode" walk.
 - **Epic 4** — `ReputationSystem` subscribes to `ClipRecordedChannel` (FR17–FR20); no rework of recording/grading needed. *(2026-11-10: was `ShotCapturedChannel`.)*
 - **Epic 5** — the memory card's disk seam (AR6) is cashed in by Epic 9; Epic 5 reuses it to print stills and decorate (FR21). *(2026-11-10: was "`GalleryService`'s disk seam is cashed in here".)*
