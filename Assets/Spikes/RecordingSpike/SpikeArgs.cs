@@ -31,7 +31,8 @@ namespace CameraGame.Spikes.RecordingSpike
         // ffmpeg encode of tap frames needs vflip. On by default; -novflip exists only to re-prove it.
         public bool VFlip = true;
         public bool Export = true;
-        public bool EditExport;           // (B) Edit Suite probe: trim clip 1, join clip 2, export ONE file
+        public bool EditExport;
+        public bool Solo;                 // (B) full-screen playback with the live camera off: ONE town render           // (B) Edit Suite probe: trim clip 1, join clip 2, export ONE file
         public float Timeout = 240f;
         public Vector3 Vantage = new Vector3(float.NaN, 0, 0);
         public float Zoom = 0f;
@@ -71,6 +72,7 @@ namespace CameraGame.Spikes.RecordingSpike
                     case "-novflip": a.VFlip = false; break;
                     case "-noexport": a.Export = false; break;
                     case "-editexport": a.EditExport = true; break;
+                    case "-solo": a.Solo = true; break;
                     case "-timeout": a.Timeout = float.Parse(v, CultureInfo.InvariantCulture); i++; break;
                     case "-zoom": a.Zoom = float.Parse(v, CultureInfo.InvariantCulture); i++; break;
                     case "-failcase": a.FailCase = v; i++; break;

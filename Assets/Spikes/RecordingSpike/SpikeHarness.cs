@@ -318,7 +318,7 @@ namespace CameraGame.Spikes.RecordingSpike
             _actor = Live();
             _phase = (byte)(_cycle == 1 ? 2 : _cycle == 2 ? 6 : 9);
             _nextVf = 0; _carry = 0; _captures = 0; _dupFrames = 0; _dropped = 0; _readbackErrors = 0; _outOfOrder = 0; _lastSubmittedVf = -1; _peakVf = -1;
-            for (int i = 0; i < 3; i++) _refOk[i] = false;
+            for (int i = 0; i < 3; i++) { _refOk[i] = false; _rerenderTaken[i] = false; }
             _markerLog.Clear(); _markerADone = _markerBDone = false;
             string clipBase = Path.Combine(_out, $"{_a.Tag}-c{_cycle}");
             if (_a.Mode == "A")
@@ -628,16 +628,24 @@ namespace CameraGame.Spikes.RecordingSpike
                 if (_actor != null) _replay.BuildGhost(_actor);
                 Log(_replay.BuildNote);
                 _replay.PlayCam.enabled = true;
+                // Full-screen playback hides the live view anyway, so -solo stops rendering it (the game keeps
+                // simulating). Without it, playback is a second render of the town.
+                if (_a.Solo) _cam.enabled = false;
                 _playImage.texture = _replay.Target; _playImage.uvRect = new Rect(0, 0, 1, 1);
                 PlayPcm();
                 float start = Time.unscaledTime;
                 int tick = 0, vfAcc = 0; var drift = new List<string>();
+                var plog = new StringBuilder("t,vf,tick,screen_grab\n");
+                var grabs = new List<(int vf, byte[] px)>();
                 while (true)
                 {
                     int vf = Mathf.FloorToInt((Time.unscaledTime - start) * _a.Fps);
                     if (vf >= _nextVf || tick >= _track.Count) break;
                     while (tick + 1 < _track.Count && vfAcc + _track[tick].repeats <= vf) { vfAcc += _track[tick].repeats; tick++; }
                     _replay.Apply(_track[tick]);
+                    bool grab = _a.Prove && grabs.Count < 60 && (grabs.Count == 0 || vf - grabs[grabs.Count - 1].vf >= 5);
+                    plog.Append(F(Time.unscaledTime - start)).Append(',').Append(vf).Append(',').Append(tick).Append(',').Append(grab ? 1 : 0).Append('\n');
+                    if (grab) StartCoroutine(GrabScreen(vf, grabs));
                     // Any reference frame whose index this playback frame has reached (playback may skip ticks).
                     int ri = -1;
                     if (_cycle == 1) for (int q = 0; q < _refVf.Length; q++) if (!_rerenderTaken[q] && _refVf[q] < vfAcc + _track[tick].repeats) { ri = q; break; }
@@ -657,7 +665,18 @@ namespace CameraGame.Spikes.RecordingSpike
                     yield return null;
                 }
                 _sum["bone_drift"] = Q(string.Join(" | ", drift));
+                File.WriteAllText(Path.Combine(_out, $"{_a.Tag}-c{_cycle}-playback.csv"), plog.ToString());
+                yield return null; yield return null;
+                foreach (var (gvf, px) in grabs)
+                {
+                    var tex = new Texture2D(Screen.width, Screen.height, TextureFormat.RGBA32, false);
+                    tex.LoadRawTextureData(px); tex.Apply(false);
+                    File.WriteAllBytes(Path.Combine(_out, $"{_a.Tag}-c{_cycle}-screen-vf{gvf:000}.png"), tex.EncodeToPNG());
+                    Destroy(tex);
+                }
+                if (grabs.Count > 0) Log($"PLAY cycle={_cycle}: {grabs.Count} screen grabs of the in-build playback saved (ScreenCapture, includes the Overlay canvas showing the replay)");
                 _replay.PlayCam.enabled = false;
+                _cam.enabled = true;
                 _playImage.texture = null;
             }
             else
@@ -673,6 +692,15 @@ namespace CameraGame.Spikes.RecordingSpike
         }
 
         private readonly bool[] _rerenderTaken = new bool[3];
+
+        private IEnumerator GrabScreen(int vf, List<(int, byte[])> into)
+        {
+            yield return new WaitForEndOfFrame();
+            var shot = ScreenCapture.CaptureScreenshotAsTexture();
+            if (shot.format != TextureFormat.RGBA32) { var c = new Texture2D(shot.width, shot.height, TextureFormat.RGBA32, false); c.SetPixels32(shot.GetPixels32()); c.Apply(false); Destroy(shot); shot = c; }
+            into.Add((vf, shot.GetRawTextureData()));
+            Destroy(shot);
+        }
 
         private IEnumerator GrabRerender(int k)
         {
@@ -759,9 +787,12 @@ namespace CameraGame.Spikes.RecordingSpike
         {
             var all = new List<ReplayTrack>(_takes) { _track };
             if (all.Count < 2) { Log("EDIT EXPORT needs -cycles 2"); yield break; }
-            int trim = 2 * _a.Fps;
+            int trim = 2 * _a.Fps;   // ~2 s off each end, counted in output frames
+            int total0 = 0; for (int i = 0; i < all[0].Count; i++) total0 += all[0][i].repeats;
+            int fromT = 0, toT = all[0].Count, acc = 0;
+            for (int i = 0; i < all[0].Count; i++) { if (acc < trim) fromT = i + 1; if (acc + all[0][i].repeats <= total0 - trim) toT = i + 1; acc += all[0][i].repeats; }
             var segs = new List<(ReplayTrack t, int from, int to, float[] pcm)>
-            { (all[0], trim, all[0].Count - trim, _takePcm[0]), (all[1], 0, all[1].Count, _takePcm[1]) };
+            { (all[0], fromT, toT, _takePcm[0]), (all[1], 0, all[1].Count, _takePcm[1]) };
             if (_replay == null) _replay = new ReplayPlayer(_cam, _mgr, _a.Width, _a.Height);
             if (_actor != null) _replay.BuildGhost(_actor);
             string outBase = Path.Combine(_out, $"{_a.Tag}-edit");
