@@ -1,7 +1,7 @@
 ## Your task — phase FIX for `{unit}` (epic {epic}, attempt {attempt})
 
-A second AI (OpenAI Codex, a different model from you) reviewed this story read-only. Its findings
-are in `{findings_path}`. The story file is `{story_file}`; the change is `git diff {base_ref}..HEAD`.
+An independent reviewer (a separate, read-only Claude session on a different model, with a fresh
+context) reviewed this story. Its findings are in `{findings_path}`. The story file is `{story_file}`; the change is `git diff {base_ref}..HEAD`.
 
 Treat every finding as a **hypothesis**. Reviewers, human or model, produce confident, plausible
 findings that turn out to be wrong (CLAUDE.md), so:

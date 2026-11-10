@@ -45,8 +45,8 @@ pick the next unit  (sprint-status.yaml + dependencies.yaml, skipping anything p
        ├─ create   gds-create-story                         fresh Claude session
        ├─ dev      gds-dev-story + rig + captures + Gemini   fresh Claude session
        ├─ review   gds-code-review, runs scenarios           fresh Claude session
-       ├─ cross    Codex reviews the diff, read-only         different AI
-       ├─ fix      reproduce each Codex finding, fix the real ones
+       ├─ cross    read-only Claude session, Sonnet 5.5      different model, fresh eyes
+       ├─ fix      reproduce each cross-review finding, fix the real ones
        └─ close    tests, console, evidence, story file      fresh Claude session
   └─ merge to master, push  (or park it and move on)
 ```
