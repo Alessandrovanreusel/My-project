@@ -126,3 +126,7 @@ meanwhile. His choices:
 - **Notifications:** ntfy phone push, one line per blocker or full stop; the topic stays off the public repo.
 - **A supervised pilot on Story 1.14 first,** then it runs until done, waiting out usage limits.
 - **Cross-review by OpenAI Codex**, read-only, as the "different LLM" CLAUDE.md recommends for code review.
+  **Changed the same evening (Alexv): Codex does not work on this machine, so use Claude Code.** The
+  cross-review is now a fresh, read-only Claude Code session on **Sonnet 5.5**. A different model from the
+  Opus build sessions keeps some of the independence. Editing tools and the Unity, Blender and Chrome tools
+  are off for it, the guard refuses git writes in that phase, and any tracked change it makes is reverted.

@@ -12,9 +12,10 @@ ROOT = os.getcwd()
 HOOK = os.path.join(ROOT, ".claude", "hooks", "loop_guard.py")
 
 
-def run(tool, inp, loop=True):
+def run(tool, inp, loop=True, phase="dev"):
     env = dict(os.environ)
     env["CLAUDE_PROJECT_DIR"] = ROOT
+    env["LOOP_PHASE"] = phase
     if loop:
         env["CAMERA_LOOP"] = "1"
     else:
@@ -65,6 +66,24 @@ for expected, tool, inp, label in CASES:
     ok = got == expected
     bad += not ok
     print(("ok  " if ok else "FAIL"), f"expected {expected:5} got {got:5}  {label}")
+READ_ONLY_CASES = [   # the cross-review phase may look, never touch
+    ("DENY", "Edit", {"file_path": os.path.join(ROOT, "Assets", "Scripts", "X.cs")}, "cross-review: edit a file"),
+    ("DENY", "Write", {"file_path": os.path.join(ROOT, "notes.md")}, "cross-review: write a file"),
+    ("DENY", B, {"command": "git commit -m 'review notes'"}, "cross-review: commit"),
+    ("DENY", B, {"command": "git restore Assets/Scripts/X.cs"}, "cross-review: restore"),
+    ("allow", B, {"command": "git diff abc123..loop/1-14 -- Assets/Scripts"}, "cross-review: git diff"),
+    ("allow", B, {"command": "git log --oneline -20"}, "cross-review: git log"),
+    ("allow", "Read", {"file_path": os.path.join(ROOT, "Assets", "Scripts", "X.cs")}, "cross-review: read"),
+]
+for expected, tool, inp, label in READ_ONLY_CASES:
+    got = run(tool, inp, phase="cross-review")
+    ok = got == expected
+    bad += not ok
+    print(("ok  " if ok else "FAIL"), f"expected {expected:5} got {got:5}  {label}")
+dev_write = run("Write", {"file_path": os.path.join(ROOT, "notes.md")}, phase="dev")
+print(("ok  " if dev_write == "allow" else "FAIL"), f"dev phase may still write in the project -> {dev_write}")
+bad += dev_write != "allow"
+
 inactive = run(B, {"command": "git push --force"}, loop=False)
 print(("ok  " if inactive == "allow" else "FAIL"), f"interactive session (no CAMERA_LOOP), force-push -> {inactive} (guard must stay off)")
 bad += inactive != "allow"

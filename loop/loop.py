@@ -3,7 +3,8 @@
 
 It picks the next unit of work (a story, the planning of an epic, or an epic's retrospective) from
 sprint-status.yaml + loop/dependencies.yaml, runs each phase of that unit in a FRESH headless Claude
-session on its own git branch, cross-reviews stories with Codex, merges to master when the unit
+session on its own git branch, cross-reviews stories with a read-only Claude session on a different
+model, merges to master when the unit
 passes, and parks anything genuinely blocked so it can move on to work that does not depend on it.
 
 Only the files are state: kill it at any point and start it again; it resumes where it stopped.
@@ -57,7 +58,7 @@ UNITY_HUB = r"C:\Program Files\Unity Hub\Unity Hub.exe"
 EDITOR_LOG = Path(os.environ.get("LOCALAPPDATA", "")) / "Unity" / "Editor" / "Editor.log"
 LICENCE_RE = re.compile(r"Access token is unavailable|Found 0 entitlement groups|No valid Unity Editor license", re.I)
 CLAUDE = shutil.which("claude") or "claude"
-CODEX = shutil.which("codex")
+REVIEW_MODEL = "claude-sonnet-5-5"   # cross-review runs on a different model from the Opus build sessions
 ATTRIBUTION = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 STORY_PHASES = ["create", "dev", "review", "cross-review", "fix", "close"]
@@ -71,6 +72,7 @@ LIMIT_WAIT_MAX_S = 30 * 3600
 LIMIT_RE = re.compile(r"usage limit|limit reached|hit your limit|rate.?limit|overloaded|"
                       r"too many requests|\b429\b|\b529\b|credit balance", re.I)
 DISALLOWED = "AskUserQuestion,Workflow,EnterPlanMode,ExitPlanMode"
+REVIEW_DISALLOWED = DISALLOWED + ",Edit,Write,NotebookEdit,mcp__UnityMCP,mcp__blender,mcp__claude-in-chrome"
 
 
 @dataclass
@@ -526,23 +528,57 @@ def run_phase(u: Unit, us: dict, phase: str, state: dict) -> dict:
         return res
 
 
+def final_message(log_text: str) -> str:
+    """The session's last answer, from the `result` event of a stream-json log ('' if none)."""
+    for line in reversed(log_text.splitlines()):
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        if e.get("type") == "result":
+            return "" if e.get("is_error") else str(e.get("result") or "")
+    return ""
+
+
 def run_cross_review(u: Unit, us: dict) -> str | None:
-    """Codex reviews the story's diff read-only. Returns the findings path, or None if skipped."""
-    if not CODEX:
-        report(f"{u.id}: cross-review skipped (codex not on PATH)")
-        return None
+    """A second, READ-ONLY Claude Code session on a different model reviews the story's diff.
+
+    Independence comes from three things: a fresh context that never saw the code being written, a
+    different model (REVIEW_MODEL) with different blind spots, and a brief that asks for failure
+    scenarios, not opinions. It cannot change anything: editing tools and the Unity/Blender/Chrome
+    servers are switched off for it, the guard refuses git writes in this phase, and any tracked
+    change it still manages to make is reverted below. Its findings are its final message.
+    Returns the findings path, or None if the review could not run (never a blocker)."""
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    findings = RESULTS / u.id / f"codex-findings-{stamp}.md"
+    findings = RESULTS / u.id / f"cross-review-findings-{stamp}.md"
     findings.parent.mkdir(parents=True, exist_ok=True)
+    logfile = LOGS / f"{stamp}-{u.id}-cross-review.jsonl"
     ctx = {"unit": u.id, "story_file": rel(IMPL / f"{u.id}.md"), "base_ref": us["base_ref"], "branch": u.branch}
-    cmd = ["cmd", "/c", CODEX, "exec", "-s", "read-only", "-C", str(ROOT), "-o", str(findings), "-"]
-    log(f"{u.id}: cross-review with Codex")
-    code, tail = run_process(cmd, render("cross-review", ctx, with_rules=False),
-                             LOGS / f"{stamp}-{u.id}-cross-review.log", HOURS["cross-review"] * 3600,
-                             child_env(u.id, "cross-review"))
-    if code != 0 or not findings.exists() or not findings.read_text(encoding="utf-8").strip():
-        report(f"{u.id}: cross-review skipped (codex exit {code}); see {rel(LOGS)}")
+    cmd = [CLAUDE, "-p", "--dangerously-skip-permissions", "--model", REVIEW_MODEL,
+           "--output-format", "stream-json", "--verbose", "--disallowedTools", REVIEW_DISALLOWED]
+    log(f"{u.id}: cross-review by a read-only Claude session ({REVIEW_MODEL}) → {rel(logfile)}")
+    waited = 0
+    while True:
+        code, _ = run_process(cmd, render("cross-review", ctx, with_rules=False), logfile,
+                              HOURS["cross-review"] * 3600, child_env(u.id, "cross-review"))
+        text = logfile.read_text(encoding="utf-8", errors="replace")
+        answer = final_message(text)
+        if not answer and LIMIT_RE.search(text[-20000:]) and waited < LIMIT_WAIT_MAX_S:
+            log(f"{u.id}: usage/rate limit during cross-review; waiting {LIMIT_WAIT_S // 60} min")
+            for _ in range(LIMIT_WAIT_S // 30):
+                if stop_requested():
+                    return None
+                time.sleep(30)
+            waited += LIMIT_WAIT_S
+            continue
+        break
+    if git("status", "--porcelain", "--untracked-files=no").stdout.strip():
+        report(f"{u.id}: the read-only reviewer changed tracked files; reverted them")
+        git("checkout", "--", ".")
+    if not answer.strip():
+        report(f"{u.id}: cross-review produced no findings text (exit {code}); skipped, see {rel(logfile)}")
         return None
+    findings.write_text(answer, encoding="utf-8")
     return rel(findings)
 
 
@@ -572,6 +608,18 @@ def start_branch(u: Unit, us: dict) -> None:
     sync_master()
     if branch_exists(u.branch):
         git("checkout", u.branch)
+        # A resumed branch (after a stop, or a park that was cleared) must pick up what master gained
+        # meanwhile: loop fixes, prompt changes, lessons, other stories. Re-base the review diff on the
+        # new merge-base so reviewers still see only this unit's own changes.
+        if git("merge-base", "--is-ancestor", "master", u.branch, check=False).returncode != 0:
+            r = git("merge", "--no-ff", "master", "-m", f"loop: bring master into {u.branch}\n\n{ATTRIBUTION}",
+                    check=False)
+            if r.returncode != 0:
+                git("merge", "--abort", check=False)
+                report(f"{u.id}: could not bring master into its branch (conflict); continuing on the old base")
+            else:
+                us["base_ref"] = git("merge-base", "master", "HEAD").stdout.strip()
+                report(f"{u.id}: brought master into its branch before resuming")
         return
     tag = f"loop/pre-{u.id}"
     if git("rev-parse", "--verify", "--quiet", f"refs/tags/{tag}", check=False).returncode != 0:
@@ -645,8 +693,8 @@ def run_unit(u: Unit, state: dict) -> str:
         if phase == "cross-review":
             us["findings"] = run_cross_review(u, us)
             n = findings_count(us["findings"]) if us["findings"] else 0
-            us["history"].append({"phase": phase, "status": "ok", "summary": f"codex: {n} finding(s)", "at": now()})
-            report(f"{u.id} cross-review: codex reported {n} finding(s)")
+            us["history"].append({"phase": phase, "status": "ok", "summary": f"cross-review: {n} finding(s)", "at": now()})
+            report(f"{u.id} cross-review ({REVIEW_MODEL}, read-only): {n} finding(s)")
             us["phase"] = next_phase(u, us, phase)
             save_state(state)
             continue

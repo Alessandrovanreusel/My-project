@@ -116,6 +116,15 @@ def main():
     if tool in DENY_TOOLS or tool.startswith(DENY_TOOL_PREFIXES):
         return deny(f"the tool {tool} (outward-facing or not needed by the loop)")
 
+    # The cross-review session is a READ-ONLY second opinion: it may read and run git diff/log/show,
+    # never change the tree. (loop.py also switches its editing tools off and reverts tracked changes.)
+    if os.environ.get("LOOP_PHASE") == "cross-review":
+        if tool in WRITE_TOOLS:
+            return deny("editing files during the read-only cross-review (report it as a finding instead)")
+        if tool in SHELL_TOOLS and re.search(r"\bgit\b[^\n|;&]*\b(add|commit|restore|rm|mv|apply|am|revert)\b",
+                                             str(inp.get("command") or ""), re.I):
+            return deny("changing the repository during the read-only cross-review")
+
     if tool in SHELL_TOOLS:
         why = check_shell(str(inp.get("command") or ""))
         if why:
