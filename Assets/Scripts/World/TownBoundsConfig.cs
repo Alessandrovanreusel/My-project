@@ -101,7 +101,9 @@ namespace CameraGame.World
         // Safe accessors
         // ---------------------------------------------------------------------------------------------------------
 
-        public float SafeBelowWorldY => IsFinite(belowWorldY) ? belowWorldY : DefaultBelowWorldY;
+        /// <summary>The floor of the world. It must be finite AND below the NavMesh bake floor (bakeYMin, just under the
+        /// lowest walkable ground): a floor above walkable ground would put back a player who is standing on it, every frame.</summary>
+        public float SafeBelowWorldY => IsFinite(belowWorldY) && belowWorldY < SafeBakeYMin ? belowWorldY : Mathf.Min(DefaultBelowWorldY, SafeBakeYMin - 1f);
         public float SafeMaxAirborneSeconds => Positive(maxAirborneSeconds, DefaultMaxAirborneSeconds);
         public float SafeNothingBeneathSeconds => NonNegative(nothingBeneathSeconds, DefaultNothingBeneathSeconds);
         public float SafeSafeSampleInterval => Positive(safeSampleInterval, DefaultSafeSampleInterval);
@@ -177,7 +179,7 @@ namespace CameraGame.World
         {
             problem = null;
             if (!IsUsablePolygon(playableArea)) problem = $"playableArea is not a polygon of 3+ finite points with an area — using the measured default ({DefaultPlayableArea.Length} points)";
-            else if (SafeBelowWorldY != belowWorldY) problem = $"belowWorldY {belowWorldY} is not finite — using {SafeBelowWorldY}";
+            else if (SafeBelowWorldY != belowWorldY) problem = $"belowWorldY {belowWorldY} is not finite or not below the walkable ground's floor (bakeYMin {SafeBakeYMin}) — using {SafeBelowWorldY}";
             else if (SafeMaxAirborneSeconds != maxAirborneSeconds) problem = $"maxAirborneSeconds {maxAirborneSeconds} is not a positive time — using {SafeMaxAirborneSeconds}";
             else if (SafeNothingBeneathSeconds != nothingBeneathSeconds) problem = $"nothingBeneathSeconds {nothingBeneathSeconds} is negative or not finite — using {SafeNothingBeneathSeconds}";
             else if (SafeSafeSampleInterval != safeSampleInterval) problem = $"safeSampleInterval {safeSampleInterval} is not a positive time — using {SafeSafeSampleInterval}";

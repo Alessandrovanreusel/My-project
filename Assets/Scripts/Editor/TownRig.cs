@@ -62,9 +62,12 @@ namespace CameraGame.EditorTools
         [MenuItem("Tools/Town/Fall Recovery (Play)")] public static void Fall() => Run("fall", Out("fall"));
         [MenuItem("Tools/Town/Fall Recovery - fail-soft no config (Play)")] public static void FallNoCfg() => Run("failsoft", Out("fall/failsoft-no-config"), "noconfig");
         [MenuItem("Tools/Town/Fall Recovery - fail-soft invalid config (Play)")] public static void FallBadCfg() => Run("failsoft", Out("fall/failsoft-invalid-config"), "badconfig");
+        [MenuItem("Tools/Town/Fall Recovery - fail-soft floor above the ground (Play)")] public static void FallHighFloor() => Run("failsoft", Out("fall/failsoft-floor-above-ground"), "highfloor");
         [MenuItem("Tools/Town/NavMesh Paths (Play)")] public static void Paths() => Run("paths", Out("navmesh"));
+        [MenuItem("Tools/Town/NavMesh Paths - chain walk (Play)")] public static void PathsChains() => Run("paths", Out("navmesh/chain-walk"), "chains");
         [MenuItem("Tools/Town/Warp Guard - provoked (Play)")] public static void Warp() => Run("warp", Out("navmesh/warp-guard"), "spawnoffmesh");
-        [MenuItem("Tools/Town/Walk the Whole Town (Play)")] public static void Tour() => Run("tour", Out("walk/after"));
+        [MenuItem("Tools/Town/Walk the Whole Town (Play)")] public static void Tour() => Run("tour", Out("walk/after/walk"), "walk");
+        [MenuItem("Tools/Town/Walk the Whole Town - sprint (Play)")] public static void TourSprint() => Run("tour", Out("walk/after/sprint"), "sprint");
         [MenuItem("Tools/Town/Film Shore and Hill (Play)")] public static void Film() => Run("film", Out("film"));
 
         public static void Run(string mode, string outputDir, string staging = "")
@@ -105,13 +108,22 @@ namespace CameraGame.EditorTools
         /// <summary>Mutates the open (unsaved) town for a fail-soft scenario. Discarded when play mode ends.</summary>
         private static void Stage(TownRigRunner runner, string staging)
         {
-            if (staging == "noconfig" || staging == "badconfig")
+            if (staging == "noconfig" || staging == "badconfig" || staging == "highfloor")
             {
                 var fr = Object.FindFirstObjectByType<FallRecovery>(FindObjectsInactive.Include);
                 if (fr == null) return;
                 var so = new SerializedObject(fr);
                 SerializedProperty p = so.FindProperty("config");
                 if (staging == "noconfig") p.objectReferenceValue = null;
+                else if (staging == "highfloor")
+                {
+                    // every value valid EXCEPT the floor of the world, typed above the plain (y ~0.9): accepted as typed it
+                    // would put back a player standing on open ground every frame
+                    var high = ScriptableObject.Instantiate((TownBoundsConfig)p.objectReferenceValue);
+                    high.name = "TownBoundsConfig (rig: floor above the ground on purpose)";
+                    high.belowWorldY = 50f;
+                    p.objectReferenceValue = high;
+                }
                 else
                 {
                     var bad = ScriptableObject.CreateInstance<TownBoundsConfig>();

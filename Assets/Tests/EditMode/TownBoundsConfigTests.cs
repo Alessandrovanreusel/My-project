@@ -31,6 +31,29 @@ namespace CameraGame.Tests
             StringAssert.Contains("belowWorldY", p);
         }
 
+        [TestCase(50f)]
+        [TestCase(0.9f)]
+        [TestCase(-8f)]
+        public void BelowWorldYAtOrAboveTheWalkableFloor_FallsBack(float v)
+        {
+            // a floor of the world above walkable ground would put back a player standing on it, every frame
+            _c.belowWorldY = v;
+            Assert.AreEqual(TownBoundsConfig.DefaultBelowWorldY, _c.SafeBelowWorldY);
+            Assert.Less(_c.SafeBelowWorldY, _c.SafeBakeYMin);
+            Assert.IsTrue(_c.TryGetConfigProblem(out string p));
+            StringAssert.Contains("belowWorldY", p);
+        }
+
+        [Test]
+        public void BelowWorldYFallback_StaysUnderALowerBakeFloor()
+        {
+            _c.bakeYMin = -30f; _c.belowWorldY = -20f;
+            Assert.AreEqual(-31f, _c.SafeBelowWorldY);
+            _c.belowWorldY = -40f;
+            Assert.AreEqual(-40f, _c.SafeBelowWorldY);
+            Assert.IsFalse(_c.TryGetConfigProblem(out string p), p);
+        }
+
         [TestCase(0f)]
         [TestCase(-1f)]
         [TestCase(float.NaN)]
