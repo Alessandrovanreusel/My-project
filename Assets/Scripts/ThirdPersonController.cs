@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using CameraGame.Core;
+using CameraGame.Player;
 
 // RequireComponent automatically adds these components when you add this script.
 // It also prevents you from accidentally removing them in the Inspector.
@@ -8,30 +10,32 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(PlayerInput))]
 public class ThirdPersonController : MonoBehaviour
 {
-    [Header("Movement")]
-    // Walking speed in units per second. The character moves this fast by default.
-    [SerializeField] private float walkSpeed = 7f;
+    [Header("Tuning")]
+    // Walk and sprint speed, step height, jump height, gravity and the ground-stick speed all live in ONE
+    // PlayerConfig asset (Assets/Data/Player/PlayerConfig.asset), in metres and seconds for a 1.77 m person
+    // (ADR-5, Story 2.1). ThirdPersonCamera and the verification rigs read the same asset, so a value is
+    // tuned in one place. If it is missing, the game warns once and keeps running on PlayerConfig's defaults.
+    [SerializeField] private PlayerConfig config;
 
-    // Sprint speed — used when holding the Sprint button (Shift by default).
-    [SerializeField] private float sprintSpeed = 14f;
-
-    // Maximum vertical step the character can climb without jumping (in units).
-    // Anything taller blocks movement; anything shorter is auto-stepped over.
-    // ~22% of character height (8.86) is a natural "knee-step" feel.
-    [SerializeField] private float stepOffset = 2f;
+    /// <summary>The tuning asset this controller runs on (null = the built-in defaults).</summary>
+    public PlayerConfig Config => config;
 
     [Header("Mouse Look")]
     // How fast the camera turns when you move the mouse.
     // Higher = faster turning, lower = slower. Adjust to taste.
     [SerializeField] private float mouseSensitivity = 0.15f;
 
-    [Header("Jumping")]
-    // How high the character jumps (in meters/units).
-    [SerializeField] private float jumpHeight = 1.2f;
-
-    // Gravity strength. Negative because gravity pulls DOWN. Unity's default is -9.81,
-    // but -15 feels snappier and more "gamey" (less floaty).
-    [SerializeField] private float gravity = -15f;
+    // Read through the config's Safe* accessors every frame (cheap), so tuning the speeds, jump, gravity or
+    // ground-stick during play takes effect at once. Two exceptions: stepOffset is written into the
+    // CharacterController once, at Awake, and the config is checked (and its problems reported) at Awake only —
+    // re-enter Play after changing either. Each falls back to the ADR-5 default when there is no config.
+    private float WalkSpeed => config != null ? config.SafeWalkSpeed : PlayerConfig.DefaultWalkSpeed;
+    private float SprintSpeed => config != null ? config.SafeSprintSpeed : PlayerConfig.DefaultSprintSpeed;
+    private float StepOffset => config != null ? config.SafeStepOffset : PlayerConfig.DefaultStepOffset;
+    private float JumpHeight => config != null ? config.SafeJumpHeight : PlayerConfig.DefaultJumpHeight;
+    private float Gravity => config != null ? config.SafeGravity : PlayerConfig.DefaultGravity;
+    private float GroundStickVelocity => config != null ? config.SafeGroundStickVelocity : PlayerConfig.DefaultGroundStickVelocity;
+    private float EyeHeight => config != null ? config.SafeEyeHeight : PlayerConfig.DefaultEyeHeight;
 
     [Header("Camera Reference")]
     // Reference to the camera's Transform. We need this to make movement camera-relative:
@@ -77,9 +81,19 @@ public class ThirdPersonController : MonoBehaviour
         // so we do it once in Awake rather than every frame.
         _controller = GetComponent<CharacterController>();
 
-        // Override the CharacterController's Inspector stepOffset with our serialized value.
-        // This makes the script the source of truth for movement tuning.
-        _controller.stepOffset = stepOffset;
+        // Fail soft (NFR8): say ONCE what is wrong, then run on safe values. Never throw.
+        if (config == null)
+            GameLog.Warn("Player", "ThirdPersonController has no PlayerConfig assigned — running on the built-in ADR-5 defaults.");
+        else if (config.TryGetConfigProblem(out string configProblem))
+            GameLog.Warn("Player", $"PlayerConfig '{config.name}': {configProblem}.");
+        if (PlayerConfig.TryGetBodyProblem(EyeHeight, StepOffset, _controller.height, _controller.radius, out string bodyProblem))
+            GameLog.Warn("Player", $"{bodyProblem}.");
+        if (TryGetAgentProblem(_controller, out string agentProblem))
+            GameLog.Warn("Player", agentProblem);
+
+        // Override the CharacterController's Inspector stepOffset with the config's value.
+        // This makes the config the source of truth for movement tuning.
+        _controller.stepOffset = StepOffset;
 
         // If no camera was assigned in the Inspector, automatically find the Main Camera.
         // Camera.main returns the camera tagged "MainCamera" in the scene.
@@ -200,15 +214,15 @@ public class ThirdPersonController : MonoBehaviour
 
     private void ApplyGravity()
     {
-        // When grounded and already falling, reset to a small negative value.
-        // We use -2 instead of 0 to keep the CharacterController "pressed" against
+        // When grounded and already falling, reset to a small negative value (the config's
+        // groundStickVelocity, -2 m/s) to keep the CharacterController "pressed" against
         // the ground. If we used 0, isGrounded might flicker on slopes.
         if (_controller.isGrounded && _verticalVelocity < 0f)
-            _verticalVelocity = -2f;
+            _verticalVelocity = GroundStickVelocity;
         else
             // When in the air, accelerate downward. This is basic physics:
             // velocity += acceleration * time. Gravity is negative, so we fall faster each frame.
-            _verticalVelocity += gravity * Time.deltaTime;
+            _verticalVelocity += Gravity * Time.deltaTime;
     }
 
     private void HandleJump()
@@ -221,17 +235,52 @@ public class ThirdPersonController : MonoBehaviour
             // We multiply gravity by -2 because gravity is negative, and we need
             // a positive upward velocity. This gives us exactly the right speed
             // to reach 'jumpHeight' meters before falling back down.
-            _verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            _verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
 
             // Consume the request so we don't jump again next frame.
             _jumpRequested = false;
         }
     }
 
+    // The NavMesh agent type every character walks on (ADR-5: "Humanoid", one agent the size of the characters).
+    private const int HumanoidAgentTypeId = 0;
+
+    // ADR-5 / Story 2.1 (1g): the NavMesh is baked for ONE body, the characters'. An EditMode test holds the drunk's
+    // agent to agent type 0; this holds the PLAYER's capsule to it. That capsule lives in the scene, where no cheap
+    // test can reach it, so it is checked where the capsule is: at Awake (once per run) and at authoring time.
+    // Added by the Story 2.1 review — the story asked for it and nothing checked it.
+    private static bool TryGetAgentProblem(CharacterController cc, out string problem)
+    {
+        problem = null;
+        UnityEngine.AI.NavMeshBuildSettings agent = UnityEngine.AI.NavMesh.GetSettingsByID(HumanoidAgentTypeId);
+        if (agent.agentTypeID == HumanoidAgentTypeId
+            && !PlayerConfig.AgentMatchesBody(agent.agentRadius, agent.agentHeight, cc.radius, cc.height))
+            problem = $"the NavMesh agent type {HumanoidAgentTypeId} (radius {agent.agentRadius} m, height " +
+                      $"{agent.agentHeight} m) is not this body (radius {cc.radius} m, height {cc.height} m). ADR-5 " +
+                      "bakes one agent the size of the characters: fix the CharacterController, or the agent type and re-bake.";
+        return problem != null;
+    }
+
+#if UNITY_EDITOR
+    // Editor-only structural check (Story 2.1, 1g): the config's eye and step, and the NavMesh agent, against this body.
+    private void OnValidate()
+    {
+        // Authoring time only: entering and leaving play mode re-validates every object, which would repeat
+        // the warning several times per run. At runtime Awake reports it, once (NFR8).
+        if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode) return;
+        var cc = GetComponent<CharacterController>();
+        if (cc == null) return;
+        if (PlayerConfig.TryGetBodyProblem(EyeHeight, StepOffset, cc.height, cc.radius, out string problem))
+            Debug.LogWarning($"[Player] {name}: {problem}.", this);
+        if (TryGetAgentProblem(cc, out string agentProblem))
+            Debug.LogWarning($"[Player] {name}: {agentProblem}", this);
+    }
+#endif
+
     private void Move()
     {
         // Pick speed based on whether the player is sprinting.
-        float speed = _isSprinting ? sprintSpeed : walkSpeed;
+        float speed = _isSprinting ? SprintSpeed : WalkSpeed;
 
         // Convert 2D input (WASD) into a 3D direction vector.
         // Input X becomes world X (left/right), Input Y becomes world Z (forward/backward).

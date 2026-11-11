@@ -46,6 +46,9 @@ namespace CameraGame.UI
         [HideInInspector] public EventManager manager;
         [HideInInspector] public Camera cam;
         [HideInInspector] public ThirdPersonCamera chaseCamera;
+
+        /// <summary>The player's eye above their feet, read by the rig from PlayerConfig (ADR-5), never a literal.</summary>
+        [HideInInspector] public float eyeHeight = 1.65f;
         [HideInInspector] public ThirdPersonController player;
         [HideInInspector] public GalleryService service;
         [HideInInspector] public GalleryView view;
@@ -1631,7 +1634,7 @@ namespace CameraGame.UI
                 // No subject: stand where the player is and look along the street, so the frame contains
                 // real scenery rather than sky. Control shot 1 depends on there being something to see.
                 Transform p = player.transform;
-                cam.transform.position = p.position + Vector3.up * 6f;
+                cam.transform.position = p.position + Vector3.up * eyeHeight;   // the player's eye, from PlayerConfig
                 cam.transform.rotation = Quaternion.LookRotation(p.forward, Vector3.up);
             }
 
@@ -1836,10 +1839,10 @@ namespace CameraGame.UI
         /// rendering him twice and diffing — once as the scene is, once with his renderers switched off.
         ///
         /// ⚠️ RAYCASTS CANNOT ANSWER THIS QUESTION IN THIS SCENE, AND BELIEVING THEY COULD COST A WHOLE
-        /// WRONG DIAGNOSIS. The rig stands at the subject's centre height and he is ~8 m tall, so every
-        /// sample ray runs at 1–7 m above the ground over 18 m. The pines that fill these photographs are
-        /// ~4.9 m tall and stand ~4.5 m from the camera: at that range the rays cross them near the APEX,
-        /// where the cone is centimetres wide, while the wide base a metre lower fills the entire view.
+        /// WRONG DIAGNOSIS. (Measured before ADR-5, when he was ~8 m tall and the pines ~4.9–7 m: the rig stood
+        /// at his centre height, so every sample ray ran 1–7 m above the ground over 18 m and crossed the pines
+        /// near the APEX, where the cone is centimetres wide, while the wide base a metre lower filled the
+        /// view. At person scale the rays run through the pines' wide skirts instead — the principle stands.)
         /// Nine rays reported 9/9 clear and `RaycastAll` reported nothing at all — both were TRUE, and both
         /// were answering "is the line clear?" when the question is "can the camera SEE him?".
         ///

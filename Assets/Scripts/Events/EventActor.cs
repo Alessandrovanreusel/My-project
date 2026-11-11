@@ -365,10 +365,10 @@ namespace CameraGame.Events
                 // accent path on the old mode would reintroduce it one field over.
                 if (TryResolveCueDistances(out float falloffStart, out float radius, out _))
                 {
-                    // Distances come from the DEFINITION, in world units, not from the prefab. This world is
-                    // ~4× metric (see EventDefinition.cueRadius), so the design's "~25 m" is ~100 units here —
-                    // and when the open world-scale question is finally settled, retuning every event is one
-                    // data edit each instead of a hunt through prefabs.
+                    // Distances come from the DEFINITION, in world metres, not from the prefab. ADR-5 (Story
+                    // 2.1) settled the world scale: the town is roughly real metres and the characters are
+                    // people, so the design's "~25 m" is 25 here (it was 100 units, converted at 4×). A future
+                    // rescale is still one data edit per event instead of a hunt through prefabs.
                     //
                     // minDistance is written for the Inspector's benefit only: under Custom rolloff the engine
                     // takes attenuation from the curve alone and ignores it (see GetRolloffCurve).
@@ -564,7 +564,7 @@ namespace CameraGame.Events
             // Smooth from key 2 onward ONLY. keys[0] and keys[1] both sit at value 1 — they are the flat
             // full-volume plateau — and SmoothTangents would give key 1 a tangent averaged from its
             // neighbours (steeply negative) while key 0 kept zero. Hermite between two equal-valued keys with
-            // mismatched tangents BULGES: ≈1.018 at the shipped 8/100 values, and ≈11% if cueFalloffStart ever
+            // mismatched tangents BULGES: ≈1.018 at the shipped 2/25 values (8/100 before ADR-5 — the same 0.08 ratio), and ≈11% if cueFalloffStart ever
             // widens toward half the radius. A rolloff curve that amplifies is not what "full volume" means.
             for (int i = 2; i < curve.length; i++)
                 curve.SmoothTangents(i, 0f);          // default flat tangents would make the rest ripple

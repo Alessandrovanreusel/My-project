@@ -508,10 +508,9 @@ namespace CameraGame.Grading
         /// camera plane, a rect that is wildly wrong — usually enormous, which would let a photo taken
         /// facing AWAY from the subject sail through the coverage gate.
         ///
-        /// This is not an edge case here: the player character is ~8.86 units tall in a world modelled at
-        /// roughly 4× metric scale, so the subject's box is large in world units and straddling the camera
-        /// plane happens whenever the player stands next to the subject — exactly when they are trying to
-        /// photograph him.
+        /// This is not an edge case here: the camera sits at a person's eye height (1.65 m, ADR-5) beside a
+        /// person-sized subject, so straddling the camera plane happens whenever the player stands next to the
+        /// subject — exactly when they are trying to photograph him.
         ///
         /// The fix is to clip against the near plane before projecting: take the corners that are in front
         /// as-is, and for every box edge that crosses the plane, project the crossing point instead.

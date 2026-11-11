@@ -64,19 +64,19 @@ namespace CameraGame.Events
                  "clip: Unity cannot spatialise stereo, so a stereo cue is audible but not locatable.")]
         public AudioClip loopCue;
 
-        [Min(0f), Tooltip("Distance (WORLD UNITS) at which the cue has faded to inaudible. NOT metres: this " +
-                          "world is modelled at roughly 4× metric scale, so the design's \"~25 m cue radius\" is " +
-                          "about 100 world units here. The actor writes this into AudioSource.maxDistance at " +
-                          "Begin(), so a future world rescale is one data edit per event, not a prefab hunt.")]
-        public float cueRadius = 100f;
+        [Min(0f), Tooltip("Distance in metres at which the cue has faded to true silence. ADR-5 settled the world " +
+                          "scale (the town is roughly real metres, people are 1.77 m), so the design's \"~25 m cue " +
+                          "radius\" is 25. The actor writes this into AudioSource.maxDistance at Begin(), so a " +
+                          "future world rescale is one data edit per event, not a prefab hunt.")]
+        public float cueRadius = 25f;
 
-        [Min(0.01f), Tooltip("Distance (WORLD UNITS) within which the cue plays at full volume; beyond it the " +
+        [Min(0.01f), Tooltip("Distance in metres within which the cue plays at full volume; beyond it the " +
                              "cue fades along a custom inverse-distance curve that reaches true silence at " +
                              "cueRadius. (NOT Unity's built-in Logarithmic mode — that one plateaus and stays " +
                              "faintly audible forever, which is the bug this replaced.) Roughly one " +
                              "body-height keeps the cue from being deafening when the player walks up to the " +
                              "actor. Must be between 0.1% and 50% of cueRadius or it is clamped, with a warning.")]
-        public float cueFalloffStart = 8f;
+        public float cueFalloffStart = 2f;
 
         [Tooltip("Spawn phase — the actor appears.")]            public PhaseConfig spawn = new();
         [Tooltip("Build phase — tension/anticipation rises toward the peak.")] public PhaseConfig build = new();

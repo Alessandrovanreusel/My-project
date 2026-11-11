@@ -178,7 +178,9 @@ namespace CameraGame.EditorTools
             var camGo = new GameObject("PhotoCamera");
             var cam = camGo.AddComponent<Camera>();
             cam.fieldOfView = cameraCfg != null ? cameraCfg.wideFov : 60f;
-            cam.nearClipPlane = 0.3f;
+            // The game camera's near clip and eye height, from PlayerConfig (ADR-5), not rig literals.
+            PhotoShootRig.ReadPlayerEye(out float eyeHeight, out float nearClip, out _);
+            cam.nearClipPlane = nearClip;
             cam.farClipPlane = 5000f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.16f, 0.20f, 0.28f);
@@ -284,6 +286,7 @@ namespace CameraGame.EditorTools
             runner.service = service;
             runner.view = view;
             runner.outputDir = OutputDir;
+            runner.eyeHeight = eyeHeight;
 
             Debug.Log("[GalleryShoot] World built. Entering play mode — output lands in " + OutputDir);
             EditorApplication.EnterPlaymode();

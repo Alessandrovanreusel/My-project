@@ -54,9 +54,9 @@ public class CharacterAnimator : MonoBehaviour
         // .magnitude calculates the length of the vector (Pythagorean theorem: sqrt(x² + z²)).
         // This gives us a single number: how fast the character is moving on the ground.
         // We feed this into the Animator's "Speed" parameter, which drives the state machine:
-        //   Speed < 0.1  → Idle
-        //   Speed 0.1-7  → Walk
-        //   Speed > 7    → Run
+        //   Speed < 0.1    → Idle
+        //   Speed 0.1-5.5  → Walk
+        //   Speed > 5.5    → Run   (between PlayerConfig's walk 4 and sprint 7 m/s — ADR-5, Story 2.1)
         _animator.SetFloat(SpeedParam, horizontalVelocity.magnitude);
     }
 }

@@ -30,7 +30,7 @@ or a pattern that worked, concrete enough to act on.
 - C# inlines consts, so an assembly using only a const from another emits no reference: a reflection-based reference check needs a positive control that uses real types.
 - h264_mf gives no extradata in time for an MP4 header (and +empty_moov makes it unreadable): record MPEG-TS and remux; TS also survives a killed encoder.
 - Replay re-render timing: trim and join by output-frame counts (tick repeat sums), never by tick indices; below 30 fps a tick covers several frames.
-- The world is ~5x human scale (player CharacterController 8.86 m): put rig cameras at ~7.5 m eye height.
+- ~~The world is ~5x human scale (player CharacterController 8.86 m): put rig cameras at ~7.5 m eye height.~~ **Superseded 2026-11-11 by ADR-5 (Story 2.1):** the characters are now people, 1.77 m tall with the eye at 1.65 m, in a town of roughly real metres. Rigs read the eye height and near clip from `Assets/Data/Player/PlayerConfig.asset`; never hard-code one.
 - A fence test that searches .asmdef text for an assembly name misses 'GUID:' references (the asmdef Inspector's default); ask CompilationPipeline.GetAssemblies for resolved references instead.
 - CompilationPipeline.GetAssemblies(AssembliesType.PlayerWithoutTestAssemblies) honours define constraints under the current Player Settings defines: a cheap structural proof that a fenced assembly stays out of a plain build (positive control: add the define and it appears).
 - PlayerSettings.SetScriptingDefineSymbols(target, "") leaves 'Standalone: ' in ProjectSettings.asset instead of {}; to restore byte-identically, ClearArray 'scriptingDefineSymbols' on SerializedObject(Unsupported.GetSerializedAssetInterfaceSingleton("PlayerSettings")).

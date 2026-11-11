@@ -341,7 +341,11 @@ namespace CameraGame.EditorTools
             var camGo = new GameObject("PhotoCamera");
             var cam = camGo.AddComponent<Camera>();
             cam.fieldOfView = cameraCfg != null ? cameraCfg.wideFov : 60f;
-            cam.nearClipPlane = 0.3f;
+            // The GAME camera's near clip, not a rig literal (Story 2.1): at person scale the close poses
+            // (k_straddling 0.12 h, l_inside_away 0.05 h) sit 0.2 m and 0.09 m from the subject, inside the old
+            // fixed 0.3 m, which would have clipped away exactly what they test.
+            ReadPlayerEye(out float eyeHeight, out float nearClip, out string eyeSource);
+            cam.nearClipPlane = nearClip;
             cam.farClipPlane = 5000f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.16f, 0.20f, 0.28f);
@@ -390,9 +394,33 @@ namespace CameraGame.EditorTools
             runner.cameraConfig = cameraCfg;
             runner.gradingConfig = grading;
             runner.outputDir = OutputDir;
+            runner.eyeHeight = eyeHeight;
+            runner.eyeHeightSource = eyeSource;
 
             Debug.Log("[PhotoShoot] World built. Entering play mode — shots will land in " + OutputDir);
             EditorApplication.EnterPlaymode();
+        }
+
+        public const string PlayerConfigPath = "Assets/Data/Player/PlayerConfig.asset";
+
+        /// <summary>
+        /// The player's eye height and the first-person camera's near clip, read from the game's PlayerConfig
+        /// (ADR-5) so a rescale moves the rigs too. Read through SerializedObject so a rig compiles and runs
+        /// whether or not the config exists; without one it says so and uses the pre-ADR-5 game values
+        /// (ThirdPersonCamera's 8.5 m fallback and the scene camera's 0.3 m near clip).
+        /// </summary>
+        public static void ReadPlayerEye(out float eyeHeight, out float nearClip, out string source)
+        {
+            eyeHeight = 8.5f;
+            nearClip = 0.3f;
+            source = "no PlayerConfig: pre-ADR-5 game values (ThirdPersonCamera fallback 8.5 m, camera near 0.3 m)";
+            var cfg = AssetDatabase.LoadAssetAtPath<ScriptableObject>(PlayerConfigPath);
+            if (cfg == null) return;
+            var so = new SerializedObject(cfg);
+            SerializedProperty e = so.FindProperty("eyeHeight"), n = so.FindProperty("cameraNearClip");
+            if (e != null && e.floatValue > 0f) eyeHeight = e.floatValue;
+            if (n != null && n.floatValue > 0f) nearClip = n.floatValue;
+            source = "read from " + PlayerConfigPath;
         }
 
         /// <summary>Assigns a [SerializeField] private field by name, so the rig can wire the real

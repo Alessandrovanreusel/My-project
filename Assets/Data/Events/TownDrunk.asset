@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: CameraGame::CameraGame.Events.EventDefinition
   Id: TownDrunk
   loopCue: {fileID: 8300000, guid: e986ee57edee4992a243ee94cea986b3, type: 3}
-  cueRadius: 100
-  cueFalloffStart: 8
+  cueRadius: 25
+  cueFalloffStart: 2
   spawn:
     duration: 3
     animStateName: DrunkIdle

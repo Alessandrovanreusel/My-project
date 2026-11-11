@@ -45,7 +45,14 @@ namespace CameraGame.EditorTools
         }
 
         [MenuItem("Tools/Events/Trace Actor Route (Play)")]
-        public static void Run()
+        public static void Run() => Run(95f, OutputDir);
+
+        // Story 2.1 review: a long run (7 pooled lifecycles) — bugs here hide in reuse, from the second cycle on.
+        [MenuItem("Tools/Events/Trace Actor Route - 7 cycles (Play)")]
+        public static void RunLong() =>
+            Run(190f, "_bmad-output/verification/2-1-settle-the-players-scale-in-the-town/review/route-7cycles");
+
+        private static void Run(float seconds, string outputDir)
         {
             if (EditorApplication.isPlaying)
             {
@@ -83,10 +90,12 @@ namespace CameraGame.EditorTools
             var go = new GameObject("RouteTraceRunner");
             var runner = go.AddComponent<RouteTraceRunner>();
             runner.manager = manager;
-            runner.outputDir = OutputDir;
-            runner.seconds = 30f;   // spawn 3 + build 10 + peak 1.5 + windDown 6, with margin
+            runner.outputDir = outputDir;
+            // Story 2.1: at least THREE consecutive pooled lifecycles (24.5 s + 2 s respawn each). Bugs in this
+            // project have hidden in the second cycle onward, never the first.
+            runner.seconds = seconds;
 
-            Debug.Log($"[RouteTrace] Tracing the town for {runner.seconds}s — output in {OutputDir}");
+            Debug.Log($"[RouteTrace] Tracing the town for {runner.seconds}s — output in {outputDir}");
             EditorApplication.EnterPlaymode();
         }
     }

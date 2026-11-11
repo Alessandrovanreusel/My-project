@@ -53,6 +53,9 @@ namespace CameraGame.Gallery
         [HideInInspector] public GameObject playerObject;
         [HideInInspector] public string outputDir = "_bmad-output/verification/gallery";
 
+        /// <summary>The player's eye above their feet, read by the rig from PlayerConfig (ADR-5), never a literal.</summary>
+        [HideInInspector] public float eyeHeight = 1.65f;
+
         /// <summary>Size the shoot camera renders at. Deliberately NOT the thumbnail size: the gallery
         /// takes its own, smaller picture from a camera rendering at some other resolution, which is the
         /// arrangement the real game is in.</summary>
@@ -265,7 +268,7 @@ namespace CameraGame.Gallery
             // The empty world goes FIRST, while the manager is held off. Waiting for an empty street later
             // never works — the manager respawns shortly after each despawn.
             manager.enabled = false;
-            cam.transform.position = new Vector3(0f, 8f, 30f);
+            cam.transform.position = new Vector3(0f, eyeHeight, 30f);   // the player's eye above the rig's ground
             cam.transform.rotation = Quaternion.LookRotation(Vector3.back, Vector3.up);
             photo.SetPhotoMode(true);
             photo.SetZoom(0f);
