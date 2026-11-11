@@ -52,6 +52,16 @@ namespace CameraGame.EditorTools
         public static void RunLong() =>
             Run(190f, "_bmad-output/verification/2-1-settle-the-players-scale-in-the-town/review/route-7cycles");
 
+        // Story 2.2: the drunk before and after the whole-town bake — 3+ pooled lifecycles each, in 2.2's own folders
+        // (2.1's evidence is never overwritten).
+        [MenuItem("Tools/Events/Trace Actor Route - 2.2 before (Play)")]
+        public static void Run22Before() =>
+            Run(95f, "_bmad-output/verification/2-2-walk-the-whole-town/route/before");
+
+        [MenuItem("Tools/Events/Trace Actor Route - 2.2 after (Play)")]
+        public static void Run22After() =>
+            Run(95f, "_bmad-output/verification/2-2-walk-the-whole-town/route/after");
+
         private static void Run(float seconds, string outputDir)
         {
             if (EditorApplication.isPlaying)
