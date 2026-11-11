@@ -582,11 +582,11 @@ changes the world every other system is measured in.
   - [ ] 6.3 **Fail-soft:** no config, and an invalid config (NaN, ±Infinity, belowWorldY above the ground). Each
         must warn once and keep running.
 
-- [ ] **Task 7: Walls (AC4)**
-  - [ ] 7.1 Apply the 1f fix: `ThirdPersonCamera.cs`, plus `PlayerConfig` if a tunable is added.
-  - [ ] 7.2 **Wall press after:** every wall, yaw, pitch and mode from AC4, with positive controls. Write
+- [x] **Task 7: Walls (AC4)**
+  - [x] 7.1 Apply the 1f fix: `ThirdPersonCamera.cs`, plus `PlayerConfig` if a tunable is added.
+  - [x] 7.2 **Wall press after:** every wall, yaw, pitch and mode from AC4, with positive controls. Write
         `walls/after/` and a contact sheet of the worst frames. **0 marker pixels.**
-  - [ ] 7.3 **The open-space pose is unchanged:** 1.650 up and 0.316 forward, read back in the open, at pitch 0
+  - [x] 7.3 **The open-space pose is unchanged:** 1.650 up and 0.316 forward, read back in the open, at pitch 0
         and ±80.
 
 - [ ] **Task 8: The whole-town NavMesh, the paths from the pub, and the drunk (AC5, AC6)**
@@ -1165,6 +1165,27 @@ resolves. Reversal: re-run the tool with the rule changed.
   barrier: **28/28 inside the playable area on every frame (0 m beyond), the shore walks end at z 268.7 standing on
   ground (never over the water), every jump lands inside.** The east and south-east hills stop the player by slope
   before the barrier (y 27–30). In play mode the only enabled camera is Main Camera (AR8 read-back).
+
+### Task 6.1 and Task 7 — FallRecovery in the scene; the camera fix (2026-11-11)
+
+- 6.1 `FallRecovery` (+ `TownBoundsConfig.asset`, read back through the editor) is on the player; config tests
+  (`TownBoundsConfigTests`: Safe*, finite checks, problem report, polygon, the shipped asset) — 231/231. **6.2/6.3
+  run after the whole-town bake** (Task 8): a safe spot must be on the NavMesh, which today covers the slice only.
+- 7.1 (1f, camera-side, because the "before" failures were geometric): `ThirdPersonCamera.LateUpdate` nudges along
+  the body's YAW only (deferred :317) and cuts the nudge short where a sphere cast from the body axis — radius
+  `PlayerConfig.NearPlaneReach(live FOV, aspect, near)` + `PlayerConfig.cameraWallMargin` (new, 0.03 m, Safe* +
+  problem + tests) — meets a surface (WorldBounds and Ignore Raycast layers excluded; no allocation per frame).
+  Reach = 0.147 m at FOV 60, inside the 0.30 m body. EditMode 233/233.
+- 7.2 `walls/after/` (14 walls × 5 angles × 5 pitches × 3 modes, controls per pose): **geometric check 0 on every
+  wall** (before: villa white rocks 26, deck chair 12, hillside 5, log cabin 4, supermarket frame 3, pine 3). The
+  marker test: 0 see-through on the house, log cabin, farm shed, street building west, police car (each control
+  shows the marker). Remaining marker poses, each looked at (`contact_sheet_worst.jpg`): the supermarket's east
+  face is tinted GLASS (correctly see-through); the scatter pine and the scatter rock are rig artifacts (the marker,
+  sized to the collider face, shows round a visual trunk slimmer than its capsule and over a rock lower than the
+  eye); **one art seam**: a thin line through a gap between two pieces of a low planter wall in the street block
+  (x −125, z −89), visible from any distance — the .blend's, not the camera's; queued for Alexv.
+- 7.3 Open-space pose read back on the slab: **1.6500 m up, 0.3160 m forward, 0 sideways at pitch −80, 0 and +80**,
+  near clip 0.095 (before the fix the eye rose to ~1.96 m when looking up).
 
 ### Completion Notes List
 
