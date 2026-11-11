@@ -88,9 +88,14 @@ REVIEW_DISALLOWED = DISALLOWED + ",Edit,Write,NotebookEdit,mcp__UnityMCP,mcp__bl
 # commands, having opened 3 of its 10 changed source files.
 REVIEW_EFFORT = "high"
 REVIEW_MIN_COVERAGE = 0.8       # share of changed source files whose text must reach the reviewer
-REVIEW_FILE_SEEN = 0.6          # share of a file's distinctive lines that must appear in its tool output
+REVIEW_FILE_SEEN = 0.6          # share of a file's distinctive lines that must appear in its tool output...
+REVIEW_CHANGE_SEEN = 0.9        # ...or share of its distinctive CHANGED lines (a diff review of that file counts)
 REVIEW_SOURCE_RE = re.compile(r"^(Assets|Packages)/.+\.(cs|asmdef|asmref|shader|hlsl|cginc|compute|uss|uxml)$", re.I)
-REVIEW_RIG_RE = re.compile(r"ShootRunner|^Assets/Scripts/Editor/[^/]*Rig[^/]*$", re.I)   # tools, not subjects
+# Verification rigs are tools, not review subjects. Editor-folder rigs by name; their runtime halves
+# (runners, feeds) by name AND only when the whole file sits behind #if UNITY_EDITOR, so a shipped
+# class that happens to be called "...Runner" is still reviewed. (Case-sensitive "Rig[A-Z]": not "Rigidbody".)
+REVIEW_RIG_RE = re.compile(r"^Assets/Scripts/Editor/[^/]*Rig[^/]*$", re.I)
+REVIEW_RIG_RUNTIME_RE = re.compile(r"/(?:\w*Runner|Rig[A-Z]\w*)\.cs$")
 
 
 @dataclass
@@ -630,19 +635,43 @@ def tool_output_text(log_text: str) -> str:
     return "\n".join(out)
 
 
-def review_coverage(base_ref: str, branch: str, log_text: str) -> tuple[list[str], list[str]]:
-    """Which changed source files did the reviewer actually see? Measured, never self-reported: a file
-    counts as read when most of its distinctive lines (over 20 characters) appear in what its tools
-    returned, whether it used Read, cat, git show or a diff. Output cut off by a tool limit does not
-    count, because the reviewer never saw it either. Returns (read, unread)."""
+def is_rig(path: str, text: str) -> bool:
+    """A verification rig (a tool the review may run, never a subject of it)?"""
+    if REVIEW_RIG_RE.search(path):
+        return True
+    return bool(REVIEW_RIG_RUNTIME_RE.search(path)) and text.lstrip("﻿ \t\r\n").startswith("#if UNITY_EDITOR")
+
+
+def review_sources(base_ref: str, branch: str) -> dict[str, str]:
+    """The changed source files a cross-review must see, rigs left out: {path: text at the branch}."""
     names = git("diff", "--name-only", "--diff-filter=d", f"{base_ref}..{branch}", check=False).stdout.splitlines()
-    files = [p for p in names if REVIEW_SOURCE_RE.search(p) and not REVIEW_RIG_RE.search(p)]
+    files = {p: git("show", f"{branch}:{p}", check=False).stdout for p in names if REVIEW_SOURCE_RE.search(p)}
+    return {p: t for p, t in files.items() if not is_rig(p, t)}
+
+
+def _distinctive(lines) -> set[str]:
+    return {s for s in (l.strip() for l in lines) if len(s) > 20}
+
+
+def review_coverage(base_ref: str, branch: str, log_text: str) -> tuple[list[str], list[str]]:
+    """Which changed source files did the reviewer actually see? Measured, never self-reported. A file
+    counts as read when most of its distinctive lines (over 20 characters) appear in what its tools
+    returned (a full read, by Read, cat or git show), or when nearly all of its distinctive CHANGED
+    lines do (a diff review: on 2026-11-11 a reviewer diffed four comment-only files and was wrongly
+    re-asked). Output cut off by a tool limit does not count, because the reviewer never saw it
+    either: that is how the 2026-11-10 rubber stamp missed half its files. Returns (read, unread)."""
     seen = tool_output_text(log_text)
+    share = lambda lines: sum(l in seen for l in lines) / len(lines)
     read, unread = [], []
-    for p in files:
-        lines = {l.strip() for l in git("show", f"{branch}:{p}", check=False).stdout.splitlines() if len(l.strip()) > 20}
-        if lines:
-            (read if sum(l in seen for l in lines) / len(lines) >= REVIEW_FILE_SEEN else unread).append(p)
+    for p, text in review_sources(base_ref, branch).items():
+        lines = _distinctive(text.splitlines())
+        if not lines:
+            continue
+        diff = git("diff", f"{base_ref}..{branch}", "--", p, check=False).stdout.splitlines()
+        changes = (_distinctive(l[1:] for l in diff if l.startswith("+") and not l.startswith("+++"))
+                   or _distinctive(l[1:] for l in diff if l.startswith("-") and not l.startswith("---")))
+        ok = share(lines) >= REVIEW_FILE_SEEN or bool(changes) and share(changes) >= REVIEW_CHANGE_SEEN
+        (read if ok else unread).append(p)
     return read, unread
 
 
