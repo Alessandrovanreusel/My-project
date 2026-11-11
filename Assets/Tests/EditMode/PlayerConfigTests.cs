@@ -142,5 +142,39 @@ namespace CameraGame.Tests
             Assert.IsTrue(PlayerConfig.AgentMatchesBody(agent.radius, agent.height, type0.agentRadius, type0.agentHeight),
                           $"Drunk agent r {agent.radius} h {agent.height} vs bake r {type0.agentRadius} h {type0.agentHeight}");
         }
+
+        // ---- Story 2.2: the camera's wall margin and the near plane's reach (AC4) ----
+
+        [Test]
+        public void CameraWallMargin_FailsSoft()
+        {
+            var c = ScriptableObject.CreateInstance<PlayerConfig>();
+            try
+            {
+                Assert.AreEqual(PlayerConfig.DefaultCameraWallMargin, c.SafeCameraWallMargin);
+                c.cameraWallMargin = 0f;
+                Assert.AreEqual(0f, c.SafeCameraWallMargin);
+                foreach (float bad in new[] { -0.1f, float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+                {
+                    c.cameraWallMargin = bad;
+                    Assert.AreEqual(PlayerConfig.DefaultCameraWallMargin, c.SafeCameraWallMargin, bad.ToString());
+                    Assert.IsTrue(c.TryGetConfigProblem(out string p), bad.ToString());
+                    StringAssert.Contains("cameraWallMargin", p);
+                }
+            }
+            finally { Object.DestroyImmediate(c); }
+        }
+
+        [Test]
+        public void NearPlaneReach_IsTheDistanceToTheNearPlanesCorner()
+        {
+            // FOV 60, 16:9, near 0.095: half-height = tan 30° × 0.095 = 0.05485, half-width = 0.09751.
+            float r = PlayerConfig.NearPlaneReach(60f, 16f / 9f, 0.095f);
+            Assert.AreEqual(Mathf.Sqrt(0.095f * 0.095f + 0.05485f * 0.05485f + 0.09751f * 0.09751f), r, 1e-4f);
+            Assert.Less(PlayerConfig.NearPlaneReach(18f, 16f / 9f, 0.095f), r, "zoomed in, the near plane reaches less");
+            Assert.Less(r, 0.30f, "the reach must stay inside the 0.30 m body, or the cast would start inside the walls the body touches");
+            Assert.AreEqual(0f, PlayerConfig.NearPlaneReach(float.NaN, 1.7f, 0.095f));
+            Assert.AreEqual(0f, PlayerConfig.NearPlaneReach(60f, 1.7f, 0f));
+        }
     }
 }

@@ -27,6 +27,13 @@ public class ThirdPersonCamera : MonoBehaviour
     private float EyeHeight => Cfg != null ? Cfg.SafeEyeHeight : PlayerConfig.DefaultEyeHeight;
     private float ForwardNudge => Cfg != null ? Cfg.SafeCameraForwardNudge : PlayerConfig.DefaultCameraForwardNudge;
     private float NearClip => Cfg != null ? Cfg.SafeCameraNearClip : PlayerConfig.DefaultCameraNearClip;
+    private float WallMargin => Cfg != null ? Cfg.SafeCameraWallMargin : PlayerConfig.DefaultCameraWallMargin;
+
+    // Story 2.2 (AC4): the cast that keeps the near plane out of walls. Pre-allocated (no garbage per frame); every layer
+    // but the invisible town barriers (WorldBounds), which are not walls and show nothing behind them.
+    private readonly RaycastHit[] _wallHits = new RaycastHit[8];
+    private int _wallMask = ~0;
+    private Camera _cam;
 
     // --- Private references found at runtime ---
 
@@ -55,6 +62,11 @@ public class ThirdPersonCamera : MonoBehaviour
 
         ResolveTarget();
         ApplyNearClip();
+        _cam = GetComponent<Camera>();
+        int bounds = LayerMask.NameToLayer("WorldBounds");
+        if (bounds >= 0) _wallMask = ~(1 << bounds);
+        int ignore = LayerMask.NameToLayer("Ignore Raycast");
+        if (ignore >= 0) _wallMask &= ~(1 << ignore);
     }
 
     private void Start()
@@ -114,11 +126,41 @@ public class ThirdPersonCamera : MonoBehaviour
 
         // ROTATION first: combine yaw (character body facing) with pitch (up/down look).
         float pitch = _controller != null ? _controller.CameraPitch : 0f;
-        transform.rotation = Quaternion.Euler(pitch, target.eulerAngles.y, 0f);
+        float yaw = target.eulerAngles.y;
+        transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
 
         // POSITION: at the head, then nudged slightly forward so we see past the character mesh.
-        // Without this offset, you'd see the inside of the character's head model.
-        transform.position = GetHeadPosition() + transform.forward * ForwardNudge;
+        // ⚠️ Story 2.2 (AC4, the "see-through walls" report): the nudge follows the BODY's facing (yaw only), not the
+        // pitch — it used to follow the pitch, so looking up 80° lifted the eye to ~1.96 m and the near plane to ~2.05 m
+        // on a 1.77 m body. And it is cut short in front of a wall: pressed against one, a full 0.316 m nudge plus the
+        // 0.095 m near clip put the near plane ~0.08 m INTO the wall, which then showed what was behind it. In the open
+        // nothing is hit, so the pose is exactly the old one at pitch 0: 1.65 m up and 0.316 m forward of the feet.
+        Vector3 head = GetHeadPosition();
+        Vector3 forward = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+        transform.position = head + forward * ClearNudge(head, forward);
+    }
+
+    /// <summary>How far forward of the body axis the camera can sit without its near plane reaching a surface: the
+    /// configured nudge, cut short where a sphere — the near plane's reach (from the live FOV, aspect and near clip) plus
+    /// the wall margin — cast from the axis along the facing meets something. The player's own capsule is never hit: a
+    /// cast ignores colliders it starts inside, and the camera's own body is skipped by name of its root.</summary>
+    private float ClearNudge(Vector3 head, Vector3 forward)
+    {
+        float nudge = ForwardNudge;
+        if (_cam == null) _cam = GetComponent<Camera>();   // enabled after Awake (rigs do that): set up here instead
+        if (nudge <= 0f || _cam == null) return nudge;
+        float radius = PlayerConfig.NearPlaneReach(_cam.fieldOfView, _cam.aspect, _cam.nearClipPlane) + WallMargin;
+        if (radius <= 0f) return nudge;
+        int n = Physics.SphereCastNonAlloc(head, radius, forward, _wallHits, nudge, _wallMask, QueryTriggerInteraction.Ignore);
+        float clear = nudge;
+        for (int i = 0; i < n; i++)
+        {
+            RaycastHit h = _wallHits[i];
+            if (h.collider == null || h.collider.transform.IsChildOf(target)) continue;
+            if (h.distance <= 0f && h.point == Vector3.zero) continue;   // overlapping at the start: not in front of us
+            clear = Mathf.Min(clear, h.distance);
+        }
+        return Mathf.Max(0f, clear);
     }
 
     // Returns the world position of the character's head.

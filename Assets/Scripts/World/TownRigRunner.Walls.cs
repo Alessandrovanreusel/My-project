@@ -51,6 +51,18 @@ namespace CameraGame.World
             yield return Settle(1f);
             yield return DriveControl();
             yield return PitchControl();
+            // 7.3: the open-space pose — on the slab, nothing within metres: the eye must be 1.650 m up and 0.316 m
+            // forward of the feet at every pitch (the nudge follows the yaw only since Story 2.2).
+            foreach (float op in new[] { -80f, 0f, 80f })
+            {
+                yield return SetPitch(op);
+                yield return new WaitForEndOfFrame();
+                Vector3 feet = _player.transform.position, cam = _cam.transform.position;
+                Vector3 fwd = Quaternion.Euler(0f, _player.transform.eulerAngles.y, 0f) * Vector3.forward;
+                Vector3 d = cam - feet;
+                _log.AppendLine($"OPEN POSE pitch {F(op)} (read {F(_tpc.CameraPitch)}): up {F(d.y, "0.0000")} m, forward {F(Vector3.Dot(new Vector3(d.x, 0f, d.z), fwd), "0.0000")} m, sideways {F(Vector3.Cross(fwd, new Vector3(d.x, 0f, d.z)).y, "0.0000")} m, near clip {F(_cam.nearClipPlane, "0.000")}");
+            }
+            yield return SetPitch(0f);
 
             var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = Color.green };   // pure green: the supermarket is pink, so a magenta marker false-fired on its highlights
             var csv = new StringBuilder("wall,angle,mode,pitch,fov,marker_px,control_px,geo_hits,near_hit_names,cam_x,cam_y,cam_z,body_to_wall_m,in_contact,valid,see_through\n");

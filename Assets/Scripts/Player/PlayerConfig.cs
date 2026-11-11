@@ -37,6 +37,7 @@ namespace CameraGame.Player
         public const float DefaultEyeHeight = 1.65f;
         public const float DefaultCameraForwardNudge = 0.316f;
         public const float DefaultCameraNearClip = 0.095f;
+        public const float DefaultCameraWallMargin = 0.03f;
 
         [Header("Movement (metres, seconds)")]
         [Tooltip("Walking speed in metres per second.")]
@@ -72,6 +73,11 @@ namespace CameraGame.Player
                  "nudge + near − radius is how far the near plane reaches beyond the capsule.")]
         [Min(0.001f)] public float cameraNearClip = DefaultCameraNearClip;
 
+        [Tooltip("Story 2.2: how much clearance (metres) the camera keeps between its near plane and a wall when it is pulled " +
+                 "back. The camera's forward nudge is cut short by a sphere cast whose radius is the near plane's reach " +
+                 "(from the live FOV, aspect and near clip) plus this margin, so the near plane never passes a surface.")]
+        [Min(0f)] public float cameraWallMargin = DefaultCameraWallMargin;
+
         public float SafeWalkSpeed => Positive(walkSpeed, DefaultWalkSpeed);
         public float SafeSprintSpeed => Mathf.Max(SafeWalkSpeed, Positive(sprintSpeed, DefaultSprintSpeed));
         public float SafeStepOffset => NonNegative(stepOffset, DefaultStepOffset);
@@ -86,6 +92,7 @@ namespace CameraGame.Player
         public float SafeEyeHeight => Positive(eyeHeight, DefaultEyeHeight);
         public float SafeCameraForwardNudge => NonNegative(cameraForwardNudge, DefaultCameraForwardNudge);
         public float SafeCameraNearClip => Positive(cameraNearClip, DefaultCameraNearClip);
+        public float SafeCameraWallMargin => NonNegative(cameraWallMargin, DefaultCameraWallMargin);
 
         private static bool IsFinite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
 
@@ -109,6 +116,7 @@ namespace CameraGame.Player
             else if (SafeEyeHeight != eyeHeight) problem = $"eyeHeight {eyeHeight} is not a positive height — using {SafeEyeHeight}";
             else if (SafeCameraForwardNudge != cameraForwardNudge) problem = $"cameraForwardNudge {cameraForwardNudge} is negative — using {SafeCameraForwardNudge}";
             else if (SafeCameraNearClip != cameraNearClip) problem = $"cameraNearClip {cameraNearClip} is not positive — using {SafeCameraNearClip}";
+            else if (SafeCameraWallMargin != cameraWallMargin) problem = $"cameraWallMargin {cameraWallMargin} is negative or not finite — using {SafeCameraWallMargin}";
             return problem != null;
         }
 
@@ -128,6 +136,19 @@ namespace CameraGame.Player
             else if (stepOffset >= bodyHeight)
                 problem = $"stepOffset {stepOffset} m is not below the body's height {bodyHeight} m";
             return problem != null;
+        }
+
+        /// <summary>
+        /// Story 2.2 (AC4): the distance from the camera to the farthest corner of its near plane — the radius of a sphere
+        /// that contains the near plane whatever way the camera is pitched. Pure; read from the LIVE field of view, aspect
+        /// and near clip, so a zoomed (narrower) camera reaches less.
+        /// </summary>
+        public static float NearPlaneReach(float fieldOfViewDegrees, float aspect, float nearClip)
+        {
+            if (!IsFinite(fieldOfViewDegrees) || !IsFinite(aspect) || !IsFinite(nearClip) || nearClip <= 0f) return 0f;
+            float halfH = Mathf.Tan(Mathf.Clamp(fieldOfViewDegrees, 0f, 179f) * 0.5f * Mathf.Deg2Rad) * nearClip;
+            float halfW = halfH * Mathf.Max(0f, aspect);
+            return Mathf.Sqrt(nearClip * nearClip + halfH * halfH + halfW * halfW);
         }
 
         /// <summary>Whether a NavMesh agent describes the same body, within tolerance (ADR-5: one agent the size
