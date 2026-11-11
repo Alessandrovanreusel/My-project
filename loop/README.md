@@ -73,7 +73,8 @@ seconds, having seen 5 of 10 files.)
 | A phase fails | Retries in a fresh session with a hint. Parks the unit after 3 failures that committed nothing, or 6 of any kind (a session that runs out of context on a big story commits its work and hands over; that is progress, not a failure) |
 | A real blocker (login, purchase, licence, missing asset) | Parks the unit, pings your phone, moves to work that doesn't depend on it |
 | Unity unreachable | Restarts Unity; after 2 failed restarts in a row it stops everything and pings you |
-| Claude usage limit | Waits 20 minutes and retries, for up to 30 hours |
+| Claude usage limit | Waits until the reset time the limit names (or 20 minutes if it names none), then starts a fresh session that is told it was cut off and checks git first. Pings you only for waits over 3 hours |
+| Your weekly Claude allowance is 90% used | Pauses before its next phase and pings you once, leaving you the rest; resumes when the week resets. To change the share, put `"weekly_budget": 0.95` (or `1.0` for all of it) in `loop/runtime/config.local.json`. It takes effect within a minute, even mid-pause |
 | Nothing left that it can do | Stops and pings you |
 
 **Approve something the loop is waiting for** (section 0 of the queue, e.g. ADR-4): tell Claude
