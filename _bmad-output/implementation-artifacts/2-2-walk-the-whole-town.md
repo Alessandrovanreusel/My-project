@@ -4,7 +4,7 @@ baseline_commit: d0506816dbf4f39afa79424e1b6efc6525bf3006
 
 # Story 2.2: Walk the whole town
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -399,7 +399,7 @@ changes the world every other system is measured in.
 >   commit with `git checkout -- Assets/Scenes/SampleScene.unity`. That is allowed: it is not a branch switch. Say
 >   which you did.
 
-- [ ] **Task 1: Measure the town and settle the eleven things that gate this story. DO THESE FIRST.**
+- [x] **Task 1: Measure the town and settle the eleven things that gate this story. DO THESE FIRST.**
 
   Each item has a recommendation. Record the choice **and the reasoning** in the Dev Agent Record, including where
   you follow the recommendation: a later reader needs to know it was decided, not defaulted.
@@ -520,7 +520,7 @@ changes the world every other system is measured in.
           barrier.
         - Record the position. Rigs that used "the spawn landing" (`ScaleStudyRunner` `FromSpawn`) adapt; they are
           tools.
-  - [ ] **1j. Getting onto the road.**
+  - [x] **1j. Getting onto the road.**
         - From 1a's edge heights, plus eye photographs of the slab edge from the grass at 3 points, decide whether
           the slab reads as a **visible ledge** or as flat ground (an invisible wall).
         - **Recommended:** add **visible** access (ramps or steps with the road or ground material, simple meshes)
@@ -557,12 +557,12 @@ changes the world every other system is measured in.
   - [x] 3.3 Set `importCameras = false` (and `importLights = false`, if you follow the recommendation), reimport
         and time it. Then do the read-backs from AC1. Add the EditMode importer test.
 
-- [ ] **Task 4: Scatter colliders, spawn and road access (AC2)**
+- [x] **Task 4: Scatter colliders, spawn and road access (AC2)**
   - [x] 4.1 Implement the 1b rule and its tests. Apply it through the tool, update `AddMeshColliders.cs`, save the
         scene in its **own** `execute_code` call (memory: an unsaved-changes dialog turns one menu call into six),
         and diff the YAML: only the removed components.
   - [x] 4.2 Move the player spawn (1i).
-  - [ ] 4.3 Add road access (1j) under `TownAccess`, or record why none is needed.
+  - [x] 4.3 Add road access (1j) under `TownAccess`, or record why none is needed.
 
 - [x] **Task 5: Edges, water and the oil rig (AC3)**
   - [x] 5.1 Add the `WorldBounds` layer, the `TownBounds` root and its barriers (1c). Remove the water's collider.
@@ -599,51 +599,51 @@ changes the world every other system is measured in.
   - [x] 8.4 **The drunk:** a route trace of ≥ 3 pooled cycles on the new bake, `route/after/`, compared with 2.5 and
         with 2.1's numbers.
 
-- [ ] **Task 9: Walk the whole town (AC2)**
-  - [ ] 9.1 Build the route through every part from `parts.json`, planned on the NavMesh. Walk it once and sprint it
+- [x] **Task 9: Walk the whole town (AC2)**
+  - [x] 9.1 Build the route through every part from `parts.json`, planned on the NavMesh. Walk it once and sprint it
         once with the real drive. Write `walk/after/trace.csv`, the top-down trace, the stick and fall log, and an
         eye photo per stick.
-  - [ ] 9.2 **Scatter crossings after:** the same lines as 2.3, now unobstructed (±5% of the commanded speed).
-  - [ ] 9.3 **Suspect the rig before the code.** Treat these as a broken rig until proven otherwise (lessons):
+  - [x] 9.2 **Scatter crossings after:** the same lines as 2.3, now unobstructed (±5% of the commanded speed).
+  - [x] 9.3 **Suspect the rig before the code.** Treat these as a broken rig until proven otherwise (lessons):
         zero sticks over a long route on a first run, every leg identical, a speed that is exactly round, or a
         blank trace.
 
-- [ ] **Task 10: The console and the frame rate (AC5)**
-  - [ ] 10.1 **Frame-time tour × 3 after:** `fps/after/`. Diff it against `fps/before/` per viewpoint, against the
+- [x] **Task 10: The console and the frame rate (AC5)**
+  - [x] 10.1 **Frame-time tour × 3 after:** `fps/after/`. Diff it against `fps/before/` per viewpoint, against the
         spread.
-  - [ ] 10.2 A normal SampleScene play session with nothing scripted: the console holds only the baseline.
+  - [x] 10.2 A normal SampleScene play session with nothing scripted: the console holds only the baseline.
 
-- [ ] **Task 11: The docs (AC3, AC6)**
-  - [ ] 11.1 `game-architecture.md`:
+- [x] **Task 11: The docs (AC3, AC6)**
+  - [x] 11.1 `game-architecture.md`:
         - a new subsection **"World bounds and traversal (Story 2.2)"** under §Architectural Decisions: the
           playable area, the barriers and their layer, the water, the oil-rig decision, FallRecovery, the
           collider rule, the bake (volume, voxel, size, split if any) and the map check and re-export tools;
         - a Decision Summary row **11 — World bounds**;
         - `Scripts/World/` and `Data/World/` added to §Directory Structure and §System Location Mapping;
         - the frontmatter `updated:` field.
-  - [ ] 11.2 `decision-log.md` (`_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/`): a dated entry
+  - [x] 11.2 `decision-log.md` (`_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/`): a dated entry
         for the oil rig and the world bounds.
-  - [ ] 11.3 `epics.md` §"Known seeds" → the Epic 3 bullet: **one** dated note giving the oil-rig decision and its
+  - [x] 11.3 `epics.md` §"Known seeds" → the Epic 3 bullet: **one** dated note giving the oil-rig decision and its
         consequence for the smoke-break event. **No other `epics.md` edit.**
-  - [ ] 11.4 `deferred-work.md`: add a dated "Resolved by Story 2.2" note to each entry this story closes (:12,
+  - [x] 11.4 `deferred-work.md`: add a dated "Resolved by Story 2.2" note to each entry this story closes (:12,
         :315, :316 and :317), and note what stays open.
-  - [ ] 11.5 `loop/lessons.md:61`: correct it in place if 1a disproved it, and return the new facts as lessons.
+  - [x] 11.5 `loop/lessons.md:61`: correct it in place if 1a disproved it, and return the new facts as lessons.
 
-- [ ] **Task 12: Regressions and restore (AC6)**
-  - [ ] 12.1 `Tools/Scale/Movement After (Play)`, the Photo Shoot (diffed unmasked against 2.1's
+- [x] **Task 12: Regressions and restore (AC6)**
+  - [x] 12.1 `Tools/Scale/Movement After (Play)`, the Photo Shoot (diffed unmasked against 2.1's
         `photo-shoot-after/`), the Town Placement Study (labelled world-dependent), and the Gallery and HUD rigs
         once each (they run, 0 exceptions).
-  - [ ] 12.2 `run_tests` (EditMode), and report the count. Run `read_console`, `git status` and
+  - [x] 12.2 `run_tests` (EditMode), and report the count. Run `read_console`, `git status` and
         `git diff --stat`: only intended files.
-  - [ ] 12.3 Read back every restored value (AC6). SampleScene must not be dirty and must hold no rig objects. Clear
+  - [x] 12.3 Read back every restored value (AC6). SampleScene must not be dirty and must hold no rig objects. Clear
         the SessionState flags.
 
-- [ ] **Task 13: Handover. Queue what needs Alexv, and never self-certify it**
-  - [ ] 13.1 Put the `human_checks` from Dev Notes §"Human checks to queue" in the result file, with exact paths
+- [x] **Task 13: Handover. Queue what needs Alexv, and never self-certify it**
+  - [x] 13.1 Put the `human_checks` from Dev Notes §"Human checks to queue" in the result file, with exact paths
         and your own read.
-  - [ ] 13.2 Put the `decisions` there too: 1b (the rule, and scene-level or postprocessor), 1c, 1d, 1e, 1f, 1g, 1i
+  - [x] 13.2 Put the `decisions` there too: 1b (the rule, and scene-level or postprocessor), 1c, 1d, 1e, 1f, 1g, 1i
         and 1j; `importLights`; and the re-export if one was made.
-  - [ ] 13.3 Story status → `review`. Update `sprint-status.yaml`: the entry, and the **real** `last_updated:` key
+  - [x] 13.3 Story status → `review`. Update `sprint-status.yaml`: the entry, and the **real** `last_updated:` key
         at ~line 40 (lesson 66). No `: ` and no trailing `:` (lesson 13). Check it with `yaml.safe_load`.
 
 ## Dev Notes
@@ -1257,12 +1257,138 @@ resolves. Reversal: re-run the tool with the rule changed.
   case gives **one** config warning at boot, a 6 s walk on open ground with 0 recoveries, and the hole still recovered
   (0.16–0.18 s), with 0 other warnings and 0 errors.
 
+### Task 4.3 / 1j — road access (2026-11-11, decision)
+
+- **No access added.** Every part paths from the pub through the road's existing steppable runs (Task 8.2: 18/18
+  chains). The real controller walked and sprinted every leg across the road (Task 9) and never stuck at the slab's
+  edge. From the grass the slab reads as a visible raised ledge with a dark side face (census photos j01–j03), not as
+  flat ground. So no `TownAccess` root exists, and human check 4 (ramps) does not apply. Reversal: add ramps under a
+  `TownAccess` root where a future route needs them, then re-bake.
+
+### Task 9 — walk the whole town (2026-11-11)
+
+- `Tools/Town/Walk the Whole Town (Play)` / `- sprint (Play)` → `walk/after/walk|sprint/` (trace.csv, legs.csv,
+  sticks.csv, photos/, log.txt), drawn by `tools/tour_plot.py` → `walk/after/trace.png`. The real controller is
+  driven by Keyboard state events (W, or W + Left Shift). The drive control passes (0 / 6.0 / 0 m). It steers along
+  each leg's NavMesh corners by setting the yaw (the mouse's job), visiting the 18 parts nearest-first from the spawn.
+  Each leg is a chain of complete queries.
+- **Sprint:** 18/18 legs walked to the part, 4,582 m in 657 s at a mean **6.98 m/s** (commanded 7). 0 fall-through
+  frames. **FallRecovery fired 0 times.** One stick, sprinting toward corner_ne at (210.4, 130.6), lasted 1.5 s
+  against a white rock (Icosphere scatter, top 1.96 m over the feet), **0.015 m from the NavMesh edge**. That is the
+  path hugging the rock at the agent radius: a path issue, not open ground. The leg was re-planned and completed.
+  The photo (`photos/stick_sprint_corner_ne_0.jpg`) looks along the route and does not show the rock beside the
+  player.
+- **Walk:** 18/18 legs walked to the part, **4,582 m in 1,146 s at a mean 4.00 m/s** (commanded 4; the controller keeps 4 m/s horizontally on slopes too, and the same detector caught the sprint's stick and walk/before's slab-edge stick, so the zero is not a blind instrument), **0 sticks, 0 fall-through frames, FallRecovery fired 0 times**. corner_nw and hill_northwest had no chain from shore_west (the strip's dead end), so both were postponed and walked later from hill_west's side.
+- **Rig defects found and fixed on the way (9.3, suspect the rig).** (1) Walk run 1 (`walk/after-run1/`) flagged 27
+  "fall-through" frames. Each was the probe ray, which started 2.5 m up, hitting an overhang 2.3–2.5 m above
+  grounded feet (the boulders rock.006/.007/.023 and the stacked tyre line; read back in edit mode). The probe now
+  starts just above the head, as the AC says. (2) Run 1 visited 16/18 parts, because corner_nw and hill_northwest
+  have no chain from shore_west (the grey strip's dead end). A part with no chain from where the player stands is
+  now postponed and retried later, or routed through a visited part.
+- 9.2 scatter lines after: `walk/after/lines/` (drive control 0 / 6.0 / 0 m). **Grass: 4.00 / 7.00 m/s, ±0.03 %, 0 hits** (the AC's ±5 %, and no hit on a removed class). The pine trunk now STOPS the player (stick 3 s, hits on Circle). Before, they walked straight through it on a null collider. The rule keeps pines as obstacles you walk around. The bare-tree control and the slab edge still stop the player, and a tall white rock beside the tree now has its collider back. No line was walked through the 91 low rocks: their colliders are removed and the route never met one.
+
+### Task 10 — the console and the frame rate (2026-11-11)
+
+- 10.1 `fps/after/` against `fps/before/` (`fps/after/compare.txt`): the same 7 viewpoints, 3 rotated rounds, quality
+  PC, Game view 953×476. The median of rounds is **not higher beyond the round-to-round spread at any viewpoint**
+  (diffs −3.7…+6.3 ms against spreads of 5–47 ms). In the first, coolest round the diffs are −1.4…+3.3 ms. The spread
+  is wide because this laptop heats from round to round (lesson 28), so the criterion is weak. That is reported as a
+  difference, and NFR1's absolute 60 FPS verdict is Story 2.3's.
+- 10.2 A plain SampleScene play session (~35 s, nothing scripted, drunk cycling). The console held **only the
+  baseline** "POV Camera: Head bone not found!". The player stood grounded on the new spawn (0.45, 2.13, 3.60) with the
+  eye 1.650 m above the feet. FallRecovery recoveries 0. Main Camera is the only camera.
+
+### Task 12 — regressions and restore (2026-11-11)
+
+Every rig output folder was copied aside before its run (`regression/as-found/`), harvested into `regression/`, and
+put back afterwards (`tools/aside.py`). Story 2.1's `movement/after/` and the shared `photo-shoot*`, `gallery` and
+`hud` folders are as found.
+- `Tools/Scale/Movement After` (`regression/movement/`): walk **4.00**, sprint **7.00** m/s, jump apex **1.261 m**,
+  the 0.126 m kerb at x 0.5 **climbed**, worst raise 0.158 s and lower 0.170 s. The slab edge at x 30 "did not rise",
+  the same as in 2.1's own run. The run starts from the new spawn (0.45, 2.153, 3.6).
+- Photo Shoot (`regression/photo-shoot-diff-vs-2.1-after.txt`, unmasked): **every shot keeps its stars and verdict**.
+  w_time_early_05s moved 76→75 % and z4_money_late_12s 55→52 %, both within their star, from 0.01–0.03 s of
+  peak-offset drift (lesson 42).
+- Town Placement Study (`regression/photo-shoot-town-diff-vs-before.txt`, `placement_study_before_after.jpg`).
+  **World-dependent, labelled, and the grader is untouched.** dir210 and dir240 now grade *Occluded*, where before
+  they were 1★. The pictures show the drunk entirely behind a pine (240) and almost entirely behind one (210): the
+  pines now have working trunk colliders, so the grader's rays see them (lesson 67's cause). dir270 is still counted
+  with the drunk hidden behind trunk and grass. 20 of the 24 shots are unchanged.
+- Gallery Shoot and Grade HUD Shoot: both **ran to the end**, with 0 exceptions. The HUD rig's two `[GradeHud]`
+  warnings come from its own Phase D throwaway canvases, which `hud.txt` declares as provoked.
+- 12.2 EditMode **237/237** (233 + the 4 floor-of-the-world tests). Console clean apart from the baseline head-bone
+  warning. `git status`: only the untracked `.codex/` and `AGENTS.md`, which are not mine.
+- 12.3 Read back in the editor: SampleScene is open, **not dirty**, and holds no `(rig)` object (12 roots, including
+  `TownBounds`). No TownRig SessionState key is left. timeScale is 1. runInBackground is True, the project's own
+  `runInBackground: 1`. Quality is PC. ProjectSettings are unchanged in git. `importCameras` and `importLights` are
+  off. Agent 0 reads 0.30 / 1.77 / 0.35 / 45. The surface still points at `NavMesh-game map.asset`.
+
+### Human checks and decisions (Task 13)
+
+Queued in the result file, none self-certified:
+- **AC2/AC3, the edges and the open ground** (`film/shore.mp4`, `film/hill.mp4`, their sheets, `walk/after/trace.png`,
+  `edges/sheet.jpg`). My read: the shore stops the player ~3 m short of the water, with the water's edge in view. The
+  **east hill stops the player at x 258 on an open slope that keeps rising**, which will likely read as an invisible
+  wall. The barrier could move up to the crest, or the polygon could follow the slope.
+- **AC3, the put-back** (`fall/hole_fall_and_restore.mp4`, `fall/frames_sheet.jpg`, `fall/fall.csv`): an instant
+  teleport with no fade.
+- **AC4, walls up close** (`walls/after/contact_sheet_worst.jpg`), and the planter-wall art seam at (−125, −89).
+- Level design noted on the way: the villa's walled enclosure has no opening (`navmesh/crop_enclosure.png`).
+- Decision batch: 1b, 1c, 1d, 1e, 1f, 1g, 1i, 1j, importLights, AC5's chain reading, and the floor-of-the-world rule.
+
 ### Completion Notes List
 
 - 2026-11-11 (loop CREATE phase): story context created. Ultimate context engine analysis completed - comprehensive developer guide created.
+- 2026-11-11 (loop DEV phase, attempts 1–2): all 13 tasks done. AC1: map check MATCH with a proven negative control, re-export path proven, camera and light import off. AC2: the real controller walked (4,582 m at 4.00 m/s) and sprinted (6.98 m/s) through all 18 parts with 0 falls and FallRecovery 0; the one stick was a path hugging a rock; grass no longer blocks. AC3: 28/28 edge walks inside, 20/20 provoked falls restored in ≤ 0.160 s, the oil rig out of bounds. AC4: 0 geometric see-through on 14 walls, open pose unchanged. AC5: whole-town bake 15.5 MB; 18/18 parts by a chain of complete legs (one query 7/18, measured as the search budget), real agents arrive, every grid failure classified; frame time not higher beyond the spread. AC6: Warp guard provoked, drunk on the new bake, regressions run, EditMode 237/237, editor restored. Perceptual checks queued for Alexv (edges, the put-back, walls).
 
 ### File List
+
+- Modified: `Assets/Data/Player/PlayerConfig.asset`
+- New: `Assets/Data/World/TownBoundsConfig.asset`
+- Modified: `Assets/Models/game map .fbx.meta`
+- Modified: `Assets/Scenes/SampleScene.unity`
+- Modified: `Assets/Scenes/SampleScene/NavMesh-game map.asset`
+- Modified: `Assets/Scripts/Editor/AddMeshColliders.cs`
+- New: `Assets/Scripts/Editor/MapCheck.cs`
+- Modified: `Assets/Scripts/Editor/RouteTraceRig.cs`
+- New: `Assets/Scripts/Editor/TownBoundsBuilder.cs`
+- New: `Assets/Scripts/Editor/TownCensus.cs`
+- New: `Assets/Scripts/Editor/TownNavMeshBaker.cs`
+- New: `Assets/Scripts/Editor/TownPhotos.cs`
+- New: `Assets/Scripts/Editor/TownRig.cs`
+- Modified: `Assets/Scripts/Events/EventActor.cs`
+- Modified: `Assets/Scripts/Player/PlayerConfig.cs`
+- Modified: `Assets/Scripts/ThirdPersonCamera.cs`
+- Modified: `Assets/Scripts/ThirdPersonController.cs`
+- New: `Assets/Scripts/World/ColliderRule.cs`
+- New: `Assets/Scripts/World/FallRecovery.cs`
+- New: `Assets/Scripts/World/TownBoundsConfig.cs`
+- New: `Assets/Scripts/World/TownRigRunner.Edges.cs`
+- New: `Assets/Scripts/World/TownRigRunner.Fall.cs`
+- New: `Assets/Scripts/World/TownRigRunner.Paths.cs`
+- New: `Assets/Scripts/World/TownRigRunner.Tour.cs`
+- New: `Assets/Scripts/World/TownRigRunner.Walls.cs`
+- New: `Assets/Scripts/World/TownRigRunner.cs`
+- New: `Assets/Tests/EditMode/ColliderRuleTests.cs`
+- Modified: `Assets/Tests/EditMode/PlayerConfigTests.cs`
+- New: `Assets/Tests/EditMode/TownBoundsConfigTests.cs`
+- New: `Assets/Tests/EditMode/TownMapGuardTests.cs`
+- Modified: `ProjectSettings/TagManager.asset`
+- New: `_bmad-output/implementation-artifacts/2-2-walk-the-whole-town.md`
+- Modified: `_bmad-output/implementation-artifacts/deferred-work.md`
+- Modified: `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- Modified: `_bmad-output/planning-artifacts/epics.md`
+- Modified: `_bmad-output/planning-artifacts/game-architecture.md`
+- Modified: `_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/decision-log.md`
+- Modified: `loop/lessons.md`
+- New: `tools/map/fbx_compare.py`
+- New: `tools/map/map_check.py`
+- New: `tools/map/map_export.py`
+- New: `tools/map/map_mutate.py`
+- New `.meta` files for every new asset and script above, plus `Assets/Scripts/World.meta` and `Assets/Data/World.meta`.
+- Not in git (evidence): `_bmad-output/verification/2-2-walk-the-whole-town/` (census, map-check, colliders, edges, fall, walls, navmesh, walk, route, fps, regression, film, tools).
 
 ## Change Log
 
 - 2026-11-11: Story file created by the loop CREATE phase (Claude Opus 5.5). Status → ready-for-dev.
+- 2026-11-11: Implemented by the loop DEV phase (Claude Opus 5.5, attempts 1–2). Status → review.
