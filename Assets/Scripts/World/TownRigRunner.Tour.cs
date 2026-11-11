@@ -29,6 +29,50 @@ namespace CameraGame.World
         partial void ExtraModes5(ref IEnumerator routine)
         {
             if (mode == "tour") routine = Tour();
+            else if (mode == "film") routine = Film();
+        }
+
+        /// <summary>
+        /// A short real-time film for Alexv's edge check (human check 1): the real controller walks to the shore barrier
+        /// and along the water's edge, then up the east hill into the ring's limit. Every frame is captured from the
+        /// screen (ScreenCapture after WaitForEndOfFrame) with its time, so tools/film.py can rebuild it at real speed.
+        /// </summary>
+        private IEnumerator Film()
+        {
+            if (_manager != null) { foreach (EventActor ea in _manager.ActiveActors) ea.gameObject.SetActive(false); _manager.enabled = false; }
+            Directory.CreateDirectory(Path.Combine(outputDir, "frames"));
+            var times = new StringBuilder("frame,t,segment,x,y,z\n");
+            int f = 0;
+            var segs = new[]
+            {
+                new { name = "shore", at = new Vector3(-100f, 0f, 250f), yaw = 0f, legs = new[] { new Vector2(0f, 5f), new Vector2(90f, 9f) } },
+                new { name = "hill", at = new Vector3(205f, 0f, -99f), yaw = 90f, legs = new[] { new Vector2(90f, 14f) } },
+            };
+            foreach (var sg in segs)
+            {
+                Place(sg.at, sg.yaw);
+                Keys();
+                yield return Settle(1f);
+                foreach (Vector2 leg in sg.legs)
+                {
+                    Keys(Key.W);
+                    float t = 0f;
+                    while (t < leg.y)
+                    {
+                        _player.transform.rotation = Quaternion.Euler(0f, leg.x, 0f);   // the mouse's job
+                        yield return new WaitForEndOfFrame();
+                        t += Time.deltaTime;
+                        Vector3 p = _player.transform.position;
+                        CaptureScreen(Path.Combine(outputDir, "frames", $"f{f:0000}.jpg"));
+                        times.AppendLine($"{f},{F(Time.time, "0.0000")},{sg.name},{F(p.x)},{F(p.y)},{F(p.z)}");
+                        f++;
+                    }
+                    Keys();
+                }
+                _log.AppendLine($"film segment {sg.name}: ends at {V(_player.transform.position)}");
+            }
+            File.WriteAllText(Path.Combine(outputDir, "frames", "times.csv"), times.ToString());
+            _log.AppendLine($"film: {f} frames");
         }
 
         /// <summary>What the controller touched sideways since <paramref name="since"/> (Time.time): name, kind, height.</summary>
@@ -73,27 +117,45 @@ namespace CameraGame.World
             var orderNames = new StringBuilder(); foreach (int i in order) orderNames.Append(parts[i].name).Append(' ');
             _log.AppendLine($"TOUR ({gait}, commanded {F(setSpeed)} m/s), order: {orderNames}");
 
-            var trace = new StringBuilder("leg,gait,t,x,y,z,speed,stick,fall,grounded\n");
+            var trace = new StringBuilder("leg,gait,t,x,y,z,speed,stick,fall,grounded,fell_on\n");
             var sticks = new StringBuilder("leg,gait,t,x,y,z,stick_s,to_navmesh_edge_m,touched,eye_photo,outcome\n");
             var legsCsv = new StringBuilder("leg,from,to,gait,planned_m,walked_m,seconds,replans,sticks,falls,completed,skipped_by_rig\n");
             var path = new NavMeshPath();
             var wp = new List<Vector3>();
             float tTotal = 0f, walkedTotal = 0f; int stickTotal = 0, fallTotal = 0, skipped = 0, completedLegs = 0;
             string from = "spawn";
-            foreach (int pi in order)
+            var queue = new List<int>(order); var tries = new Dictionary<int, int>(); var visited = new List<Vector3>();
+            while (queue.Count > 0)
             {
+                int pi = queue[0]; queue.RemoveAt(0);
                 Part target = parts[pi];
                 if (!NavMesh.SamplePosition(new Vector3(target.x, target.y, target.z), out NavMeshHit th, 2f, NavMesh.AllAreas))
                 { _log.AppendLine($"  leg → {target.name}: the part is not on the NavMesh — skipped"); continue; }
                 Vector3 goal = th.position;
                 int replans = 0, legSticks = 0, legFalls = 0; float legT = 0f, walked = 0f, planned = 0f;
-                bool completed = false, skip = false;
+                bool completed = false, skip = false, postponed = false;
                 while (!completed && !skip)
                 {
                     // plan from where the player stands
                     Vector3 here = _player.transform.position;
                     NavMesh.SamplePosition(here, out NavMeshHit hh, 2f, NavMesh.AllAreas);
-                    if (!Chain(path, hh.position, goal, wp, out float plen, out float pend)) { _log.AppendLine($"  leg → {target.name}: NO chain from {V(here)} (closest {F(pend)} m)"); skip = true; break; }
+                    float plen, pend;
+                    if (!Chain(path, hh.position, goal, wp, out plen, out pend))
+                    {
+                        int n0 = tries.TryGetValue(pi, out int n1) ? n1 : 0;
+                        if (n0 < 2 && queue.Count > 0) { tries[pi] = n0 + 1; queue.Add(pi); postponed = true; _log.AppendLine($"  leg → {target.name}: no chain from {V(here)} (closest {F(pend)} m) — postponed"); break; }
+                        // last resort: through a part already visited
+                        bool via = false;
+                        var wp2 = new List<Vector3>();
+                        foreach (Vector3 v in visited)
+                        {
+                            if (!Chain(path, hh.position, v, wp, out float l1, out float _) || !Chain(path, v, goal, wp2, out float l2, out float _)) continue;
+                            wp.AddRange(wp2); plen = l1 + l2; via = true;
+                            _log.AppendLine($"  leg → {target.name}: routed through the visited part at {V(v)}");
+                            break;
+                        }
+                        if (!via) { _log.AppendLine($"  leg → {target.name}: NO chain from {V(here)} (closest {F(pend)} m), not even through a visited part"); skip = true; break; }
+                    }
                     if (replans == 0) planned = plen;
                     var corners = new List<Vector3>();
                     Vector3 prev = hh.position;
@@ -118,9 +180,11 @@ namespace CameraGame.World
                         walked += Hz(q, last);
                         last = q;
                         // fell through? the surface straight beneath, from above the head
-                        bool fell = false;
-                        if (Physics.Raycast(q + Vector3.up * 2.5f, Vector3.down, out RaycastHit gh, 60f, ~0, QueryTriggerInteraction.Ignore) && !IsMine(gh.collider))
-                            fell = q.y < gh.point.y - 0.3f;
+                        // just above the head (the capsule's height + 5 cm): an overhang higher than the head is not the
+                        // surface beneath (the first run started at 2.5 m and flagged 27 frames under boulders and tyres)
+                        bool fell = false; string fellOn = "";
+                        if (Physics.Raycast(q + Vector3.up * (_cc.height + 0.05f), Vector3.down, out RaycastHit gh, 60f, ~0, QueryTriggerInteraction.Ignore) && !IsMine(gh.collider))
+                        { fell = q.y < gh.point.y - 0.3f; if (fell) fellOn = gh.collider.name.Replace(",", " "); }
                         if (fell) { legFalls++; fallTotal++; }
                         bool isStick = false;
                         if (tl > 0.5f && sp < 0.5f * setSpeed)
@@ -143,7 +207,7 @@ namespace CameraGame.World
                             stick = 0f; below = 0f;
                         }
                         if (Mathf.FloorToInt(tl * 4f) != Mathf.FloorToInt((tl - Time.deltaTime) * 4f) || isStick || fell)
-                            trace.AppendLine($"{target.name},{gait},{F(tTotal + tl)},{F(q.x)},{F(q.y)},{F(q.z)},{F(sp)},{(isStick ? 1 : 0)},{(fell ? 1 : 0)},{(_cc.isGrounded ? 1 : 0)}");
+                            trace.AppendLine($"{target.name},{gait},{F(tTotal + tl)},{F(q.x)},{F(q.y)},{F(q.z)},{F(sp)},{(isStick ? 1 : 0)},{(fell ? 1 : 0)},{(_cc.isGrounded ? 1 : 0)},{fellOn}");
                         if (stick > 1.5f) { stuck = true; break; }
                     }
                     Keys();
@@ -174,7 +238,8 @@ namespace CameraGame.World
                         Keys(Key.S); yield return Settle(0.4f); Keys(); yield return Settle(0.2f);
                     }
                 }
-                if (completed) completedLegs++;
+                if (postponed) continue;
+                if (completed) { completedLegs++; visited.Add(goal); }
                 tTotal += legT; walkedTotal += walked;
                 legsCsv.AppendLine($"{completedLegs + skipped},{from},{target.name},{gait},{F(planned)},{F(walked)},{F(legT)},{replans},{legSticks},{legFalls},{(completed ? 1 : 0)},{(skip ? 1 : 0)}");
                 _log.AppendLine($"  leg {from} → {target.name}: planned {F(planned, "0")} m, walked {F(walked, "0")} m in {F(legT, "0.0")} s, re-plans {replans}, sticks {legSticks}, falls {legFalls}, completed {completed}");
