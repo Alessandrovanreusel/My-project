@@ -537,14 +537,14 @@ changes the world every other system is measured in.
           running.
         - **Report:** medians and the round-to-round spread per viewpoint.
 
-- [ ] **Task 2: Baselines on today's world, before anything changes (AC2, AC4, AC5, AC6)**
-  - [ ] 2.1 Record the console baseline, the EditMode count (191) and `git status`.
-  - [ ] 2.2 **Frame-time tour × 3** (1k): `fps/before/`.
-  - [ ] 2.3 **Walk before:** the scatter crossing lines from AC2 and one straight line onto the road slab's edge,
+- [x] **Task 2: Baselines on today's world, before anything changes (AC2, AC4, AC5, AC6)**
+  - [x] 2.1 Record the console baseline, the EditMode count (191) and `git status`.
+  - [x] 2.2 **Frame-time tour × 3** (1k): `fps/before/`.
+  - [x] 2.3 **Walk before:** the scatter crossing lines from AC2 and one straight line onto the road slab's edge,
         on today's world: `walk/before/`. This is AC2's positive control.
-  - [ ] 2.4 **Wall press before** (AC4, 1f): `walls/before/`.
-  - [ ] 2.5 **The drunk on today's slice bake:** a route trace of ≥ 3 cycles, `route/before/`.
-  - [ ] 2.6 **Copy aside** `_bmad-output/verification/photo-shoot/` (the rig wipes its own folder; 1.14), then run
+  - [x] 2.4 **Wall press before** (AC4, 1f): `walls/before/`.
+  - [x] 2.5 **The drunk on today's slice bake:** a route trace of ≥ 3 cycles, `route/before/`.
+  - [x] 2.6 **Copy aside** `_bmad-output/verification/photo-shoot/` (the rig wipes its own folder; 1.14), then run
         the Town Placement Study once: `photo-shoot-town-before/`.
 
 - [ ] **Task 3: The map check, the re-export path and camera import off (AC1)**
@@ -1060,6 +1060,50 @@ on the transform each frame ("the mouse's job"), pitch through queued Mouse delt
 
 **1i Spawn** (decision): stand the player on open ground at today's spawn, (0.45, ground + 0.05, 3.6), facing the
 drunk's street; not on the 1.4 m barrier.
+
+**1b revised by measurement — THE SCATTER COLLIDERS NEVER WORKED (2026-11-11, decision).** All 15,020 scatter
+MeshColliders (every pine, grass tuft, white rock and stump: families Circle, Cube, Icosphere, Cylinder) reference
+mesh fileIDs that no longer exist in the FBX (it holds 1,658 shared meshes; the scene's colliders point at
+per-instance ones a later reimport deduplicated). They load with `sharedMesh == null` and collide with nothing:
+the player walks straight THROUGH pines and rocks today (walk/before: `pine_trunk` 16 m at 4.00 m/s, 0 hits), and
+this is why the grader's rays never saw the pines (lesson 67). Only the 60 white/bare trees' and the 1,658
+non-scatter pieces' colliders resolve. So the rule is applied as: **remove** grass, low scatter, water and buried
+colliders; **repair** the kept scatter (assign the MeshFilter's mesh), except pines: a pine's mesh hangs its
+lowest foliage tier at 1.2–1.36 m out to a 4 m radius, so a full-mesh collider would make every one of ~6,000
+pines (4–9 m apart; see `fps/before/vp_plain_from_east_hill.jpg`) a 7–8 m chest-high wall and turn the plain into
+a maze. **Pines get a trunk collider** (a CapsuleCollider round the trunk, the usual game choice); rocks and stumps
+get their repaired MeshCollider. An EditMode guard checks that every map collider reference in SampleScene
+resolves. Reversal: re-run the tool with the rule changed.
+
+### Task 2 — baselines on today's world (2026-11-11)
+
+- 2.1: EditMode 191/191; console baseline = only "POV Camera: Head bone not found!"; the working tree held only
+  the untracked `.codex/` and `AGENTS.md`.
+- 2.2 `fps/before/` (`Tools/Town/FPS Tour - before`): 7 viewpoints × 5 s × 3 rotated rounds, Game view 953×476,
+  quality PC. Medians of rounds (ms): slice_drunk 28.5, plain_from_east_hill 36.0, street_block 22.7,
+  shore_to_oil_rig 9.2, farm 13.0, south_hill_north 62.5, spawn_street 20.8. Frame time climbs every round
+  (south hill 28.6 → 62.5 → 76.0): the laptop heats (lesson 28), so the spread is wide (5–47 ms).
+- 2.3 `walk/before/` (`Tools/Town/Walk Lines - before`): drive control 0 / 6.0 / 0 m. grass_0 (7 tufts) and
+  pine_trunk walked at a steady 4.00 / 7.00 m/s with 0 hits (the null colliders); instrument controls: a bare
+  tree (resolving collider) took 27 hits and slowed to 3.0 m/s, and the slab edge at x 30 stopped the player
+  (stick 3 s, 286 hits on the road slab).
+- 2.5 `route/before/` (`Tools/Events/Trace Actor Route - 2.2 before`): 3 full pooled cycles + a partial fourth,
+  one instance, on the NavMesh throughout, peak 1.48 s at x 26.1 (`analysis.txt`).
+- 2.6 `photo-shoot-town-before/`: Town Placement Study on today's world; the photo-shoot folders as found are
+  copied to `aside/`.
+- 2.4 `walls/before/` (`Tools/Town/Wall Press - before`): drive control and pitch control (+100 mouse units →
+  −15.000°) pass. Rig fixes on the way: the marker is sized to the wall's measured extent (it showed round a
+  narrow trunk), a pose counts only with contact and control > marker, and the marker is pure green (the pink
+  supermarket's highlights passed a magenta threshold).
+  **Result (today's camera):** marker test — house east face 6 valid poses, log cabin 21, farm shed 70: **0 show
+  the marker**, each wall's control shows it (132k / 103k / 518k px). The supermarket's east "wall" is a tinted
+  GLASS façade (its "pink panels" turned green with a green marker: they were the marker seen through the glass),
+  so it is not a wall and is excluded. **Geometric check (near plane past a surface):** fires on today's code at the
+  villa's white-rock wall (26 poses), a deck chair by the house (12), the hillside under rock.024 (5), the log cabin
+  (4), the supermarket frame (3) and the solo pine (3). **1f classification: the failures are geometric** (near
+  plane past the surface; no single-sided face showed the marker), so the camera-side fix applies. Rig-invalid
+  wall picks (bus-shelter pole, bare tree, hillside south: no contact) are rerouted for the after run.
+- **Task 2 done.** Baselines are on disk before anything in the world changed.
 
 ### Completion Notes List
 
