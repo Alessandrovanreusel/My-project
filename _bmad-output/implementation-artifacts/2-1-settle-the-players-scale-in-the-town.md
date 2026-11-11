@@ -4,7 +4,7 @@ baseline_commit: 85382ae34ee7869a9bb22abfe5db31293e4c7005
 
 # Story 2.1: Settle the player's scale in the town
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -287,12 +287,12 @@ a story that changes the world every other system is measured in.
 >   finish it or revert its files to the branch's last commit with `git checkout -- <path>` (allowed: it is
 >   not a branch switch). Say which in the hint.
 
-- [ ] **Task 1: Settle the seven things that gate this story (AC1–AC3). DO THESE FIRST.**
+- [x] **Task 1: Settle the seven things that gate this story (AC1–AC3). DO THESE FIRST.**
 
   Each item has a recommendation. Record the choice **and the reasoning** in the Dev Agent Record, including
   where you follow the recommendation: a later reader needs to know it was decided, not defaulted.
 
-  - [ ] **1a. Measure the starting point in play mode.** Write `evidence/start/start.json`.
+  - [x] **1a. Measure the starting point in play mode.** Write `evidence/start/start.json`.
         - **Player:** `CharacterController` height, radius, center, skinWidth, and the *effective*
           stepOffset (Awake overrides it to 2). The model's world-space renderer bounds (top, and the
           eye-sphere height; the census put the eyes at ~7.56 m and a top part at ~8.16 m). The camera's
@@ -304,14 +304,14 @@ a story that changes the world every other system is measured in.
           house and the street.
         - **The factor:** report it as **one number**, character height ÷ the target human height (1b), and
           state which of 4× or 5× it retires.
-  - [ ] **1b. Choose the target human height and the references that count.**
+  - [x] **1b. Choose the target human height and the references that count.**
         - **Recommended:** characters at about **1.75–1.80 m**, with the eye at the model's own eye point
           scaled (about 0.93 of stature).
         - Judge first by the **door** (a human door head is ~2.0–2.1 m), then the container (2.59 m tall
           real), then the street width. Cars and barrels disagree with each other in this town, so record
           what each ratio says instead of averaging them away.
         - The player and the drunk may differ by a few centimetres, as people do. Record both.
-  - [ ] **1c. How each option is staged, without damaging the project.**
+  - [x] **1c. How each option is staged, without damaging the project.**
         - **The rig:** an editor `[MenuItem]` opens `SampleScene`, mutates it at runtime, **never saves it**,
           and reopens the developer's scene on exit. Store the path in `SessionState`, as in
           `PhotoShootRig.BuildPlacementStudy` (`Assets/Scripts/Editor/PhotoShootRig.cs:164`).
@@ -340,7 +340,7 @@ a story that changes the world every other system is measured in.
           - Verify every component's effective values by reading them back. Whether the `CharacterController`
             capsule and the `NavMeshAgent` radius and height multiply by transform scale is **not** to be taken
             from memory. `AudioSource` distances never scale.
-  - [ ] **1d. How input is driven: the real path, end to end.**
+  - [x] **1d. How input is driven: the real path, end to end.**
         - **Recommended:** queue Input System state events on the existing keyboard device
           (`InputSystem.QueueStateEvent(Keyboard.current, new KeyboardState(Key.W, Key.LeftShift))` and
           similar). That goes **PlayerInput (Send Messages) → `OnMove`/`OnSprint`/`OnJump`**
@@ -356,13 +356,13 @@ a story that changes the world every other system is measured in.
             so release must be delivered.
         - **Fallback**, only if the device path cannot be made to work: `SendMessage("OnMove", …)` with a
           reflected `InputValue`. Record why. *Never* write `_moveInput` directly.
-  - [ ] **1e. How the cue is heard.** Use a listener-side tap, as specified under AC3. Its data is RMS per DSP
+  - [x] **1e. How the cue is heard.** Use a listener-side tap, as specified under AC3. Its data is RMS per DSP
         block plus the listener-to-drunk distance sampled on the main thread, with timestamps from
         `AudioSettings.dspTime`.
         - Make sure **nothing else plays** during the sweep. The shutter is 2D and silent unless captured,
           and there is no ambience yet. Check: list every playing `AudioSource` at the start of the run.
         - Read whether `AudioManager`'s Rolloff Scale (1) affects a Custom curve. Do not assume it.
-  - [ ] **1f. Does ADR-5 need Alexv's sign-off before 2.2 starts? Decided: no gate.**
+  - [x] **1f. Does ADR-5 need Alexv's sign-off before 2.2 starts? Decided: no gate.**
         - The AC has no "approves before" clause. A gate would hold back **all** of Epic 2 while he is away.
           His standing choice is "decide, flag, keep going", and AC4 is a batched perceptual check that
           dependents may build on.
@@ -371,7 +371,7 @@ a story that changes the world every other system is measured in.
         - There is also evidence for his direction: he noted "humanoid too tall" on 2026-06-05, which points
           at the characters.
         - **Do not edit `loop/dependencies.yaml`.**
-  - [ ] **1g. Where the moved values live.**
+  - [x] **1g. Where the moved values live.**
         - **Recommended:** a new `PlayerConfig` ScriptableObject (`Assets/Scripts/Player/PlayerConfig.cs`,
           namespace `CameraGame.Player`; asset `Assets/Data/Player/PlayerConfig.asset`). It holds the walk
           and sprint speeds, jump height, gravity, step offset, ground-stick velocity, **eye height above
@@ -393,46 +393,46 @@ a story that changes the world every other system is measured in.
         - **The alternative** is serialized fields on the two components. It is acceptable if the config
           migration proves risky. Record which you chose.
 
-- [ ] **Task 2: Baselines at the OLD scale, before anything changes (AC3, AC4, AC5)**
-  - [ ] 2.1 **Record the console baseline, the EditMode count and `git status`.** Copy
+- [x] **Task 2: Baselines at the OLD scale, before anything changes (AC3, AC4, AC5)**
+  - [x] 2.1 **Record the console baseline, the EditMode count and `git status`.** Copy
         `_bmad-output/verification/photo-shoot/` to
         `_bmad-output/verification/2-1-settle-the-players-scale-in-the-town/photo-shoot-before-1/` **before** the
         first run, because the rig wipes its own output folder (1.14, memory trap 14).
-  - [ ] 2.2 **Run `Tools/Grading/Photo Shoot (Play)` twice at the old scale**, copying each run aside
+  - [x] 2.2 **Run `Tools/Grading/Photo Shoot (Play)` twice at the old scale**, copying each run aside
         (`photo-shoot-before-1/`, `-2/`). Diff each shot's stars and composition between the two runs, unmasked:
         that is the noise floor. Then run the Town Placement Study once (`photo-shoot-town-before/`).
-  - [ ] 2.3 **Add the eye-height scenarios (AC3 (ii)) to `PhotoShootRunner.cs` now**, and shoot them at the old
+  - [x] 2.3 **Add the eye-height scenarios (AC3 (ii)) to `PhotoShootRunner.cs` now**, and shoot them at the old
         scale (eye from config = 8.5): `z3_money_shot_eye`, `c_far_eye` and `f_wall_eye`. Do not touch the
         existing poses.
         - The rig's camera near clip now reads the game camera's value.
         - The idle camera (`:437`, `new Vector3(0f, 8f, 30f)`) reads the eye height.
         - Re-run once to prove that the **existing** shots are unchanged by this rig edit.
-  - [ ] 2.4 **"Before" pictures (AC4) and option (C)'s row (AC1).** Build the comparison rig
+  - [x] 2.4 **"Before" pictures (AC4) and option (C)'s row (AC1).** Build the comparison rig
         `Tools/Scale/Compare Options (Play)`: `Assets/Scripts/Editor/ScaleStudyRig.cs`, plus
         `Assets/Scripts/Player/ScaleStudyRunner.cs` behind `#if UNITY_EDITOR` in the runtime assembly
         (CLAUDE.md trap: an editor-assembly MonoBehaviour is "missing" in play mode).
         - It takes an option argument, stored in `SessionState` with an expiry stamp (lesson 37).
         - Shoot (C) at every spot: the eye view plus the witness frame, with the drunk posed.
         - Control shots come first: one frame with known 3D content, which must not be uniform or white.
-  - [ ] 2.5 **Route trace at the old scale.** Run it for at least 3 cycles (`seconds` ≈ 95). Add per-frame columns
+  - [x] 2.5 **Route trace at the old scale.** Run it for at least 3 cycles (`seconds` ≈ 95). Add per-frame columns
         for the drunk's foot-bone world positions, so foot sliding can be measured (Task 7.5). Save it as
         `route/before-trace.csv`.
-  - [ ] 2.6 **Cue sweep at the old scale** (Task 1e instrument), with the radius 100 sweep distances scaled by
+  - [x] 2.6 **Cue sweep at the old scale** (Task 1e instrument), with the radius 100 sweep distances scaled by
         the factor so the curves can be compared: `cue/before-sweep.csv` plus a plot.
-  - [ ] 2.7 **Raise timing and walk/sprint/jump at the old scale** (Task 1d instrument): `movement/before-*.csv`.
+  - [x] 2.7 **Raise timing and walk/sprint/jump at the old scale** (Task 1d instrument): `movement/before-*.csv`.
 
-- [ ] **Task 3: Stage and photograph (A) and (B) (AC1)**
-  - [ ] 3.1 **(A) at the candidate values from 1b**, at every spot: eye view plus witness. The drunk's visual is
+- [x] **Task 3: Stage and photograph (A) and (B) (AC1)**
+  - [x] 3.1 **(A) at the candidate values from 1b**, at every spot: eye view plus witness. The drunk's visual is
         scaled, posed and animated.
-  - [ ] 3.2 **(B) with the map root scaled by the factor**, at every scaled spot, and the player at today's size.
+  - [x] 3.2 **(B) with the map root scaled by the factor**, at every scaled spot, and the player at today's size.
         Record the first-frame cost of re-scaling 16k MeshColliders and any new console line. Large-triangle
         warnings above 500 units will multiply, and that is a finding for (B)'s row.
-  - [ ] 3.3 **One contact sheet**, `options/contact-sheet.png`: rows are spots, columns are (C), (A) and (B),
+  - [x] 3.3 **One contact sheet**, `options/contact-sheet.png`: rows are spots, columns are (C), (A) and (B),
         all labelled with eye height and ratios. **Look at every image.** Run the (A)-versus-(B) similarity
         check from 1c.
 
-- [ ] **Task 4: Measure crossing times and the tuned-number inventory (AC1)**
-  - [ ] 4.1 **Crossing times**, measured by the real controller through the real input (1d). Do this for (C)
+- [x] **Task 4: Measure crossing times and the tuned-number inventory (AC1)**
+  - [x] 4.1 **Crossing times**, measured by the real controller through the real input (1d). Do this for (C)
         at today's speeds, for (A) at **two** speed sets, and for (B) at today's speeds and at speeds × the
         factor:
         - **(A)'s speed sets:** (i) today's 5 / 10 m/s kept in world metres, which leaves the travel times
@@ -440,12 +440,12 @@ a story that changes the world every other system is measured in.
         - **Routes:** the plain line, plus spawn and two far points to the route's midpoint.
         - **Output:** `crossing/crossing.csv`, plus a top-down trace drawn on `plan-epic-2/map_topdown.png`'s
           frame.
-  - [ ] 4.2 **Tuned-number inventory.** Copy Dev Notes §"Tuned-number inventory" into
+  - [x] 4.2 **Tuned-number inventory.** Copy Dev Notes §"Tuned-number inventory" into
         `inventory/tuned-numbers.md`, re-read every value through the editor (`execute_code` read-backs), and
         add (A) and (B) columns giving the value each option would need.
         - Mark every **code literal**.
         - For each option, count how many values move and how many files that touches.
-  - [ ] 4.3 **Derived design checks**, labelled **computed**. They tell Alexv what the option means for play:
+  - [x] 4.3 **Derived design checks**, labelled **computed**. They tell Alexv what the option means for play:
         - The distance at which a person-sized subject passes the 0.20 size gate. At 60° FOV the frame height
           at distance d is 2·d·tan 30° ≈ 1.155·d. A 1.75 m subject therefore passes out to ≈ 7.6 m wide and
           ≈ 27.6 m at the 18° tele end, against today's ≈ 38 m and ≈ 138 m for an 8.8 m subject.
@@ -453,8 +453,8 @@ a story that changes the world every other system is measured in.
         - Today's **relative** numbers (cue radius ÷ zoom gate distance) are preserved under (A) and (B), and
           only (C) keeps them in world terms.
 
-- [ ] **Task 5: Compare and decide (AC1)**
-  - [ ] 5.1 **Write `decision/comparison.md`.**
+- [x] **Task 5: Compare and decide (AC1)**
+  - [x] 5.1 **Write `decision/comparison.md`.**
         - **Rows:** the options.
         - **Columns:** the pictures (a link to the sheet row); eye ÷ door, car, tree and house; crossing walk
           and sprint; the number of tuned values moved and the code literals among them; the NavMesh re-bake
@@ -462,12 +462,12 @@ a story that changes the world every other system is measured in.
           ~11 km, the far clip ~5000, 5× shadow distance and its blur, the large-triangle warnings); the
           Story 2.2 consequence (its AR9 check compares bounds, which (B) breaks); **reversal cost**.
         - **Every cell** carries an evidence path, or "not measurable, because …".
-  - [ ] 5.2 **Decide.** Do not encode the expected winner: measure all three, then judge. If two options tie, the
+  - [x] 5.2 **Decide.** Do not encode the expected winner: measure all three, then judge. If two options tie, the
         tie-break is fewer moving parts and the smaller reversal cost. Write the choice into the result
         file's `decisions`.
 
-- [ ] **Task 6: Write ADR-5 and its touch points (AC1)**
-  - [ ] 6.1 **Add ADR-5 to `game-architecture.md` §Architecture Decision Records, after ADR-4**, with the status
+- [x] **Task 6: Write ADR-5 and its touch points (AC1)**
+  - [x] 6.1 **Add ADR-5 to `game-architecture.md` §Architecture Decision Records, after ADR-4**, with the status
         from AC1's note. It contains:
         - the decision and a one-paragraph why;
         - a compact evidence table with paths;
@@ -487,7 +487,7 @@ a story that changes the world every other system is measured in.
           - ADR-4 replays are scale-bound once 1.17 persists them. None exist yet, so this change costs replay
             nothing today;
         - **reversal cost.**
-  - [ ] 6.2 **Update the touch points**, each with a dated revision note:
+  - [x] 6.2 **Update the touch points**, each with a dated revision note:
         - a Decision Summary row **10 — World scale**;
         - row 8 ("3D AudioSource per actor (~25m rolloff…)");
         - §Event-Actor System ("cue radius (~25m)");
@@ -497,36 +497,36 @@ a story that changes the world every other system is measured in.
         Add a `decision-log.md` entry (`_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/`).
         **Do not edit `epics.md`.** List any wording there that ADR-5 makes stale as a follow-up in the Dev
         Agent Record.
-  - [ ] 6.3 **Update `deferred-work.md`** with a dated "Resolved by Story 2.1 / ADR-5" note on the entries this
+  - [x] 6.3 **Update `deferred-work.md`** with a dated "Resolved by Story 2.1 / ADR-5" note on the entries this
         story closes: lines ~:13, ~:20 and ~:60. Note on :60 that its premise was the scene's unused built-in
         NavMesh block (`SampleScene.unity:99–121`, `m_NavMeshData: 0`), not the real bake. Also close :61
         (agent speed), :62 (the peak fires past `WP1`) if the re-laid route fixes it, and :67 (the head-bone
         literal) in part. Leave the see-through-walls entry (:12) to Story 2.2.
-  - [ ] 6.4 **Mark `loop/lessons.md:33` superseded in place**, naming the new eye height and ADR-5, and return the
+  - [x] 6.4 **Mark `loop/lessons.md:33` superseded in place**, naming the new eye height and ADR-5, and return the
         new fact as a lesson. Add one line to `Assets/Spikes/RecordingSpike/README.md` saying its vantage and
         `EyeHeight` predate ADR-5. **Do not edit the spike's code.**
 
-- [ ] **Task 7: Apply the chosen option (AC2).** The sub-tasks below are written for (A), the option the prior
+- [x] **Task 7: Apply the chosen option (AC2).** The sub-tasks below are written for (A), the option the prior
       evidence points at. If (B) or (C) wins, the equivalent list is your Task 4.2 table: apply that instead
       and note the substitution here.
-  - [ ] 7.1 **Config (1g).** Write `PlayerConfig` (script, asset and `.meta`) and wire it into the two components.
+  - [x] 7.1 **Config (1g).** Write `PlayerConfig` (script, asset and `.meta`) and wire it into the two components.
         Move the literals (`ThirdPersonCamera.cs:67/:79`, and `ThirdPersonController.cs:207` if it moves).
         Migrate the scene's current values. Run `refresh_unity` and `read_console`, then **read every value back
         through the editor**.
-  - [ ] 7.2 **Characters.** Scale the player through the importer and the drunk through the prefab `Armature`
+  - [x] 7.2 **Characters.** Scale the player through the importer and the drunk through the prefab `Armature`
         (1c). Set the player's controller to the new body: height, radius, center, skinWidth ≈ 10% of radius,
         and stepOffset through config.
         - Read back, in play mode and animated: the player's height and eye point, and the drunk's
           `EventActor.Bounds` height, which must be close to the target.
         - The deactivated child in the player's prefab instance stays deactivated.
-  - [ ] 7.3 **Camera.** Set the eye height from the measured, scaled eye point. Scale the forward nudge and the
+  - [x] 7.3 **Camera.** Set the eye height from the measured, scaled eye point. Scale the forward nudge and the
         Main Camera near clip **together with the controller radius**. Then the camera's geometry against a wall
         is *no worse* than today's in body proportions. Today the near plane reaches nudge 1.0 + near 0.3 −
         radius 0.95 = **0.35 m beyond the capsule**, about 4% of body height.
         - Photograph "pressed against a wall" at the old and the new scale.
         - **The see-through-walls fix itself is Story 2.2's**; do not attempt it here.
         - Far clip 1000 and shadow distance 50 stay unless the evidence says otherwise.
-  - [ ] 7.4 **NavMesh.**
+  - [x] 7.4 **NavMesh.**
         - Set agent type 0 through
           `SerializedObject(Unsupported.GetSerializedAssetInterfaceSingleton("NavMeshProjectSettings"))`, field
           `m_Settings.Array.data[0].agentRadius / agentHeight / agentClimb / agentSlope`. This is the same
@@ -545,7 +545,7 @@ a story that changes the world every other system is measured in.
           patch plus the drunk's route. The whole-town bake is Story 2.2's AC. Record the choice as a
           decision.
         - **Never add an LFS rule.** LFS quota is a money question, so it would be a blocker.
-  - [ ] 7.5 **The drunk.**
+  - [x] 7.5 **The drunk.**
         - **Measure `DrunkWalk`'s stride speed at the new scale** from the route trace's foot-bone columns: the
           horizontal speed of the planted foot during ground contact is the slide (agent speed minus stride
           speed). Set the agent speed (and its acceleration and stopping distance, proportionally) to minimise
@@ -558,57 +558,57 @@ a story that changes the world every other system is measured in.
         - Keep the route straight. A corner makes the `hasPath` deferral (~:49) due, and then it must be fixed.
         - `TownDrunk.asset`: `cueRadius` **25** (the design value), `cueFalloffStart` about one body height
           (≈ 2). Update the code defaults and tooltips.
-  - [ ] 7.6 **Rigs.**
+  - [x] 7.6 **Rigs.**
         - `GradeHudShootRunner.cs:1634` (`Vector3.up * 6f`), `GalleryShootRunner.cs:268` and
           `PhotoShootRunner.cs:437` (`(0, 8, 30)`), and the rigs' fixed near clip, all read config.
         - Distances in subject heights stay as they are.
         - Wall depth 0.4 and ground ×20 are scale-safe at person size; check them, do not change them.
-  - [ ] 7.7 **Stale comments and tooltips.** Fix `ShotGrader.cs:511–512`, `EventActor.cs:367–371`,
+  - [x] 7.7 **Stale comments and tooltips.** Fix `ShotGrader.cs:511–512`, `EventActor.cs:367–371`,
         `EventDefinition.cs:67–69/:76–80`, `GalleryView.cs:236` and `GradeHudShootRunner.cs:1841`, so that the
         code describes the scale ADR-5 set.
-  - [ ] 7.8 **Save `SampleScene` in a separate `execute_code` call** (memory: an unsaved-changes dialog turns one
+  - [x] 7.8 **Save `SampleScene` in a separate `execute_code` call** (memory: an unsaved-changes dialog turns one
         menu call into six). Diff its YAML. Expect changes only to the player and its controller, the camera,
         the route, the spawn point, and the surface's NavMesh reference. **No rig objects.**
 
-- [ ] **Task 8: Verify Epic 1's loop at the new scale (AC3)**
-  - [ ] **Before any run:** `refresh_unity`, wait for the compile, check `mcpforunity://editor/state`
+- [x] **Task 8: Verify Epic 1's loop at the new scale (AC3)**
+  - [x] **Before any run:** `refresh_unity`, wait for the compile, check `mcpforunity://editor/state`
         (`assets.external_changes_dirty`), and **read the moved values back through the editor**. A stale
         assembly runs with a clean console (CLAUDE.md).
-  - [ ] 8.1 **Route trace for at least 3 cycles** (`route/after-trace.csv`), with the per-cycle table from AC3.
+  - [x] 8.1 **Route trace for at least 3 cycles** (`route/after-trace.csv`), with the per-cycle table from AC3.
         Also compute the slide speed against the before-trace.
-  - [ ] 8.2 **Cue sweep** at 0.5–60 m (`cue/after-sweep.csv`): the floor, the controls, a plot overlaid on the
+  - [x] 8.2 **Cue sweep** at 0.5–60 m (`cue/after-sweep.csv`): the floor, the controls, a plot overlaid on the
         computed curve, and the verdicts at 25 m and beyond.
-  - [ ] 8.3 **Photo Shoot after**: the unchanged scenarios, diffed against both before-runs, and the eye-height
+  - [x] 8.3 **Photo Shoot after**: the unchanged scenarios, diffed against both before-runs, and the eye-height
         scenarios against their old-scale baseline. Copy aside first. Then the Town Placement Study, labelled
         as world-dependent.
-  - [ ] 8.4 **Raise timing**: 10 raises and 10 lowers, worst case under 0.3 s. **Walk, sprint, jump and a kerb
+  - [x] 8.4 **Raise timing**: 10 raises and 10 lowers, worst case under 0.3 s. **Walk, sprint, jump and a kerb
         step**: measured against config.
-  - [ ] 8.5 **Foot sliding over time is a temporal question.** Settle it by measurement first (8.1). If you want a
+  - [x] 8.5 **Foot sliding over time is a temporal question.** Settle it by measurement first (8.1). If you want a
         second opinion, send Gemini a short clip with the drunk in every frame, no timestamps and no named
         defect (`tools/verification/README.md`), and verify every claim on its frame.
-  - [ ] 8.6 **Suspect the rig before the code.** If every case is identical, every case passes, a number is
+  - [x] 8.6 **Suspect the rig before the code.** If every case is identical, every case passes, a number is
         suspiciously round, or a capture is blank or white, fix the rig first (lessons).
 
-- [ ] **Task 9: Before-and-after pictures for Alexv (AC4)**
-  - [ ] 9.1 Shoot the applied option at every spot in `spots.json` with the same rig and the same poses as 2.4.
+- [x] **Task 9: Before-and-after pictures for Alexv (AC4)**
+  - [x] 9.1 Shoot the applied option at every spot in `spots.json` with the same rig and the same poses as 2.4.
         Build `before-after/sheet.png`: (C) on the left, after on the right, one row per spot, with the eye
         ratios. Look at it yourself and write your honest read.
 
-- [ ] **Task 10: Restore, console, tests, regressions (AC5)**
-  - [ ] 10.1 Run `read_console` and `run_tests` (EditMode), and report the count. Check `git status` and
+- [x] **Task 10: Restore, console, tests, regressions (AC5)**
+  - [x] 10.1 Run `read_console` and `run_tests` (EditMode), and report the count. Check `git status` and
         `git diff --stat`: only intended files.
-  - [ ] 10.2 Read back every restored value (AC5 list). SampleScene is not dirty and has no rig objects.
+  - [x] 10.2 Read back every restored value (AC5 list). SampleScene is not dirty and has no rig objects.
         Clear the SessionState flags.
-  - [ ] 10.3 Re-run the Gallery and HUD rigs once each, to prove they still **run** after their literal
+  - [x] 10.3 Re-run the Gallery and HUD rigs once each, to prove they still **run** after their literal
         changes: no exceptions, outputs not empty. Their HUD vantages in the real town *will* differ, because
         occlusion is now real. That is not a regression; note it.
 
-- [ ] **Task 11: Handover. Queue what needs Alexv, and never self-certify it**
-  - [ ] 11.1 Put the `human_checks` (Dev Notes §"Human checks to queue") in the result file with exact paths and
+- [x] **Task 11: Handover. Queue what needs Alexv, and never self-certify it**
+  - [x] 11.1 Put the `human_checks` (Dev Notes §"Human checks to queue") in the result file with exact paths and
         your own read. Put the `decisions` there too: ADR-5's choice (1f), the target height (1b), the config
         home (1g), the NavMesh voxel and volume (7.4), the drunk's speed and route (7.5), and the speed set
         (4.1).
-  - [ ] 11.2 Story status → `review`, never `done` while AC4 is open. Update the `sprint-status.yaml` entry and
+  - [x] 11.2 Story status → `review`, never `done` while AC4 is open. Update the `sprint-status.yaml` entry and
         `last_updated` (no `: ` and no trailing `:`), then check it with `yaml.safe_load`.
 
 ## Dev Notes
@@ -931,14 +931,151 @@ them is either still true by construction (subject-relative) or stale. So:
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`), loop DEV phase, attempt 1 (2026-11-10/11).
+
 ### Debug Log References
+
+Evidence root (git-ignored): `_bmad-output/verification/2-1-settle-the-players-scale-in-the-town/`. Every rig run writes a
+`log.txt` beside its output; `failsoft/editor-log-excerpt*.txt` hold the Editor.log windows of the fail-soft runs.
+Rigs: `Tools/Scale/*` (`Assets/Scripts/Editor/ScaleStudyRig.cs` + `Assets/Scripts/Player/ScaleStudyRunner.cs`),
+`Tools/Grading/Photo Shoot (Play)` (+ Placement Study), `Tools/Events/Trace Actor Route (Play)` (now 95 s),
+`Tools/Gallery/Gallery Shoot (Play)`, `Tools/HUD/Grade HUD Shoot (Play)`. Analysis scripts: `tools/*.py` in the evidence root.
 
 ### Completion Notes List
 
 - 2026-11-10 (loop CREATE phase): story context created. Ultimate context engine analysis completed - comprehensive developer guide created.
+- **2026-11-11 Task 1 (gating decisions)**: full record with evidence in `decision/task1-decisions.md`.
+  - 1a: `start/start.json`, measured in play mode. Player 8.86 m (model 8.864); camera 8.50 up and 1.00 forward
+    of the feet; the model's eye spheres at 7.58 (0.855 of stature); spawn lands at y 3.609. Drunk idle 8.34 /
+    walk 8.43 m.
+  - 1a references: the police car's roof 2.56 / length 9.46; door head 2.81 above its deck; pine canopy 0.65 /
+    top 6.93; eave 5.63 / ridge 10.31; street 13.18 m. **F = 5.0**, which retires 4×.
+  - 1b: 1.77 m stature, **eye 1.65 m** (0.93 × stature, not the model's cartoon-head eye spheres; reasons in the
+    file). The references disagree and were recorded, not averaged: door ~1.4× real, police car ~2×, road, house
+    and pines ~1×.
+  - 1c: followed the recommendation. (A) stages the eye as a "head bone" marker, so the REAL ThirdPersonCamera
+    places the camera. The drunk's clips were read back: rotation-only, constant-1 scale curves, none on `Armature`.
+  - 1d: Keyboard state events, followed. The drive control passes in every run.
+  - 1e: listener tap, followed. "Silent" was fixed before the run as within 1 dB of the deactivated floor.
+    Rolloff Scale reads 1, a no-op.
+  - 1f: no gate, followed; `loop/dependencies.yaml` untouched.
+  - 1g: the `PlayerConfig` SO, followed, plus `cameraNearClip` (the rigs need it).
+- **Task 2 (old-scale baselines)**:
+  - Photo Shoot run 1 vs run 2 (`photo-shoot-before-1/`, `-2/`): only `i_from_behind` moves (timing noise,
+    lesson 42); run 1 also matches the 1.14 baseline on every other shot.
+  - Eye-height poses added and shot at 8.5 m (`photo-shoot-before-eye/`): money shot 5★ 100%, `c_far_eye`
+    TooSmall, `f_wall_eye` Occluded. The rig edit moved no existing shot.
+  - Town study at the old scale (`photo-shoot-town-before/`): 24/24 counted.
+  - Route trace at the old scale (`route/before-trace.csv`, `before-analysis.txt`): 3 full cycles plus a
+    partial, same pooled instance, 60 m. He reaches the end at 21.7 s, 2.8 s before despawn. Peak 1.37–1.49 s at
+    x 25.9 (4 m past WP1). Planted-foot slide +0.65 m/s.
+  - Cue at the old scale (`cue/before/`): tracks the curve within ~2–3 dB; silent from 100 world m, which is
+    **20 person-m, not 25**.
+  - Movement at the old scale (`movement/before/`): walk 5.00 / sprint 10.00 m/s measured; jump apex 1.29,
+    air 0.81 s; raise worst 0.171 s, lower worst 0.170 s.
+- **Task 3**: `options/C|A|B/` and `options/contact-sheet.png`, each with eye views and witness frames.
+  - Similarity (`options/similarity.txt`): \|A−B\| 5–9 grey levels against \|A−C\| 33–47. Not pixel-identical,
+    as similar triangles predict.
+  - (B)'s 16,738 colliders re-scale in 60 ms with no new console line.
+- **Task 4**: `crossing/crossing.csv` (measured rows plus labelled computed rows) and `crossing/topdown-traces.png`.
+  - Plain 810 m: (C) and (A) at 5 / 10 m/s 161.9 / 81.0 s; (A) at 4 / 7 m/s 202.4 / 115.6 s; (B) at 25 / 50 m/s
+    161.9 / 80.9 s; (B) at 5 / 10 m/s 809 / 405 s computed.
+  - Inventory: `inventory/tuned-numbers.md`. Derived checks (computed): `inventory/derived-checks.md`.
+  - Route fixes: the spawn route needed waypoints (a pine sits on the straight line). The far-west start moved
+    inside a tyre line that fences the west quarter off at person scale. First runs kept as `crossing/*-run1*`.
+- **Task 5**: `decision/comparison.md`. **(A) chosen**, speeds 4 / 7.
+- **Task 6**: ADR-5 written (Accepted, Alexv may veto), with touch points: Decision Summary row 10, row 8, the
+  Event-Actor cue, frontmatter `updated`, an Executive Summary bullet. Also `decision-log.md`,
+  `deferred-work.md` (:13, :20, :60, :61, :62 resolved, :67 partly; :12 left to 2.2), `loop/lessons.md:33`
+  superseded in place, and one note in the spike README. `epics.md` is untouched; follow-ups are below.
+- **Task 7 (applied)**:
+  - `PlayerConfig` (walk 4, sprint 7, step 0.35, jump 1.2, gravity −15, stick −2, eye 1.65, nudge 0.316,
+    near 0.095), wired into both components. The 8.5 / 1 / −2 literals are gone.
+  - Player importer `globalScale` 0.2: model 1.773 m. CharacterController 1.77 / 0.30 / (0, 0.885, 0) / 0.03.
+  - Drunk `Armature` 0.002, agent r 0.3 h 1.77. Agent speed **0.6 m/s**, set from the stride measured at the new
+    size (`route/stride-probe-trace.csv`: +2.9 m/s slide at 3.5). Acceleration and stopping scaled to 1.37 / 0.26.
+  - NavMesh agent 0 is 0.30 / 1.77 / 0.35 / 45, read back.
+  - Slice-bounded re-bake at voxel 0.1: 1.5 s, **0.22 MB**, was 34 MB (`navmesh/bake.txt`).
+  - Route re-laid to 11.5 m: spawn x 31.8, waypoints 28.8 / 25.9 / 22.8 / 19.8.
+  - Cue 25 / 2 m.
+  - Rigs read the eye height and near clip from config. Stale "4×" comments rewritten. Animator Run threshold
+    7 → 5.5 (that Animator is dead).
+  - Scene diff checked: only the intended changes. No deactivated child exists in the player hierarchy (searched).
+  - Pressed against a wall (`wall/wall-old-vs-after.png`): the near plane stops 0.36 m (old) / 0.12 m (new) short
+    of the surface it faces, 0.38 / 0.40 capsule radii, so it is no worse in body proportions.
+- **Task 8 (verified at the new scale)**:
+  - Route (`route/after-analysis.txt`): 3 full cycles plus a partial, same pooled instance, on the NavMesh
+    throughout. 11.5 m walked; he reaches the end at 23.6 s, 0.9 s before despawn. Peak 1.45–1.49 s at x 26.1.
+    Slide ±0.15 m/s per foot, +0.02 median.
+  - Cue (`cue/after/`): tracks the curve within 1.2 dB. −53.9 dBFS at 20 m and −68.6 at 24 m. Exactly
+    digital silence (= the deactivated floor) from 25 m.
+  - Photo Shoot after (`photo-shoot-after/diff.txt`): no verdict moved beyond the noise. Eye-height poses are
+    identical to their old-scale baseline. `k_straddling` and `l_inside_away` are unchanged with near 0.095.
+  - Town study after (`photo-shoot-town-after/before-after-12dirs.png`): grades identical, 0/24 moved. But the
+    pines now fully hide him in 3 of 12 directions (2 before). The grader's occlusion rays do not see the pines
+    (Story 1.12), so this is world-dependent and **not a grader regression**. Not fixed.
+  - Movement after (`movement/after/`): walk 4.00 / sprint 7.00 m/s measured. Jump apex 1.26, air 0.81 s. A real
+    0.126 m kerb at x 0.5 is climbed. The 1.65 m slab edge blocks him (the finding). Raise worst 0.166 s, lower
+    worst 0.161 s.
+  - A real-time clip of one lifecycle from a person-height camera beside the route (`Tools/Scale/Film Drunk Walk (Play)`):
+    `film/after/drunk-walk-after-realtime.mp4`. The rig captured at ~8.4 fps, so it is choppy; that is the rig, not the game.
+    A pine hides him for part of the walk.
+  - Foot sliding was settled by measurement; Gemini was not used, since it is optional and the look goes to
+    Alexv.
+- **Task 9**: `before-after/sheet.png`. My read: before is an 8.5 m eye over a carpet of pines with a giant's face
+  filling the frame; after is a person on a road, at a porch, in a pine wood. The police car and the porch door
+  read oversized (~2× / ~1.4×).
+- **Task 10**:
+  - EditMode **185/185** (168 + 17 new `PlayerConfigTests`).
+  - Clean console in a normal SampleScene play session: only the baseline head-bone warning.
+  - Gallery and HUD rigs run with 0 exceptions. Their logged errors are their own provoked fail-soft cases.
+  - Fail-soft: no PlayerConfig → one warning, runs on defaults (walk 4.00 measured). Eye above body → one
+    runtime warning, game runs.
+  - Restored and read back: SampleScene clean with no rig objects; timeScale 1; runInBackground true (as at
+    start); quality PC; input settings at their originals; SessionState keys cleared. No build was made.
+- **Findings for Story 2.2** (in ADR-5's consequences):
+  - The road is a raised slab with 1.2–1.65 m edges, reachable only near x 0.
+  - A tyre line fences off the plain's west quarter.
+  - The police car is ~2× real; the porch door ~1.4×; the bus-shelter roof ~9 m up.
+  - The census "street block" is buried ~60 m underground.
+  - The player now spawns standing on the 1.4 m police-tape barrier (y 3.47).
+- **Follow-ups (not done here)**:
+  - `epics.md` wording that ADR-5 makes stale: the "~5×" / "8.86 m" planning facts in §Epic 2 and Story 2.1's
+    own preamble. It was not edited, per the story.
+  - The whole-town NavMesh bake is Story 2.2's AC.
+  - The grader's blindness to pine occlusion (Story 1.12) now matters more at person scale.
+- **Open for Alexv**: AC4 (before/after look), FR13 feel, the drunk's walk, and the cue by ear. Queued as human
+  checks; never self-certified.
 
 ### File List
+
+New:
+- `Assets/Scripts/Player/PlayerConfig.cs` (+ `.meta`)
+- `Assets/Data/Player.meta`, `Assets/Data/Player/PlayerConfig.asset` (+ `.meta`)
+- `Assets/Scripts/Player/ScaleStudyRunner.cs` (+ `.meta`), `Assets/Scripts/Editor/ScaleStudyRig.cs` (+ `.meta`)
+- `Assets/Tests/EditMode/PlayerConfigTests.cs` (+ `.meta`)
+
+Modified:
+- `Assets/Scripts/ThirdPersonController.cs`, `Assets/Scripts/ThirdPersonCamera.cs`
+- `Assets/Scenes/SampleScene.unity`, `Assets/Scenes/SampleScene/NavMesh-game map.asset`
+- `ProjectSettings/NavMeshAreas.asset`
+- `Assets/Models/main characters.fbx.meta`
+- `Assets/Prefabs/Events/EventActor_Drunk.prefab`, `Assets/Data/Events/TownDrunk.asset`
+- `Assets/Animations/CharacterAnimator.controller`
+- `Assets/Scripts/Events/EventDefinition.cs`, `Assets/Scripts/Events/EventActor.cs` (comment)
+- `Assets/Scripts/Grading/ShotGrader.cs` (comment only), `Assets/Scripts/Gallery/GalleryView.cs` (comment only)
+- Rigs:
+  - `Assets/Scripts/PhotoMode/PhotoShootRunner.cs`, `Assets/Scripts/Editor/PhotoShootRig.cs`
+  - `Assets/Scripts/Events/RouteTraceRunner.cs`, `Assets/Scripts/Editor/RouteTraceRig.cs`
+  - `Assets/Scripts/Gallery/GalleryShootRunner.cs`, `Assets/Scripts/Editor/GalleryShootRig.cs`
+  - `Assets/Scripts/UI/GradeHudShootRunner.cs`, `Assets/Scripts/Editor/GradeHudShootRig.cs`
+- `Assets/Spikes/RecordingSpike/README.md` (one note, no code)
+- `_bmad-output/planning-artifacts/game-architecture.md`, `_bmad-output/planning-artifacts/gdds/gdd-My project-2026-05-26/decision-log.md`
+- `_bmad-output/implementation-artifacts/deferred-work.md`, `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `loop/lessons.md`
+- `_bmad-output/implementation-artifacts/2-1-settle-the-players-scale-in-the-town.md`
 
 ## Change Log
 
 - 2026-11-10: Story file created by the loop CREATE phase (Claude Opus 5.5). Status → ready-for-dev.
+- 2026-11-11: Implemented by the loop DEV phase (Claude Opus 5.5). ADR-5 accepted, option (A) applied: people are 1.77 m with the eye at 1.65 m, F = 5.0; verified at the new scale. Status → review (AC4 and the feel/sound checks are queued for Alexv).

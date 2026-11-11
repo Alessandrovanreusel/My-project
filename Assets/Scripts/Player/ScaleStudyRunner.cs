@@ -126,6 +126,7 @@ namespace CameraGame.Player
                     case "crossing": yield return Crossing(); break;
                     case "movement": yield return Movement(); break;
                     case "cue": yield return Cue(); break;
+                    case "film": yield return Film(); break;
                     default: _log.AppendLine("unknown mode " + mode); break;
                 }
             }
@@ -965,6 +966,59 @@ namespace CameraGame.Player
             }
             sum.AppendLine($"  raises: {string.Join(" ", ups)}  → worst {F(worstUp, "0.000")} s");
             sum.AppendLine($"  lowers: {string.Join(" ", downs)}  → worst {F(worstDown, "0.000")} s");
+        }
+
+        // =============================================================================================
+        // film — one lifecycle of the drunk walking his route, from a fixed camera at a person's eye beside it,
+        // for the human check on how his walk reads (FR11). JPG frames at 30 fps; ffmpeg joins them afterwards.
+        // =============================================================================================
+
+        private IEnumerator Film()
+        {
+            if (_tpc != null) _tpc.enabled = false;
+            var go = new GameObject("FilmCam (rig)");
+            Camera fc = go.AddComponent<Camera>();
+            fc.enabled = false;
+            fc.fieldOfView = 50f;
+            fc.nearClipPlane = 0.1f;
+            Vector3 mid = S(new Vector3(26f, 0f, 19f)); mid.y = GroundY(mid, 5f * worldScale);
+            Vector3 at = S(new Vector3(26f, 0f, 27f)); at.y = GroundY(at, 5f * worldScale) + 1.65f * worldScale;
+            fc.transform.SetPositionAndRotation(at, Quaternion.LookRotation(mid + Vector3.up * 0.9f * worldScale - at));
+            string dir = Path.Combine(outputDir, "frames");
+            Directory.CreateDirectory(dir);
+
+            float t = 0f;
+            while ((_manager.ActiveActors.Count == 0) && t < 20f) { t += Time.deltaTime; yield return null; }
+            // start at a fresh spawn so the clip is one whole lifecycle
+            EventActor first = _manager.ActiveActors.Count > 0 ? _manager.ActiveActors[0] : null;
+            t = 0f;
+            while (t < 30f && _manager.ActiveActors.Count > 0 && _manager.ActiveActors[0] == first) { t += Time.deltaTime; yield return null; }
+            while (_manager.ActiveActors.Count == 0 && t < 60f) { t += Time.deltaTime; yield return null; }
+
+            RenderTexture rt = RenderTexture.GetTemporary(W, H, 24, RenderTextureFormat.ARGB32);
+            fc.targetTexture = rt;
+            var tex = new Texture2D(W, H, TextureFormat.RGB24, false);
+            int n = 0; float clock = 0f, next = 0f;
+            var log = new StringBuilder("frame,t,x,z,at_peak" + System.Environment.NewLine);
+            while (clock < 27f)
+            {
+                yield return new WaitForEndOfFrame();
+                clock += Time.deltaTime;
+                if (clock < next) continue;
+                next += 1f / 30f;
+                fc.Render();
+                RenderTexture prev = RenderTexture.active; RenderTexture.active = rt;
+                tex.ReadPixels(new Rect(0, 0, W, H), 0, 0); tex.Apply(); RenderTexture.active = prev;
+                File.WriteAllBytes(Path.Combine(dir, $"f{n:0000}.jpg"), tex.EncodeToJPG(88));
+                EventActor a = _manager.ActiveActors.Count > 0 ? _manager.ActiveActors[0] : null;
+                log.AppendLine($"{n},{F(clock)},{(a != null ? F(a.transform.position.x) : "")},{(a != null ? F(a.transform.position.z) : "")},{(a != null && a.IsAtPeak ? 1 : 0)}");
+                n++;
+            }
+            fc.targetTexture = null;
+            RenderTexture.ReleaseTemporary(rt);
+            Destroy(tex); Destroy(go);
+            File.WriteAllText(Path.Combine(outputDir, "film.csv"), log.ToString());
+            _log.AppendLine($"film: {n} frames at 30 fps from {V(at)} looking at {V(mid)}");
         }
 
         // =============================================================================================

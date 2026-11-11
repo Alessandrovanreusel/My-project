@@ -89,6 +89,7 @@ namespace CameraGame.EditorTools
         // Fail-soft (NFR8), provoked ON PURPOSE: each must warn exactly once and the game must keep running.
         [MenuItem("Tools/Scale/Fail-soft - no PlayerConfig (Play)")] public static void FailNone() => Run("movement", "FailNone", "today", "failsoft/no-config");
         [MenuItem("Tools/Scale/Fail-soft - eye above body (Play)")] public static void FailBody() => Run("movement", "FailBody", "today", "failsoft/eye-above-body");
+        [MenuItem("Tools/Scale/Film Drunk Walk (Play)")] public static void Film() => Run("film", "After", "today", "film/after");
         [MenuItem("Tools/Scale/Cue Sweep C (Play)")] public static void CueC() => Run("cue", "C", "today", "cue/before");
         [MenuItem("Tools/Scale/Cue Sweep After (Play)")] public static void CueAfter() => Run("cue", "After", "today", "cue/after");
 
@@ -158,7 +159,7 @@ namespace CameraGame.EditorTools
             var manager = Object.FindFirstObjectByType<EventManager>(FindObjectsInactive.Include);
 
             // Photos, crossings and movement want an empty street; measure and cue want the live drunk.
-            if (manager != null) manager.enabled = mode == "measure" || mode == "cue";
+            if (manager != null) manager.enabled = mode == "measure" || mode == "cue" || mode == "film";
 
             var so = new SerializedObject(tpc);
             float walk = so.FindProperty("walkSpeed") != null ? so.FindProperty("walkSpeed").floatValue : float.NaN;
