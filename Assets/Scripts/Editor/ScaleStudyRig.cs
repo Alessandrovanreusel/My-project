@@ -85,6 +85,9 @@ namespace CameraGame.EditorTools
         [MenuItem("Tools/Scale/Movement C (Play)")] public static void MoveC() => Run("movement", "C", "today", "movement/before");
         [MenuItem("Tools/Scale/Movement A (Play)")] public static void MoveA() => Run("movement", "A", "today", "movement/A");
         [MenuItem("Tools/Scale/Movement After (Play)")] public static void MoveAfter() => Run("movement", "After", "today", "movement/after");
+        // Fail-soft (NFR8), provoked ON PURPOSE: each must warn exactly once and the game must keep running.
+        [MenuItem("Tools/Scale/Fail-soft - no PlayerConfig (Play)")] public static void FailNone() => Run("movement", "FailNone", "today", "failsoft/no-config");
+        [MenuItem("Tools/Scale/Fail-soft - eye above body (Play)")] public static void FailBody() => Run("movement", "FailBody", "today", "failsoft/eye-above-body");
         [MenuItem("Tools/Scale/Cue Sweep C (Play)")] public static void CueC() => Run("cue", "C", "today", "cue/before");
         [MenuItem("Tools/Scale/Cue Sweep After (Play)")] public static void CueAfter() => Run("cue", "After", "today", "cue/after");
 
@@ -187,6 +190,18 @@ namespace CameraGame.EditorTools
                     cam.nearClipPlane = A_Near;
                     break;
                 }
+                case "FailNone":
+                {
+                    SetRef(so, "config", null);
+                    SetRef(new SerializedObject(cam.GetComponent<ThirdPersonCamera>()), "config", null);
+                    break;
+                }
+                case "FailBody":
+                {
+                    cc.height = 1.0f;                                   // the 1.65 m eye no longer fits the body
+                    cc.center = new Vector3(0f, 0.5f, 0f);
+                    break;
+                }
                 case "B":
                 {
                     worldScale = Factor;
@@ -206,6 +221,14 @@ namespace CameraGame.EditorTools
             SetFloat(so, "sprintSpeed", sprint);
             so.ApplyModifiedPropertiesWithoutUndo();
             return worldScale;
+        }
+
+        private static void SetRef(SerializedObject so, string name, Object v)
+        {
+            SerializedProperty p = so.FindProperty(name);
+            if (p == null) return;
+            p.objectReferenceValue = v;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void SetFloat(SerializedObject so, string name, float v)

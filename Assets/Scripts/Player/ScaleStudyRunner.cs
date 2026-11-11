@@ -861,7 +861,10 @@ namespace CameraGame.Player
             // a real kerb, grass → road at x≈0 (0.10 m in today's town); and the road slab's raised edge at x 30
             // x 8: clear of the bus-shelter roof (x -7.9..6.7, ~9 m above the grass; the 8.86 m giant hits it) and
             // the police car (x 1..5). The kerb's height is measured, not assumed: road top minus grass beside it.
-            foreach (var test in new[] { ("kerb_x8", new Vector3(8f, 0f, -12f), 0f, 3f),
+            // x 0.5: the road's real kerb (~0.1 m) — a person fits under the shelter roof here; the 0.95 m giant
+            // does not (it hits the roof ~9 m up), so at the old scale this test reports "blocked", which is true.
+            // (x 8 is a 0.73 m grass-to-road ledge, not a kerb.)
+            foreach (var test in new[] { ("kerb_x0.5", new Vector3(0.5f, 0f, -11.5f), 0f, 3f),
                                          ("slab_edge_x30_north", new Vector3(30f, 0f, 9f), 180f, 3.5f) })
             {
                 Teleport(S(test.Item2), test.Item3, 30f * worldScale);
@@ -872,7 +875,7 @@ namespace CameraGame.Player
                 for (float d = 0f; d < 8f * worldScale; d += 0.02f * worldScale)
                 {
                     Vector3 a = S(test.Item2) + fwd * d, b = a + fwd * 0.02f * worldScale;
-                    float ya = GroundY(a, 30f * worldScale), yb = GroundY(b, 30f * worldScale);
+                    float ya = GroundY(a, startY + 1.5f * worldScale), yb = GroundY(b, startY + 1.5f * worldScale);
                     if (yb - ya > 0.04f * worldScale) { kerbLow = ya; kerbHigh = yb; break; }
                 }
                 sum.AppendLine($"{test.Item1}: measured ledge ahead {F(kerbHigh - kerbLow)} m (from {F(kerbLow)} to {F(kerbHigh)})");

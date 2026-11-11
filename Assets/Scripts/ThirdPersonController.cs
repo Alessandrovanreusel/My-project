@@ -242,6 +242,9 @@ public class ThirdPersonController : MonoBehaviour
     // Editor-only structural check (Story 2.1, 1g): the config's eye and step against this body.
     private void OnValidate()
     {
+        // Authoring time only: entering and leaving play mode re-validates every object, which would repeat
+        // the warning several times per run. At runtime Awake reports it, once (NFR8).
+        if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode) return;
         var cc = GetComponent<CharacterController>();
         if (cc != null && PlayerConfig.TryGetBodyProblem(EyeHeight, StepOffset, cc.height, cc.radius, out string problem))
             Debug.LogWarning($"[Player] {name}: {problem}.", this);

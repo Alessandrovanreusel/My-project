@@ -502,7 +502,7 @@ added later without reshaping the model.
   | Eye ÷ house eave / ridge (5.63 / 10.31 m) | 1.51 / 0.82 | 0.29 / 0.16 | 0.30 / 0.16 |
   | Plain, 810 m, walk / sprint | 161.9 s / 80.9 s at 5 / 10 m/s | 161.9 / 81.0 s at 5 / 10; 202.4 s / 115.6 s at the chosen 4 / 7 | 161.9 s / 80.9 s (4050 m) at 25 / 50 m/s; ×5 longer at 5 / 10 (computed) |
   | Tuned values moved / code literals among them | 0 / 0 (but the cue stays 20 person-m, not 25) | 21 / 3 | 30+ / 3, plus every rig world position |
-  | NavMesh re-bake | none | {NAVMESH_COST} | ~25× today's 36 MB area at the same voxel (est. ~900 MB, over GitHub's 100 MB limit: not baked) |
+  | NavMesh re-bake | none | slice-bounded bake (x −80…120, z −40…80) at voxel 0.1: 1.5 s, 0.22 MB (was 34 MB for the whole map; `navmesh/bake.txt`) | ~25× today's 36 MB area at the same voxel (est. ~900 MB, over GitHub's 100 MB limit: not baked) |
 
   Paths:
   - photographs: `options/contact-sheet.png`;
@@ -527,15 +527,15 @@ added later without reshaping the model.
   | Jump apex / air time | 1.2 m / 0.80 s (gravity −15; kept in world metres, now 0.68 body heights) |
   | Walk / sprint | **4 / 7 m/s** (human-paced; the plain takes 202.4 s / 115.6 s) |
   | Camera forward nudge / near clip | 0.316 / 0.095 m (scaled with the radius: the near plane still reaches 0.37 radii past the capsule, as before) |
-  | NavMesh agent 0 | radius 0.30, height 1.77, climb 0.35, slope 45, {NAVMESH_VOXEL} |
-  | Drunk walk speed | {DRUNK_SPEED} |
-  | Drunk route | {DRUNK_ROUTE} |
-  | Cue radius / falloff start | **25 m / 2 m** (measured: {CUE_AFTER}) |
+  | NavMesh agent 0 | radius 0.30, height 1.77, climb 0.35, slope 45, voxel 0.1 (radius ÷ 3), surface bounded to the slice (the whole-town bake is Story 2.2's AC) |
+  | Drunk walk speed | 0.6 m/s: the DrunkWalk clip's measured stride at 1.67 m (0.44–0.77 m/s per foot). Planted-foot slide is +0.02 m/s median; it was +0.65 for the giant, and +2.9 at person size with the old 3.5 m/s (`route/*-analysis.txt`) |
+  | Drunk route | 11.5 m walked, about speed × 20 s (spawn x 31.8; waypoints 28.8 / **25.9 peak spot** / 22.8 / 19.8 at z 19). He reaches the end 0.9 s before despawn (it was 2.8 s of walking in place). Peak measured 1.45–1.49 s at x 26.1, over 3 pooled cycles |
+  | Cue radius / falloff start | **25 m / 2 m** (measured: audible at the listener to 24 m (−68.6 dBFS) and digitally silent from 25 m, tracking the rolloff curve within 1.2 dB (`cue/after/analysis.txt`)) |
 
   **Numbers moved (before → after).**
   - Player: CC 8.86 / 0.95 / 0.08 → 1.77 / 0.30 / 0.03; step 2 → 0.35; eye 8.5 → 1.65 (code → config); nudge 1 → 0.316 (code → config); ground-stick −2 (code → config); near 0.3 → 0.095; walk / sprint 5 / 10 → 4 / 7.
   - Models: player model ×0.2; drunk `Armature` 0.01 → 0.002; drunk agent r / h 1 / 8 → 0.30 / 1.77.
-  - Drunk tuning: {DRUNK_MOVED}; cue 100 / 8 → 25 / 2; route {ROUTE_MOVED}.
+  - Drunk tuning: agent speed / acceleration / stopping 3.5 / 8 / 1.5 → 0.6 / 1.37 / 0.26 (all ×0.6/3.5); cue 100 / 8 → 25 / 2; route 60 m (spawn x 60; waypoints 45 / 30 / 15 / 0) → 11.5 m (spawn x 31.8; waypoints 28.8 / 25.9 / 22.8 / 19.8).
   - NavMesh agent 0: 0.95 / 8.86 / 2 → 0.30 / 1.77 / 0.35.
   - Rigs: eye and near clip now read `PlayerConfig`.
 
