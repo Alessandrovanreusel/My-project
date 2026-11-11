@@ -319,6 +319,10 @@ added later without reshaping the model.
   remaining 0 while 400 m short. `EventActor` now measures arrival at the waypoint itself. A path that ends short is re-planned
   from where it stopped, as long as each re-plan gets ≥ 1 m closer; a dead end warns once and the route moves on. Measured: a
   waypoint 162 m beyond one query's reach is now reached. The ~250 m spacing stays the guidance for authoring.
+  A request the agent never gets back (measured at a dead end: still pending after 25 s) counts, after `PendingTimeout`
+  (10 s), as a path that ended where the actor stands. The actor gives up on that waypoint and the route never freezes.
+  The re-plan stays the agent's own request: `NavMesh.CalculatePath`'s shorter search gave up where the agent's request
+  found a detour.
 - **The map check and the re-export.** `Tools/Town/Check Map Against .blend` runs headless Blender on the shared
   folder's `.blend` and reports `MATCH`, `DIFFERS (n names)` or `CANNOT CHECK (reason)`. It compares groups by base
   name (count, triangles, bounds) across the evaluated `.blend`, the FBX and Unity's import. `Tools/Town/Re-export Map

@@ -888,6 +888,77 @@ closed by re-measuring with a new instrument. One hypothesis is deferred.
 **Deferred:** an authoring check that every route leg is `PathComplete` on the baked mesh (deferred-work, "cross-review FIX
 of story-2-2"). Today's only route is the drunk's 11 m, and it completes.
 
+#### FIX phase, second session (2026-11-11)
+
+The first FIX session committed everything above, then ended before writing its result file. This session took none of it
+on trust: every cross-review rig was run again **on the committed code** (labels `head-recheck`, `after-fix-3…7`). The
+evidence predated the commit, so it might not have covered it.
+
+- [x] [Cross-review][Patch] **1, again. The re-plan could wait for ever on a path request that never came back**
+      [EventActor.cs `Update`, `StepAlongRoute(stalled)`, `NextRouteStep(…, stalled)`, `PendingTimeout`]
+  - **Found by re-running the first fix's own rig** (`longroute/head-recheck/`).
+    - At the dead end beside the grey strip, the re-plan's request toward corner_nw stayed `pathPending` for **25 s**, until
+      the rig gave up.
+    - `StepAlongRoute` only ran once the request was back. So the actor stood still with no warning, and never went on to
+      house_row.
+    - The first fix's run (`after-fix-2/`) had passed by timing. An earlier re-plan had already ended at the dead end, so
+      it gave up without sending a request from there.
+  - **Why it varies.** The pathfinder runs a fixed number of iterations per frame
+    (`NavMesh.pathfindingIterationsPerFrame`, 100). The same request therefore takes longer at a lower frame rate:
+    - an isolated play-mode probe at ~116 fps got it back within ~6 s;
+    - the rig's frames did not get it back within 25 s;
+    - a probe created on play mode's very first frame never got it back (78 s). That one is not relied on, because the rig
+      itself is suspect there.
+  - **A first attempt that was wrong, and was reverted** (`longroute/after-fix-3/`).
+    - Planning the re-plan synchronously with `NavMesh.CalculatePath` (1–2 ms on the whole town) removed the stall.
+    - But CalculatePath's search is shorter. From just west of the tyre line it found nothing closer, and the actor gave up
+      **139 m short of house_row**. From the same spot, the agent's own request finds the detour round the tyre line
+      (`after-fix-2/`).
+  - **Fix:**
+    - The re-plan stays the agent's own request.
+    - A request still pending after `PendingTimeout` (**10 s**) counts as a path that ended where the actor stands. Every
+      request that did come back in 5 runs took at most ~4.4 s (sampled once a second).
+    - The actor then either counts the waypoint as arrived, or gives up on it (warned once). The stalled request is cancelled
+      (`ResetPath`) and never sent again.
+    - 3 EditMode tests.
+  - **Re-verified** (`longroute/after-fix-7/`): 4 scenarios on one pooled actor.
+
+    | Scenario | Result |
+    |---|---|
+    | Farm, then house_row | 0.2 m, then 0.0 m |
+    | Dead end | one warning, then house_row 0.0 m |
+    | Farm again | 0.0 m |
+    | **Forced stall** (the rig sets the pathfinding budget to 1 iteration per frame, from the dead end) | gave up on corner_nw after 10.5 s, then walked on to house_row (0.0 m) |
+
+    Console: the 1 provoked warning, 0 others, 0 errors.
+  - **Regression** (`route-regression/after-fix-watchdog/`): the drunk's own route, 3 full pooled cycles plus a 4th, is
+    unchanged.
+    - He arrives **0.72–0.77 s** before despawn (before: 0.71–0.79).
+    - The peak lasts **1.47–1.49 s at x 26.31–26.34**.
+    - One instance, on the NavMesh every frame.
+- **Findings 2 and 3, re-run on the committed camera** (no code change):
+  - Overhead (`overhead/head-recheck/`): 64 poses, **0 see-through, 0 geometric hits**. The classification is the same as
+    `after-fix-2`, with the controls working on 63 and 64 of the 64 poses.
+  - Walls (`walls/head-recheck/`): 20 walls, 1,500 poses, 403 valid, **0 see-through and 0 geometric hits on every wall**.
+    All 6,729 sampled A-not-B pixels are instrument artifacts.
+  - The open-space pose is unchanged: 1.6500 m up and 0.3160 m forward at pitch −80, 0 and +80.
+  - Sample frames: `walls/head-recheck/head_recheck_sample_sheet.jpg`.
+- **The east-hill stop, carried as a human check since dev, was measured rather than queued again** (loop rule: a human
+  check is never a place to park a defect). Evidence: `fix-edges/flood_reachable_no_barriers_annotated.png`.
+  - **The measurement.** Every barrier was removed, and the ground the player could walk to from the spawn was
+    flood-filled: ground at 45° or less, steps of 4.35 m or less per 4 m cell, the shore kept closed.
+  - **Result:** the whole mountain ring is reachable, **6.7 km² (about 11 times the playable area)**, out to the map's outer
+    edge on every side. The steep patches never close a line.
+    - The same measurement on a 2 m grid gives 6.70 km².
+    - A control at a 25° limit stops at 0.56 km², so the method can tell walkable from not walkable.
+  - **So the terrain stops the player nowhere on the ring.** Every ring barrier is an invisible stop on walkable ground,
+    wherever it is put: the east one at z −99, and the south, south-west and west ones (edge walks b180, b225 and b270).
+  - Moving the east edge up to the crest, or back to where the slope steepens, moves the stop; it does not remove it.
+    Removing it needs one of two things:
+    - a visible edge (a fence, a rock line or a cliff) in the `.blend`, which is Alexv's art;
+    - a playable area about 11 times larger, out to the map's edge, which has holes in its outer tiles.
+  - Recorded as a decision for Alexv (keep 1c as built). The AC2/AC3 human check now says so.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -1619,6 +1690,9 @@ Queued in the result file, none self-certified:
   and their hook)
 - New (cross-review FIX): `Assets/Tests/EditMode/EventActorRouteTests.cs`, `Assets/Scripts/World/TownRigRunner.CrossReview.cs`,
   `Assets/Scripts/World/TownRigRunner.CrossReviewWalls.cs` (rig modes), with their `.meta` files
+- Modified (cross-review FIX, second session): `Assets/Scripts/Events/EventActor.cs` (the stalled-request watchdog,
+  `PendingTimeout`), `Assets/Tests/EditMode/EventActorRouteTests.cs` (+3), `Assets/Scripts/World/TownRigRunner.CrossReview.cs`
+  (the forced-stall scenario)
 - New: `Assets/Tests/EditMode/ColliderRuleTests.cs`
 - Modified: `Assets/Tests/EditMode/PlayerConfigTests.cs`
 - New: `Assets/Tests/EditMode/TownBoundsConfigTests.cs`
@@ -1644,3 +1718,4 @@ Queued in the result file, none self-certified:
 - 2026-11-11: Implemented by the loop DEV phase (Claude Opus 5.5, attempts 1–2). Status → review.
 - 2026-11-11: Code review by the loop REVIEW phase (Claude Opus 5.5): 2 patches to FallRecovery (applied and re-verified by running), 3 deferred, 10 dismissed. Status stays review (perceptual checks open).
 - 2026-11-11: Cross-review FIX phase (Claude Opus 5.5): findings 1 (the event actor's arrival at a partial path's end) and 3 (the camera skipping a surface inside its cast, reproduced on sloping overhangs and a boulder wedge) fixed and re-verified by running; finding 2 (AC4 evidence) closed by re-measuring 20 walls with a near-plane instrument (0 see-through on the fixed camera); 1 hypothesis deferred. EditMode 250/250. Status stays review.
+- 2026-11-11: Cross-review FIX phase, second session (Claude Opus 5.5). Re-ran every cross-review rig on the committed code. Found and fixed a hang in finding 1's re-plan: a path request that never came back froze the actor at a dead end with no warning. Now a 10 s watchdog moves on, and it is verified with a forced stall. Findings 2 and 3 hold on HEAD. Measured the east-hill stop: the whole ring is walkable to the map's edge, so it is a decision for Alexv, not a barrier placement. EditMode 253/253. Status stays review.
