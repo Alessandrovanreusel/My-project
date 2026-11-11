@@ -4,7 +4,7 @@ baseline_commit: d0506816dbf4f39afa79424e1b6efc6525bf3006
 
 # Story 2.2: Walk the whole town
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
