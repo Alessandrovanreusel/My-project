@@ -982,7 +982,84 @@ Each must log **once** and keep running. Exclude them, by name, from the clean-c
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`), loop DEV phase, 2026-11-11.
+
 ### Debug Log References
+
+Evidence root: `_bmad-output/verification/2-2-walk-the-whole-town/` (git-ignored, on disk). Analysis scripts in its
+`tools/` (grid.py, census_analyse.py, wide.py, playable.py, sheet.py).
+
+### Task 1 — measurements and decisions (2026-11-11)
+
+**1a Census (Unity, edit mode, `Tools/Town/Census (edit mode)`, `TownCensus.cs`)** → `census/` (census.json,
+topdown.png + topdown.json, the 2 m grid `grid_*.f32/u8`, slope_map.png, wide_height.png (whole map at 10 m),
+road_edges.csv, rig.json, parts.json, photos/ with sheet_a.jpg and sheet_b.jpg).
+- 16,738 renderers, 16,738 MeshColliders, 492 classes. Scatter families (particle instances "Plane|<mesh>|Dupli|n"):
+  **Circle = 6,000 pine trees** (3.2–10.4 m), **Cube = 8,000 grass tufts** (1.3–1.6 m), **Icosphere = 1,000 white
+  rocks** (886 stick out 1.25–1.5 m above the ground, 91 at most 0.35 m), Cylinder = 20 red stumps at the white
+  trees' bases (0.82 m), _10_tree 10 white trees, _11_tree 50 bare trees (photos c01–c06).
+- **Fact 7 settled: BOTH exist.** A SURFACE street block (asphalt "Object_14", shops, SuperMarket, white buildings)
+  stands at x −290…−90, z −240…−5, south of the road (topdown.png, a09). Lesson 61's buried copy (Casa, HH, Tetto,
+  cars, Factory…) is a separate set at y −68…−48 under the slice (x −75…25, z −94…18). 674 renderers lie entirely
+  below y −1, all with colliders, including a dome (Icosphere_Colore_0, top −6.2) and a flat plane (Plane.017,
+  y −6.5) right under the spawn, and the scatter that sank into the hole below.
+- **Water:** `Plane001` + `Plane001.001` (material Water.001), both with MeshColliders, surface y ≈ 1.04 (wavy,
+  −6…9). The plain (y ≈ 0.85) continues 0.2 m under the water at the shore; a lake bed exists under the sea
+  (y −46…7, 22,347 cells). The water's edge runs straight at z 269.5–273.5 from x −610 to 212.
+- **A dark pond** (`Plane.010`, Material.007, x −593…−505, z −106…−21, bottom y −4.82) reads as water from the eye
+  (a02) — treated as water (a no-go with a barrier), see 1c.
+- **A real hole** in the plain at x −382…−376, z −232…−217 (no collider at all in the column; a01 shows a dark
+  patch). Kept as found (it is the .blend's) and used as AC3 case 2. A second gap at the shore (x −158, z 283)
+  lies beyond the shore barrier.
+- **The oil rig:** 211 renderers, x −436…−341, z 492…563, decks y 45–88 on legs from the sea floor; ~220 m from
+  the shore (z 269.5). Nearest dry ground is the west ring's coast (−522, 544), 86 m away, outside the playable area.
+- **The long object at x ≈ −548** is `Sphere_4_Mat.6_0`, a flat grey strip 11 m wide from z −32 to 473 that runs
+  into the sea (a03, a07). Its end is 113 m from the rig: **no walkable connection.**
+- **Ring:** mostly walkable slopes (slope_map.png: grey) with steep patches (red); the inner faces reach 20–45 m
+  within ~70–100 m of the plain's edge; the ring tiles rise to ~200 m and several OUTER tiles have holes (black in
+  wide_height.png). Slope alone does not stop a player anywhere along the plain's edge.
+- **Road slab** (`Plane.004_M3_0` + `.001`, z −8.7…4.45): edge 1.1–1.2 m (median) above the grass on both sides,
+  steppable (≤ 0.35 m) in 7 runs per side (e.g. x −28…2, 56…96, −370…−330, 202…284; road_edges.csv). From the
+  grass it reads as a visible raised ledge with a dark side face (j01–j03).
+- **Lowest walkable ground** in the playable area (1c): −5.0 (south-east hill hollows) and the pond's −4.82; the
+  rest of the plain is −0.1…1.0 (1st–50th percentile).
+- **The deactivated child** (FBX fileID 65702495048144492): no sub-asset of today's FBX has that fileID (68,837
+  checked; 0 cameras, 0 lights). It is an orphaned scene override, most likely the old embedded Blender camera
+  (CLAUDE.md). Left exactly as is.
+- **parts.json:** 18 parts on walkable ground (pub, house row, street block, log cabins, farm = the "industrial
+  yard", villa = the stone enclosure, beyond the tyre line, shore W/E, the plain's 4 corners, and hills S, SW, E, W,
+  NW).
+
+**1b Collider rule** (decision): no collider for (1) **grass** (scatter family Cube) whatever its height; (2) any
+other **scatter** instance that sticks up no more than the step height (0.35 m) above the ground under it;
+(3) **water** (material Water*); (4) **buried** geometry whose top is below y −1 m (the 674 renderers under the
+plain, which only a player who fell through could reach). Everything else keeps its collider: pines, white/bare
+trees, stumps, rocks taller than a step, props, buildings, terrain, the pond. Scene-level components kept (today's
+mechanism); the rule is one pure function (`CameraGame.World.ColliderRule`).
+Reason for (4): with them, a player who falls through near spawn lands on a hidden floor at y −6.5 and is grounded
+above any sane below-world height; without them, they fall and are put back.
+
+**1c Where the town ends** (decision): playable area = the plain plus the ring's inner slopes, the polygon
+(−680, 269.5) → (210, 269.5) → (210, 215) → (260, 165) → (260, −320) → (215, −340) → (200, −400) → (−680, −400)
+(`decision/playable_polygon.json`). Every edge sits on a hillside except the north edge, which is the water's edge
+(z 269.5, ≤ 4 m short of the water). The NE and SE corners are cut to keep out a gully (y −12) and a valley that
+leaves the ring. Plus a barrier ring around the pond. No gating, no markers.
+
+**1d Oil rig** (decision): **(B) deliberately out of bounds.** No existing walkable connection (the strip ends
+113 m short; the decks stand 45–88 m above the sea on legs). From the shore (220 m) nothing on it can be graded
+(the 0.20 gate reaches ≈ 27.6 m at 18°). Epic 3's smoke break goes where the player can get within ~27 m.
+
+**1e Below the world** (decision): `FallRecovery` restores the newest safe sample older than 0.5 s when (a) the
+feet go below `belowWorldY` = −15 (lowest walkable −5 minus 10, well above the buried block), (b) the body leaves
+the playable polygon, (c) airborne with nothing beneath (a downward sphere cast finds no surface above
+`belowWorldY`) for 0.15 s, or (d) airborne for more than 3 s (backstop). (c) is what keeps a fall through a hill
+(y up to ~50) under ~2 s.
+
+**1h Input:** Story 2.1's Keyboard state events for W/Shift/Space (PlayerInput → OnMove/OnSprint/OnJump), yaw set
+on the transform each frame ("the mouse's job"), pitch through queued Mouse delta events (OnLook → _pitch).
+
+**1i Spawn** (decision): stand the player on open ground at today's spawn, (0.45, ground + 0.05, 3.6), facing the
+drunk's street; not on the 1.4 m barrier.
 
 ### Completion Notes List
 
