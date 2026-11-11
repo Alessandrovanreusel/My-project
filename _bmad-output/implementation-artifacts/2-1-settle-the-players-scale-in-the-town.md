@@ -1212,3 +1212,21 @@ Modified:
 - 2026-11-10: Story file created by the loop CREATE phase (Claude Opus 5.5). Status → ready-for-dev.
 - 2026-11-11: Implemented by the loop DEV phase (Claude Opus 5.5). ADR-5 accepted, option (A) applied: people are 1.77 m with the eye at 1.65 m, F = 5.0; verified at the new scale. Status → review (AC4 and the feel/sound checks are queued for Alexv).
 - 2026-11-11: Code review by the loop REVIEW phase (Claude Opus 5.5): 0 decisions, 11 patches applied and re-verified by running, 4 deferred, 17 dismissed. Fixed: an infinite gravity or ground-stick wedging the player, the gallery opening invisibly under a raised near clip, the drunk vanishing short of his route end (`WP3_alley` 19.8 → 20.4), and the missing player-vs-NavMesh-agent check. ADR-5's route and near-clip rows corrected. Status stays `review` (AC4 and the perceptual checks are open for Alexv).
+- 2026-11-11: CLOSE gate by the loop CLOSE phase (Claude Opus 5.5). All six checks pass, verified by running them:
+  - **Console and tests:** after a forced refresh and compile there are no errors and no CS warnings. EditMode is
+    **191/191** (185 from the dev phase plus the review's 6). The project has no PlayMode tests.
+  - **Evidence:** every AC has evidence on disk or a queued human check. A scan of all 373 evidence PNGs flags only
+    expected frames: two plots on white, a full-screen marker control, and the eye pressed against a wall. The
+    sampled captures (before/after sheet, cue sweep, Photo Shoot check grid) show what the story says they show.
+  - **Re-run on the merged code** (lesson 43, because the review moved camera initialisation into `Awake`):
+    - A normal SampleScene play session logs only the baseline head-bone warning. The camera sits 1.650 m up and
+      0.316 m forward of the feet, with near clip 0.095. The drunk is on the NavMesh with a path over 2 lifecycles,
+      on the same pooled instance.
+    - `Tools/Scale/Movement After (Play)` reproduces walk 4.00 and sprint 7.00 m/s, a 1.265 m apex, the 0.126 m kerb
+      climbed, and worst raise / lower 0.165 / 0.162 s. Output is in `movement/after/`; the dev phase's copy is in
+      `close/movement-after-dev-copy/`.
+  - **Restored:** the editor is back on SampleScene (not dirty, no rig objects), with timeScale 1, runInBackground
+    true, quality PC and the ScaleStudy SessionState keys cleared. The rig run left no tracked change.
+  - **Story file:** the File List covers every file in `85382ae..HEAD`, and every new asset has its `.meta`.
+
+  Status stays `review`: AC4 and the FR13, FR11 and FR10 perceptual checks are open for Alexv.
