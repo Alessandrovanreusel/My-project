@@ -89,6 +89,9 @@ namespace CameraGame.World
                 if (_player == null || _cc == null || _cam == null) { _log.AppendLine("RIG BROKEN: no player / controller / main camera."); yield break; }
                 _rec = _player.AddComponent<TownHitRecorder>();
                 _log.AppendLine($"player at start {V(_player.transform.position)}; FallRecovery {(_fall != null ? "present" : "absent")}");
+                var cams = new StringBuilder();
+                foreach (Camera c in Camera.allCameras) cams.Append(c.name).Append(c.enabled ? "" : "(disabled)").Append(' ');
+                _log.AppendLine($"enabled cameras (Camera.allCameras, AR8): {Camera.allCamerasCount} — {cams}");
                 switch (mode)
                 {
                     case "fps": yield return Fps(); break;

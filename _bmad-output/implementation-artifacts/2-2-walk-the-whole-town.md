@@ -547,14 +547,14 @@ changes the world every other system is measured in.
   - [x] 2.6 **Copy aside** `_bmad-output/verification/photo-shoot/` (the rig wipes its own folder; 1.14), then run
         the Town Placement Study once: `photo-shoot-town-before/`.
 
-- [ ] **Task 3: The map check, the re-export path and camera import off (AC1)**
-  - [ ] 3.1 Write `tools/map/map_check.py` and `Assets/Scripts/Editor/MapCheck.cs` (`Tools/Town/Check Map Against
+- [x] **Task 3: The map check, the re-export path and camera import off (AC1)**
+  - [x] 3.1 Write `tools/map/map_check.py` and `Assets/Scripts/Editor/MapCheck.cs` (`Tools/Town/Check Map Against
         .blend`). Run it on the real pair, which should give MATCH, then on the mutated scratch copy, which must
         name exactly the two changed groups. Then provoke "no Blender" and "no .blend": one warning each.
-  - [ ] 3.2 **The re-export proof** on a scratch export outside `Assets/`: the numbers, the node name paths and the
+  - [x] 3.2 **The re-export proof** on a scratch export outside `Assets/`: the numbers, the node name paths and the
         GlobalSettings, all identical. Write `tools/map/map_export.py` and `Tools/Town/Re-export Map from .blend`
         with the proven settings. **Do not overwrite the real FBX unless 3.1 said DIFFERS.**
-  - [ ] 3.3 Set `importCameras = false` (and `importLights = false`, if you follow the recommendation), reimport
+  - [x] 3.3 Set `importCameras = false` (and `importLights = false`, if you follow the recommendation), reimport
         and time it. Then do the read-backs from AC1. Add the EditMode importer test.
 
 - [ ] **Task 4: Scatter colliders, spawn and road access (AC2)**
@@ -1104,6 +1104,31 @@ resolves. Reversal: re-run the tool with the rule changed.
   plane past the surface; no single-sided face showed the marker), so the camera-side fix applies. Rig-invalid
   wall picks (bus-shelter pole, bare tree, hillside south: no contact) are rerouted for the after run.
 - **Task 2 done.** Baselines are on disk before anything in the world changed.
+
+### Task 3 — the map check, the re-export path, camera import off (2026-11-11)
+
+- 3.1 `Tools/Town/Check Map Against .blend` (`MapCheck.cs` + `tools/map/map_check.py`, headless Blender 5.0.1,
+  ~40–60 s): **MATCH** on the real pair — .blend (evaluated) and FBX both 486 groups, 16,738 meshes, 5,677,935
+  triangles, no camera, no light; Unity's column 486 / 16,738 / 5,677,793 (its importer drops 142 degenerate
+  triangles in 4 groups; bounds agree after (bx, by, bz) = (−ux, −uz, uy)) → `map-check/real/report.md`.
+  Instrument findings on the way: a transformed bound_box depends on the object's local frame (exact vertex bounds
+  used instead); a background depsgraph does not reproduce particle size randomness (every instance origin
+  identical to 0.000 m, scale 0.106 vs 0.106–0.110), so instances are compared by origin; two groups with an
+  animated (Cube_M9L_0, 0.13 m) or Solidify-modified (Cylinder, 0.06 m) member are reported EXPLAINED, never a
+  count/triangle difference. **Negative control:** a scratch copy with House Complete deleted and SuperMarket moved
+  1 m → `DIFFERS (2 names: House Complete, SuperMarket_Colore_0)`, exactly those two (`map-check/mutated/`); the
+  216 MB scratch .blend was deleted afterwards (logged in mutate-log.txt). No Blender and no .blend → one warning
+  each, `CANNOT CHECK (...)`.
+- 3.2 **Re-export proof** (`map-check/reexport-proof.md`): a scratch export outside Assets/ equals the current FBX
+  on the check's numbers, all 16,738 node name paths and the GlobalSettings, with the exporter's defaults +
+  MESH only + `FBX_SCALE_UNITS` + `bake_anim = False` (found in three exports). Written into
+  `tools/map/map_export.py` and `Tools/Town/Re-export Map from .blend` (refuses unless the check says DIFFERS).
+  **The real FBX was not overwritten** (MATCH).
+- 3.3 `importCameras` and `importLights` off (`Tools/Town/Switch Map Camera and Light Import Off`):
+  SaveAndReimport **53.2 s**; read back 16,738 renderers under the scene map, MeshColliders resolving 1,718 / null
+  15,020 before AND after (nothing new broke), the orphaned override still targets nothing; the .meta diff is the two
+  flags. EditMode guards added (`TownMapGuardTests`: camera import off, light import off, SampleScene and the NavMesh
+  asset each < 50 MB): 195/195. The play-mode "only Main Camera" read-back is logged by every town rig run.
 
 ### Completion Notes List
 
