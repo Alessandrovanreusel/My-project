@@ -683,16 +683,23 @@ namespace CameraGame.Player
         // crossing (Task 4.1)
         // =============================================================================================
 
-        private struct Route { public string Name; public Vector3 From, To; public bool FromSpawn; }
+        private struct Route { public string Name; public Vector3 From, To; public bool FromSpawn; public Vector3[] Via; }
 
         private IEnumerator Crossing()
         {
             if (_manager != null) _manager.enabled = false;
             var routes = new[]
             {
-                new Route { Name = "spawn_to_route_mid", FromSpawn = true, To = new Vector3(30f, 0f, 19f) },
+                // Spawn sits in a 1.07 m gap between a police-tape barrier and the police car; the straight line to
+                // the route runs through pine Circle.002. The waypoints are the path a player walks (clear for a
+                // 0.3 m capsule, edit-mode capsule scan); the 0.95 m giant does not fit the first gap at all.
+                new Route { Name = "spawn_to_route_mid", FromSpawn = true, To = new Vector3(30f, 0f, 19f),
+                            Via = new[] { new Vector3(0.45f, 0f, 3.6f), new Vector3(24f, 0f, 3.6f) } },
                 new Route { Name = "plain_line_810m", From = new Vector3(-600f, 0f, -8.5f), To = new Vector3(210f, 0f, -8.5f) },
-                new Route { Name = "far_west_to_route_mid", From = new Vector3(-300f, 0f, 100f), To = new Vector3(30f, 0f, 19f) },
+                // Not x -300: a north-south line of tyres (tire.068_Colore_0, x -223..-213, z 3..236) fences the
+                // plain's west quarter off at person scale (the 0.95 m/step-2 giant steps over it; the road gap is
+                // the only way through). (-200, 100) is inside it, on open ground, clear for a 0.3 m capsule.
+                new Route { Name = "far_west_to_route_mid", From = new Vector3(-200f, 0f, 100f), To = new Vector3(30f, 0f, 19f) },
                 new Route { Name = "far_north_to_route_mid", From = new Vector3(150f, 0f, 200f), To = new Vector3(30f, 0f, 19f) },
             };
 
@@ -710,33 +717,45 @@ namespace CameraGame.Player
                 foreach (Route r in routes)
                 {
                     Vector3 from = r.FromSpawn ? spawnLanding : S(r.From);
-                    Vector3 to = S(r.To);
-                    to.y = GroundY(to, 30f * worldScale);
-                    Teleport(from, YawTo(from, to), r.FromSpawn ? from.y + 1f : 30f * worldScale);
+                    var legs = new List<Vector3>();
+                    if (r.Via != null) foreach (Vector3 v in r.Via) legs.Add(S(v));
+                    legs.Add(S(r.To));
+                    for (int k = 0; k < legs.Count; k++) { Vector3 w = legs[k]; w.y = GroundY(w, 30f * worldScale); legs[k] = w; }
+                    Vector3 to = legs[legs.Count - 1];
+                    Teleport(from, YawTo(from, legs[0]), r.FromSpawn ? from.y + 1f : 30f * worldScale);
                     Keys();
                     yield return Settle(0.8f);
                     from = _player.transform.position;
                     float setSpeed = Field(gait == "walk" ? "walkSpeed" : "sprintSpeed");
-                    float straight = Vector2.Distance(new Vector2(from.x, from.z), new Vector2(to.x, to.z));
+                    float straight = 0f;
+                    { Vector3 a0 = from; foreach (Vector3 w in legs) { straight += Vector2.Distance(new Vector2(a0.x, a0.z), new Vector2(w.x, w.z)); a0 = w; } }
+                    int leg = 0;
                     float timeout = Mathf.Max(20f, 3f * straight / Mathf.Max(0.1f, setSpeed));
 
                     if (gait == "walk") Keys(Key.W); else Keys(Key.W, Key.LeftShift);
                     float t = 0f, path = 0f, maxLat = 0f, nextTrace = 0f, stuckT = 0f;
                     Vector3 prev = _player.transform.position, stuckRef = prev;
                     bool arrived = false; string blockedAt = "";
-                    Vector3 line = (to - from); line.y = 0f; line.Normalize();
+                    Vector3 legFrom = from;
+                    Vector3 line = (legs[0] - from); line.y = 0f; line.Normalize();
                     while (t < timeout)
                     {
                         Vector3 p = _player.transform.position;
-                        Vector3 toT = to - p; toT.y = 0f;
-                        if (toT.magnitude < 0.6f * worldScale || Vector3.Dot(toT, line) < 0f) { arrived = true; break; }
-                        _player.transform.rotation = Quaternion.Euler(0f, YawTo(p, to), 0f);   // the mouse's job
+                        Vector3 toT = legs[leg] - p; toT.y = 0f;
+                        if (toT.magnitude < 0.6f * worldScale || Vector3.Dot(toT, line) < 0f)
+                        {
+                            if (leg == legs.Count - 1) { arrived = true; break; }
+                            legFrom = legs[leg]; leg++;
+                            line = legs[leg] - legFrom; line.y = 0f; line.Normalize();
+                            continue;
+                        }
+                        _player.transform.rotation = Quaternion.Euler(0f, YawTo(p, legs[leg]), 0f);   // the mouse's job
                         yield return null;
                         t += Time.deltaTime;
                         Vector3 q = _player.transform.position;
                         path += Vector3.Distance(new Vector3(q.x, 0, q.z), new Vector3(prev.x, 0, prev.z));
                         prev = q;
-                        Vector3 off = q - from; off.y = 0f;
+                        Vector3 off = q - legFrom; off.y = 0f;
                         maxLat = Mathf.Max(maxLat, (off - Vector3.Dot(off, line) * line).magnitude);
                         if (t >= nextTrace) { trace.AppendLine($"{r.Name},{gait},{F(t)},{F(q.x)},{F(q.y)},{F(q.z)}"); nextTrace += 0.25f; }
                         stuckT += Time.deltaTime;
@@ -836,12 +855,23 @@ namespace CameraGame.Player
                            $"landed y {F(_samples[_samples.Count - 1].y)} vs start {F(y0)}");
 
             // a real kerb, grass → road at x≈0 (0.10 m in today's town); and the road slab's raised edge at x 30
-            foreach (var test in new[] { ("kerb_x0", new Vector3(0.5f, 0f, -11.5f), 0f, 4f),
+            // x 8: clear of the bus-shelter roof (x -7.9..6.7, ~9 m above the grass; the 8.86 m giant hits it) and
+            // the police car (x 1..5). The kerb's height is measured, not assumed: road top minus grass beside it.
+            foreach (var test in new[] { ("kerb_x8", new Vector3(8f, 0f, -12f), 0f, 3f),
                                          ("slab_edge_x30_north", new Vector3(30f, 0f, 9f), 180f, 3.5f) })
             {
                 Teleport(S(test.Item2), test.Item3, 30f * worldScale);
                 yield return Settle(1f);
                 float startY = _player.transform.position.y;
+                Vector3 fwd = Quaternion.Euler(0f, test.Item3, 0f) * Vector3.forward;
+                float kerbLow = float.NaN, kerbHigh = float.NaN;
+                for (float d = 0f; d < 8f * worldScale; d += 0.02f * worldScale)
+                {
+                    Vector3 a = S(test.Item2) + fwd * d, b = a + fwd * 0.02f * worldScale;
+                    float ya = GroundY(a, 30f * worldScale), yb = GroundY(b, 30f * worldScale);
+                    if (yb - ya > 0.04f * worldScale) { kerbLow = ya; kerbHigh = yb; break; }
+                }
+                sum.AppendLine($"{test.Item1}: measured ledge ahead {F(kerbHigh - kerbLow)} m (from {F(kerbLow)} to {F(kerbHigh)})");
                 Keys(Key.W);
                 yield return Record(csv, test.Item1, test.Item4);
                 Keys();

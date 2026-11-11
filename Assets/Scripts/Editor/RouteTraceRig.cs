@@ -84,7 +84,9 @@ namespace CameraGame.EditorTools
             var runner = go.AddComponent<RouteTraceRunner>();
             runner.manager = manager;
             runner.outputDir = OutputDir;
-            runner.seconds = 30f;   // spawn 3 + build 10 + peak 1.5 + windDown 6, with margin
+            // Story 2.1: at least THREE consecutive pooled lifecycles (24.5 s + 2 s respawn each). Bugs in this
+            // project have hidden in the second cycle onward, never the first.
+            runner.seconds = 95f;
 
             Debug.Log($"[RouteTrace] Tracing the town for {runner.seconds}s — output in {OutputDir}");
             EditorApplication.EnterPlaymode();

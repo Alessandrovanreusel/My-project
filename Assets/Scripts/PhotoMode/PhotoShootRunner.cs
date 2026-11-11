@@ -106,12 +106,18 @@ namespace CameraGame.PhotoMode
             public readonly Shutter Trigger;
             public readonly float TargetOffset;   // seconds of PeakOffset, for Shutter.AtPeakOffset
 
+            /// <summary>Story 2.1: the camera stands at the PLAYER'S EYE (the eye height the game config holds,
+            /// above the ground under the subject) instead of at the subject's bounds-centre height. Distance is
+            /// still in subject heights, so the pose means the same thing at any world scale.</summary>
+            public readonly bool Eye;
+
             public Pose(string name, float distance, string intent, float yaw = 0f,
                         bool zoom = false, bool wall = false, float viewYaw = 0f,
                         float targetX = 0.5f, float targetY = 0.5f,
                         Shutter trigger = Shutter.OnSettle, float targetOffset = 0f,
-                        float wallAt = 0.45f)
+                        float wallAt = 0.45f, bool eye = false)
             {
+                Eye = eye;
                 Name = name; Distance = distance; Intent = intent;
                 YawOffset = yaw; Zoom = zoom; Wall = wall; ViewYaw = viewYaw;
                 TargetX = targetX; TargetY = targetY;
@@ -237,6 +243,16 @@ namespace CameraGame.PhotoMode
             // costs when nothing else is wrong with the photograph.
             new Pose("z4_money_late_12s", 2f, "Same framing, shutter pulled 1.2 s after the peak window.",
                      trigger: Shutter.AtPeakOffset, targetOffset: -1.2f),
+
+            // --- Story 2.1: from the PLAYER'S EYE (AC3 (ii)) ---------------------------------------------
+            // NEW poses, not moved ones: every pose above stands at the subject's bounds-centre height, which is
+            // scale-invariant by construction and has never been where a player's eye is. These three stand at
+            // the eye height the game's PlayerConfig holds (see eyeHeight), so a rescale moves them for real.
+            new Pose("z3_money_shot_eye", 2f, "From the player's eye: two heights back, dead centre, inside the peak window.",
+                     trigger: Shutter.LateInPeak, eye: true),
+            new Pose("c_far_eye", 6f, "From the player's eye, across the street: should be too small.", eye: true),
+            new Pose("f_wall_eye", 1.2f, "From the player's eye, a wall dropped in between: should be occluded.",
+                     wall: true, eye: true),
         };
 
         /// <summary>
@@ -281,6 +297,11 @@ namespace CameraGame.PhotoMode
         /// <summary>When true, run <see cref="PlacementPoses"/> in whatever scene is already loaded
         /// instead of the full battery in the rig's private world.</summary>
         [HideInInspector] public bool placementStudy;
+
+        /// <summary>The player's eye above their feet, read by the rig from the game's PlayerConfig (Story 2.1),
+        /// never a literal here. Used by the <see cref="Pose.Eye"/> poses and the empty-world camera.</summary>
+        [HideInInspector] public float eyeHeight = 1.65f;
+        [HideInInspector] public string eyeHeightSource = "unset";
 
         private readonly StringBuilder _log = new StringBuilder();
         private readonly StringBuilder _trace = new StringBuilder();   // see TraceActor()
@@ -335,6 +356,8 @@ namespace CameraGame.PhotoMode
             _log.AppendLine("PHOTO SHOOT — real shutter, real grader, real actor.");
             _log.AppendLine("No expected values: these are photographs to be looked at.");
             _log.AppendLine($"Graded and saved at {ShotWidth}x{ShotHeight} (one pixel space, no rescaling).");
+            _log.AppendLine($"Eye-height poses (*_eye) stand {eyeHeight:0.###} m above the subject's feet: {eyeHeightSource}; " +
+                            $"camera near clip {cam.nearClipPlane:0.###} m.");
             _log.AppendLine("Green box = counted, red = rejected. Faint grey dashes = the frame CENTRE, which");
             _log.AppendLine("the placement half of the composition score measures distance from.");
             _log.AppendLine();
@@ -434,7 +457,7 @@ namespace CameraGame.PhotoMode
             manager.enabled = false;      // hold off spawning so the street is genuinely empty
             _wall.SetActive(false);
 
-            cam.transform.position = new Vector3(0f, 8f, 30f);
+            cam.transform.position = new Vector3(0f, eyeHeight, 30f);   // the player's eye above the rig's ground (y 0)
             cam.transform.rotation = Quaternion.LookRotation(Vector3.back, Vector3.up);
 
             photo.SetPhotoMode(true);
@@ -800,6 +823,11 @@ namespace CameraGame.PhotoMode
             {
                 Vector3 dir = Quaternion.Euler(0f, p.ViewYaw, 0f) * Vector3.forward;
                 cam.transform.position = b.center + dir * (p.Distance * height);
+                if (p.Eye)
+                {
+                    Vector3 at = cam.transform.position;
+                    cam.transform.position = new Vector3(at.x, b.min.y + eyeHeight, at.z);
+                }
             }
 
             Vector3 camPos = cam.transform.position;

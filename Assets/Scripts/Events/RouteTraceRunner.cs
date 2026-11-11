@@ -58,7 +58,8 @@ namespace CameraGame.Events
         {
             Directory.CreateDirectory(outputDir);
             _csv.AppendLine("time,count,phase,x,y,z,step_m,agent_speed,desired_speed,is_stopped," +
-                            "has_path,remaining,on_navmesh,agent_enabled,at_peak,time_to_peak");
+                            "has_path,remaining,on_navmesh,agent_enabled,at_peak,time_to_peak," +
+                            "instance,lfoot_x,lfoot_y,lfoot_z,rfoot_x,rfoot_y,rfoot_z,set_speed");
 
             float t0 = Time.time;
             Vector3 prev = Vector3.zero;
@@ -71,7 +72,7 @@ namespace CameraGame.Events
 
                 if (a == null || !a.isActiveAndEnabled)
                 {
-                    _csv.AppendLine($"{Time.time - t0:0.###},{count},none,,,,,,,,,,,,,");
+                    _csv.AppendLine($"{Time.time - t0:0.###},{count},none,,,,,,,,,,,,,,,,,,,,,");
                 }
                 else
                 {
@@ -95,7 +96,8 @@ namespace CameraGame.Events
                         $"{(ag != null && ag.hasPath ? 1 : 0)},{rem:0.###}," +
                         $"{(ag != null && ag.isOnNavMesh ? 1 : 0)}," +
                         $"{(ag != null && ag.enabled ? 1 : 0)}," +
-                        $"{(a.IsAtPeak ? 1 : 0)},{a.TimeToPeak:0.###}");
+                        $"{(a.IsAtPeak ? 1 : 0)},{a.TimeToPeak:0.###}," +
+                        $"{a.GetInstanceID()},{Feet(a)},{(ag != null ? ag.speed : -1f):0.###}");
 
                     prev = p;
                     first = false;
@@ -103,6 +105,28 @@ namespace CameraGame.Events
 
                 yield return null;
             }
+        }
+
+        // Story 2.1: the planted foot's world position, so foot sliding can be measured (the horizontal speed of
+        // a foot in ground contact is the slide). Toe bases if the rig has them, ankles otherwise.
+        private readonly System.Collections.Generic.Dictionary<int, Transform[]> _feet =
+            new System.Collections.Generic.Dictionary<int, Transform[]>();
+
+        private string Feet(EventActor a)
+        {
+            if (!_feet.TryGetValue(a.GetInstanceID(), out Transform[] f))
+            {
+                Transform l = null, r = null;
+                foreach (Transform t in a.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name.EndsWith("LeftToeBase") || (l == null && t.name.EndsWith("LeftFoot"))) l = t;
+                    if (t.name.EndsWith("RightToeBase") || (r == null && t.name.EndsWith("RightFoot"))) r = t;
+                }
+                f = new[] { l, r };
+                _feet[a.GetInstanceID()] = f;
+            }
+            string P(Transform t) => t == null ? ",," : $"{t.position.x:0.####},{t.position.y:0.####},{t.position.z:0.####}";
+            return P(f[0]) + "," + P(f[1]);
         }
 
         private void Write()
