@@ -315,6 +315,10 @@ added later without reshaping the model.
   given only the far target **does** arrive: it re-plans as it walks (in the measured run, 17 of 18 agents given only a far part reached it; the 18th, corner_nw, was led into a dead end beside the grey strip, while every chain of waypoints, the three longest included (up to 1,332 m), arrived). Event routes are chains of waypoints
   (ADR-3), so **Epic 3 should keep consecutive waypoints within ~250 m** and check `pathStatus` (deferred :48–49), never
   trust one long query.
+  *Cross-review FIX (2026-11-11):* `pathStatus` alone is not enough, because the lone corner_nw agent read PathComplete with
+  remaining 0 while 400 m short. `EventActor` now measures arrival at the waypoint itself. A path that ends short is re-planned
+  from where it stopped, as long as each re-plan gets ≥ 1 m closer; a dead end warns once and the route moves on. Measured: a
+  waypoint 162 m beyond one query's reach is now reached. The ~250 m spacing stays the guidance for authoring.
 - **The map check and the re-export.** `Tools/Town/Check Map Against .blend` runs headless Blender on the shared
   folder's `.blend` and reports `MATCH`, `DIFFERS (n names)` or `CANNOT CHECK (reason)`. It compares groups by base
   name (count, triangles, bounds) across the evaluated `.blend`, the FBX and Unity's import. `Tools/Town/Re-export Map
