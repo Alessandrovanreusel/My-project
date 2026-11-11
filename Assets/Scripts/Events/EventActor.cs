@@ -51,6 +51,10 @@ namespace CameraGame.Events
         private EventPhase _phase;
         private float _timer;
         private bool _running;                   // true from Begin() until despawn; gates Update and latches the single Despawn signal
+        private bool _warpWarned;                // Story 2.2: the off-mesh-spawn warning is said once per actor, not every respawn
+
+        // How far from the spawn point the NavMesh may be for the agent to be placed there (Story 2.2, the Warp guard).
+        private const float SpawnSnapDistance = 1f;
 
         /// <summary>
         /// The single fail-soft gate for every NavMeshAgent access (AC3, NFR8). True only when the agent
@@ -307,7 +311,10 @@ namespace CameraGame.Events
             // agent". Note this only bites on the FIRST spawn: nothing re-disables the agent on despawn, so a
             // pooled instance comes back with it already enabled. That is fine — the Warp below is what
             // actually makes reuse correct, and it runs either way.
-            if (_navReady && !_agent.enabled)
+            // Story 2.2 (deferred :315): enable the agent only where there is NavMesh to put it on. Enabling it off the
+            // mesh makes Unity log "Failed to create agent" on every respawn of a misplaced spawn point.
+            bool spawnOnMesh = _navReady && NavMesh.SamplePosition(transform.position, out NavMeshHit _, SpawnSnapDistance, _agent.areaMask);
+            if (_navReady && !_agent.enabled && spawnOnMesh)
                 _agent.enabled = true;
 
             // Re-sync the agent to the spawn point. This is NOT belt-and-braces. Enabling an agent — or
@@ -320,16 +327,32 @@ namespace CameraGame.Events
             // pooled-reuse case it existed for: the previous despawn point is ON the mesh, so the condition
             // read false and every event after the first replayed at the alley (confirmed by runtime polling,
             // 2026-07-25). Warp is idempotent and cheap — just always do it.
+            bool placed = false;
             if (_navReady && _agent.enabled)
             {
-                _agent.Warp(transform.position);
+                // ⚠️ Story 2.2 (deferred :315): Warp's bool is CHECKED. A Warp that fails leaves a pooled agent registered at
+                // the previous despawn point — which IS on the mesh, so NavUsable would read true and the actor would replay
+                // its route from there with no warning (the 1.7 bug class). On failure the agent stands down below.
+                placed = spawnOnMesh && _agent.Warp(transform.position);
 
                 // A pooled agent also carries the previous cycle's path and isStopped flag. Clear both so the
                 // fresh lifecycle starts from waypoint 0 instead of resuming the last cycle's destination.
-                if (_agent.isOnNavMesh)
+                if (placed && _agent.isOnNavMesh)
                 {
                     _agent.ResetPath();
                     _agent.isStopped = false;
+                }
+            }
+
+            // Stand down: no agent, so NavUsable reads false and the timed FSM performs this lifecycle in place, at the
+            // spawn point. Warned ONCE per actor (NFR8) — a misplaced spawn point would otherwise warn every respawn.
+            if (_navReady && !placed)
+            {
+                if (_agent.enabled) _agent.enabled = false;
+                if (!_warpWarned)
+                {
+                    _warpWarned = true;
+                    GameLog.Warn("Events", $"{SubjectId}: its spawn point {transform.position} is off the NavMesh, so its agent could not be placed there — it will perform its lifecycles in place (said once).");
                 }
             }
 
@@ -338,7 +361,7 @@ namespace CameraGame.Events
             // (there is no latch — a permanently misconfigured spawn point will log every respawn) and carry
             // on: the timed FSM still runs to completion, the drunk just performs it in place. Recoverable ⇒
             // Warn + continue (architecture §Error Handling), never an exception in Update.
-            if (_route != null && _route.HasWaypoints && !NavUsable)
+            if (_route != null && _route.HasWaypoints && !NavUsable && (placed || !_navReady))   // a failed Warp has already said why, once
                 GameLog.Warn("Events", $"{SubjectId}: spawn point is off the NavMesh — drunk will run its lifecycle in place.");
 
             // Diegetic cue (Story 1.8). The looping bed starts HERE, not in OnEnable, for exactly the reason the

@@ -403,7 +403,7 @@ changes the world every other system is measured in.
 
   Each item has a recommendation. Record the choice **and the reasoning** in the Dev Agent Record, including where
   you follow the recommendation: a later reader needs to know it was decided, not defaulted.
-  - [ ] **1a. Census the town in Unity, and name its parts.** Write `evidence/census/`: `census.json`,
+  - [x] **1a. Census the town in Unity, and name its parts.** Write `evidence/census/`: `census.json`,
         `parts.json`, `topdown.png` and `topdown.json`.
         - **Top-down:** render the playable area with an orthographic camera to a RenderTexture. Static geometry
           is fine in edit mode. Store the world → pixel transform. Every later trace is drawn on this image.
@@ -421,7 +421,7 @@ changes the world every other system is measured in.
         - **The road slab:** its edge height above the ground beside it, every 2 m along both sides.
         - **The lowest walkable ground** in the playable area, which sets the below-world height in 1e.
         - **The deactivated child** (fileID `65702495048144492`): what it is.
-  - [ ] **1b. Which colliders go: "too small to be an obstacle".**
+  - [x] **1b. Which colliders go: "too small to be an obstacle".**
         - **Classify** every collider-bearing renderer into classes by base name **and** size: height above the
           local ground, and footprint. Photograph one of each class from the eye, with a person posed beside it.
         - **Recommended rule:** no collider for ground scatter a person walks *through* or *over* (grass,
@@ -437,7 +437,7 @@ changes the world every other system is measured in.
           every scene-level collider removed. Record which you chose.
         - **Report:** removed and kept, per class, with counts and photos. Measure the effect on occlusion
           separately (AC6, Town Placement Study).
-  - [ ] **1c. Where the town ends.**
+  - [x] **1c. Where the town ends.**
         - **Recommended:** the playable area is the plain plus the ring's inner slopes, up to where the terrain
           itself is too steep or to the ring's crest. The outer tiles are scenery.
         - **The shore:** the barrier sits at the water's edge, so the player can stand on the shore and look out.
@@ -448,7 +448,7 @@ changes the world every other system is measured in.
         - **No markers:** a boundary shows nothing on screen, neither a message nor a glow. The GDD is diegetic,
           with no map markers (FR10). The world itself (the water's edge, the steep ground) has to explain where
           the player stops.
-  - [ ] **1d. The oil rig: reachable on foot, or deliberately out of bounds.**
+  - [x] **1d. The oil rig: reachable on foot, or deliberately out of bounds.**
         - **Measure:** its distance from shore; any existing connection; and the size gate, *computed*: a 1.77 m
           subject passes the 0.20 gate out to ≈ 7.6 m at FOV 60 and ≈ 27.6 m at 18° (ADR-5's derived checks). At
           ~260 m from shore, nothing on the rig can be graded from the shore.
@@ -459,7 +459,7 @@ changes the world every other system is measured in.
         - **Tie-break:** fewer moving parts and the smaller reversal cost, which means (B), **unless** 1a finds an
           existing walkable connection.
         - **Record it** where AC3 says. No gate.
-  - [ ] **1e. Below the world: the design.**
+  - [x] **1e. Below the world: the design.**
         - **`FallRecovery`** goes in `Assets/Scripts/World/FallRecovery.cs` (namespace `CameraGame.World`), on
           the player. **`TownBoundsConfig`** is a ScriptableObject (`Assets/Scripts/World/TownBoundsConfig.cs` +
           `Assets/Data/World/TownBoundsConfig.asset`, created as YAML from the script's `.meta` GUID; memory:
@@ -482,7 +482,7 @@ changes the world every other system is measured in.
           worth finding. Nothing goes on screen.
         - **Dependency direction:** World → Player is allowed (§Architectural Boundaries). Player never references
           World.
-  - [ ] **1f. See-through walls: measure the failure, then choose the fix.**
+  - [x] **1f. See-through walls: measure the failure, then choose the fix.**
         - Build the AC4 wall rig here, and run it on today's code first (Task 2.4, "before"). Classify every
           failure: **near plane past the surface** (the geometric check fires) or **a single-sided face seen
           from behind** (the marker shows and the geometric check does not).
@@ -496,7 +496,7 @@ changes the world every other system is measured in.
         - **Single-sided faces** matter only where the player can stand behind them. Fix materials (Render Face:
           Both) only where you measured a failure. The map's materials are embedded (`materialImportMode: 2`), so
           remapping them is the cost. Record it.
-  - [ ] **1g. The whole-town bake.**
+  - [x] **1g. The whole-town bake.**
         - **Collect:** Volume = the playable area (1c).
         - **Layer mask:** Default plus `WorldBounds`, so the barriers carve the edge.
         - **Exclusions:** a `NavMeshModifier` with `ignoreFromBuild` on the player root. Once the spawn is on the
@@ -507,14 +507,14 @@ changes the world every other system is measured in.
             car at spawn (2.1), and gaps between pines;
           - or split into several surfaces, each under 50 MB.
         - **Record:** the time, the size, the tiles and the choice.
-  - [ ] **1h. How input is driven.**
+  - [x] **1h. How input is driven.**
         - **Keys:** Story 2.1's Keyboard state events and drive control. Check
           `InputSystem.settings.editorInputBehaviorInPlayMode` and restore it after the run.
         - **Yaw:** set it on the player's transform each frame, labelled "the mouse's job" (2.1's crossing did
           this), or queue Mouse delta events.
         - **Pitch** has only one real path, `OnLook` → `_pitch`, which is private. Queue Mouse delta events for the
           wall rig, with the delta-to-degrees control from AC4.
-  - [ ] **1i. The player's spawn.**
+  - [x] **1i. The player's spawn.**
         - **Recommended:** stand the player on open ground at today's spawn. 2.1 measured a clear gap at
           (0.45, ground, 3.6). Face them down the drunk's street at y = ground + 0.05: no 16 m drop, and not on the
           barrier.
@@ -529,7 +529,7 @@ changes the world every other system is measured in.
           the NavMesh shows every part connected through the existing access near x 0, "no access added" is a
           valid result. Record it.
         - Either way, the route walk must never hit an edge that looks like flat ground.
-  - [ ] **1k. The frame-rate instrument.**
+  - [x] **1k. The frame-rate instrument.**
         - **The tour:** a fixed camera tour of at least 6 viewpoints, including the slice with the drunk active
           and the widest view across the plain from the hills. 5 s per viewpoint.
         - **Per frame:** unscaled delta. Add `ProfilerRecorder` physics markers if they read non-zero.
@@ -590,7 +590,7 @@ changes the world every other system is measured in.
         and ±80.
 
 - [ ] **Task 8: The whole-town NavMesh, the paths from the pub, and the drunk (AC5, AC6)**
-  - [ ] 8.1 Write `Assets/Scripts/Editor/TownNavMeshBaker.cs` (`Tools/Town/Bake Town NavMesh`). Bake with the 1g
+  - [x] 8.1 Write `Assets/Scripts/Editor/TownNavMeshBaker.cs` (`Tools/Town/Bake Town NavMesh`). Bake with the 1g
         settings and persist to the same asset. Record the time, size and tiles in `navmesh/bake.txt`. **Check the
         file size before committing.**
   - [ ] 8.2 **Paths:** from the pub to every part, plus the 25 m grid, plus real-agent walks of the 3 longest
@@ -1186,6 +1186,33 @@ resolves. Reversal: re-run the tool with the rule changed.
   (x −125, z −89), visible from any distance — the .blend's, not the camera's; queued for Alexv.
 - 7.3 Open-space pose read back on the slab: **1.6500 m up, 0.3160 m forward, 0 sideways at pitch −80, 0 and +80**,
   near clip 0.095 (before the fix the eye rose to ~1.96 m when looking up).
+
+### Task 8 — the whole-town NavMesh (2026-11-11, IN PROGRESS)
+
+- 8.1 DONE `Tools/Town/Bake Town NavMesh` (`TownNavMeshBaker.cs`): Volume = the playable polygon's bounding box
+  (x −680…260, z −400…269.5), y −8…110 (bakeYMin/Max in the config), layers Default + WorldBounds, physics
+  colliders, voxel 0.1 set explicitly (cellSize 0.1 read back), the player root excluded (NavMeshModifier
+  ignoreFromBuild), the pond Not Walkable. **27.2 s, 1,026 tiles, 15.53 MB** (was 0.22 MB), persisted INTO the
+  existing asset (EditorUtility.CopySerialized) — **GUID unchanged** (255eb66f…); agent type 0 read 0.30 / 1.77 /
+  0.35 / 45 before and after (`navmesh/bake.txt`). Spot checks: the pub, the street block, the east hill and the
+  new spawn are on the mesh; the pond and the hole are not.
+- 8.2 FIRST RUN (`Tools/Town/NavMesh Paths (Play)` → `navmesh/paths.csv`, `grid.csv`, `agents.csv`, log.txt):
+  **7/18 parts and 39.7 % of the 25 m grid path from the pub in ONE query**; the three real agents (3.5 m/s) on the
+  three longest complete paths (302 / 275 / 262 m) all ARRIVED by the agent's own test, on the mesh every frame.
+  **Diagnosis (measured):** the failures are PathPartial that stop ~270–430 m from the pub whatever the target —
+  Unity's single-query A* search budget on a 132k-triangle mesh, not islands: the same targets complete from a
+  nearer start ((−400, −150) → corner SW 262 m; (−200, −20) → the farm 283 m; the pub → (−250, −150) 352 m). The
+  density is the ~6,000 pine-trunk holes; a 1024-voxel tile changes nothing (127,635 triangles, 0 of 11 recovered;
+  tested in memory, scene reopened from disk). One target is genuinely cut off: the boulder ledge
+  `hill_south_boulders` fails even from 85 m away (5.3 m short).
+  **Next:** decide how "every path completes" is met (options: chain the query through hubs and report single-query
+  reach separately; move the hill part off the ledge; or reduce the hole count — e.g. trunk capsules not carving
+  and pines as NavMeshObstacles — and re-measure), fix or explain every grid failure, redraw on the top-down.
+- 8.3 CODE DONE, NOT YET PROVOKED: `EventActor.Begin` enables the agent only where NavMesh lies within 1 m of the
+  spawn, CHECKS Warp's bool, and on failure stands the agent down (lifecycle in place) and warns ONCE per actor;
+  the old per-spawn off-mesh warning no longer doubles it. Rig: `Tools/Town/Warp Guard - provoked (Play)` (spawn
+  staged over the hole). EditMode 233/233, console clean apart from the baseline head-bone warning.
+- 8.4 NOT RUN: `Tools/Events/Trace Actor Route - 2.2 after (Play)` (≥ 3 cycles) vs `route/before/`.
 
 ### Completion Notes List
 
