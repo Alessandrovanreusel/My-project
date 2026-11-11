@@ -76,6 +76,7 @@ namespace CameraGame.EditorTools
         [MenuItem("Tools/Scale/Photos C (Play)")] public static void PhotosC() => Run("photos", "C", "today", "options/C");
         [MenuItem("Tools/Scale/Photos A (Play)")] public static void PhotosA() => Run("photos", "A", "today", "options/A");
         [MenuItem("Tools/Scale/Photos B (Play)")] public static void PhotosB() => Run("photos", "B", "today", "options/B");
+        [MenuItem("Tools/Scale/Photos Old (Play)")] public static void PhotosOld() => Run("photos", "Old", "today", "wall/old");
         [MenuItem("Tools/Scale/Photos After (Play)")] public static void PhotosAfter() => Run("photos", "After", "today", "before-after/after");
         [MenuItem("Tools/Scale/Crossing C (Play)")] public static void CrossC() => Run("crossing", "C", "today", "crossing/C-today");
         [MenuItem("Tools/Scale/Crossing A today (Play)")] public static void CrossA1() => Run("crossing", "A", "today", "crossing/A-today");
@@ -122,7 +123,8 @@ namespace CameraGame.EditorTools
                 runner.spotsJson = File.ReadAllText(spotsPath);
                 runner.worldScale = worldScale;
                 runner.drunkPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DrunkPrefabPath);
-                runner.drunkArmatureScale = option == "A" ? 0.01f / Factor : DrunkArmatureNow();
+                runner.drunkArmatureScale = option == "A" ? 0.01f / Factor : option == "Old" ? 0.01f : DrunkArmatureNow();
+                if (option == "Old") runner.nearClipOverride = TodayNear;
                 runner.cueDistances = (float[])CueDesign.Clone();
                 if (mode == "cue" && option == "C")
                     for (int i = 0; i < runner.cueDistances.Length; i++) runner.cueDistances[i] *= Factor;   // the old world's metres
@@ -188,6 +190,25 @@ namespace CameraGame.EditorTools
                     }
                     t.localPosition = new Vector3(0f, A_Eye, A_Nudge - TodayNudge);
                     cam.nearClipPlane = A_Near;
+                    break;
+                }
+                case "Old":
+                {
+                    // Rebuild the pre-ADR-5 giant on top of the applied project: the model back ×F, the old capsule,
+                    // and the old 8.5 m eye / 1 m nudge staged as a head-bone marker. The camera adds the config's
+                    // nudge (0.316), so the marker sits (1 − nudge) ahead. The near clip is set by the runner.
+                    foreach (Transform c in player.transform) { c.localPosition *= Factor; c.localScale *= Factor; }
+                    cc.height = 8.86f; cc.radius = TodayRadius; cc.center = new Vector3(0f, 4.43f, 0f); cc.skinWidth = 0.08f;
+                    var cfgAsset = AssetDatabase.LoadAssetAtPath<PlayerConfig>(PhotoShootRig.PlayerConfigPath);
+                    float nudge = cfgAsset != null ? cfgAsset.SafeCameraForwardNudge : PlayerConfig.DefaultCameraForwardNudge;
+                    Transform t = player.transform;
+                    foreach (string n in new[] { "Armature", "Hips", "Spine", "Chest", "Neck", "Head", "Head_end" })
+                    {
+                        var child = new GameObject(n).transform;
+                        child.SetParent(t, false);
+                        t = child;
+                    }
+                    t.localPosition = new Vector3(0f, 8.5f, TodayNudge - nudge);
                     break;
                 }
                 case "FailNone":

@@ -61,6 +61,7 @@ namespace CameraGame.Player
         [HideInInspector] public float[] cueDistances;
         [HideInInspector] public float cueHoldSeconds = 1.5f;
         [HideInInspector] public int cueSweeps = 4;
+        [HideInInspector] public float nearClipOverride = -1f;   // staging "Old": ThirdPersonCamera.Start sets the config's near clip
 
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         private const int W = 960, H = 540;
@@ -115,6 +116,7 @@ namespace CameraGame.Player
                     _log.AppendLine("RIG BROKEN: no player / controller / main camera in this scene.");
                     yield break;
                 }
+                if (nearClipOverride > 0f) { yield return null; _cam.nearClipPlane = nearClipOverride; }
                 LogPlayer("at start");
 
                 switch (mode)
@@ -597,6 +599,14 @@ namespace CameraGame.Player
                 yield return Settle(1.0f);              // land, let the animator pose him, let the chase camera settle
                 Teleport(stand, yaw, from);             // in case the landing slid
                 yield return Settle(0.4f);
+                if (sp.kind == "wall")
+                {
+                    // Pressed against the wall through the REAL input path: hold W into it, then let go.
+                    Keys(Key.W);
+                    yield return Settle(1.0f);
+                    Keys();
+                    yield return Settle(0.4f);
+                }
                 yield return new WaitForEndOfFrame();   // AFTER ThirdPersonCamera.LateUpdate: the game's own pose
 
                 Vector3 feet = _player.transform.position;
@@ -610,6 +620,15 @@ namespace CameraGame.Player
                 foreach (Renderer r in _player.GetComponentsInChildren<Renderer>(false)) playerTop = Mathf.Max(playerTop, r.bounds.max.y);
 
                 Dictionary<string, float> m = MeasureSpot(sp);
+                if (sp.kind == "wall")
+                {
+                    float toWall = HitDistance(camPos, _cam.transform.forward, 10f * worldScale);
+                    m["camera_to_wall"] = toWall;
+                    m["near_clip"] = _cam.nearClipPlane;
+                    m["near_plane_past_wall"] = _cam.nearClipPlane - toWall;   // > 0: the near plane is inside the wall
+                    m["capsule_radius"] = _cc.radius;
+                    m["ground"] = feet.y;
+                }
                 float ground = m.ContainsKey("ground") ? m["ground"] : feet.y;
 
                 // --- witness: orthographic, pitch 0, from the side, foreground cut by the near plane ---------
