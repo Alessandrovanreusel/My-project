@@ -451,7 +451,7 @@ namespace CameraGame.World
                             if (geo > 0) nGeo++;
                             if (contact && any) minGap = Mathf.Min(minGap, gap);
                             allPoses++;
-                            if (through > 0 || geo > 0) XSave(Path.Combine(fdir, tag + "_A_through_magenta.jpg"), a, b);
+                            if (through > 0 || geo > 0 || (m == "walk60" && pitch == 0f)) XSave(Path.Combine(fdir, tag + "_A_through_magenta.jpg"), a, b);   // every pressed pose too, for a human
                             if (ang == 0f && m == "walk60" && (pitch == 0f || pitch == -80f))
                             {
                                 XSave(Path.Combine(outputDir, $"ref_{w.name}_p{pitch:+0;-0;0}.jpg"), a, b);
