@@ -611,6 +611,133 @@ a story that changes the world every other system is measured in.
   - [x] 11.2 Story status → `review`, never `done` while AC4 is open. Update the `sprint-status.yaml` entry and
         `last_updated` (no `: ` and no trailing `:`), then check it with `yaml.safe_load`.
 
+### Review Findings
+
+Code review on 2026-11-11, loop REVIEW phase, of `85382ae..00cafac`. It was done by a fresh session that did not
+write the code.
+- **Three parallel layers:** Blind Hunter (diff only), Edge Case Hunter (diff + project) and Acceptance Auditor
+  (diff + story + ADR-5).
+- **What was reviewed:** the shipped code and ADR-5. The rigs were run and modified as tools; they were not
+  reviewed (standing rule).
+- **Result:** about 45 raw findings, triaged into **0 decisions, 11 patches (all applied and re-verified by
+  running), 4 deferred and 17 dismissed**.
+- **ADR-5's decision, (A) characters scaled to the town, is unchanged by the review.**
+
+What was **run**, not read: SampleScene played through the real `ThirdPersonController`, `ThirdPersonCamera` and
+`GalleryView` paths, with bad configs injected at runtime or set in memory and restored. In addition:
+- two 7-cycle pooled route traces (190 s each), before and after the route fix;
+- a gallery capture pair with a control;
+- positive and negative controls for the new player-vs-agent check;
+- a disabled-camera sentinel test;
+- the Grade HUD Shoot rig re-run;
+- the full EditMode suite.
+
+Evidence: `_bmad-output/verification/2-1-settle-the-players-scale-in-the-town/review/`
+(`findings-reproduced.md`, `gallery-near/`, `route-7cycles*/`).
+
+**Patches (applied, re-verified by running):**
+- [x] [Review][Patch] **An infinite gravity or ground-stick passed the fail-soft accessors and wedged the player
+      for good.** [Assets/Scripts/Player/PlayerConfig.cs `SafeGravity`/`SafeGroundStickVelocity`] (blind+edge)
+      - **Reproduced:** with `gravity = -Infinity`, the player froze in mid-air (y 5.467, velocity 0) with no
+        console line. He stayed frozen after the good asset was put back: `_verticalVelocity` stays -Infinity,
+        and `CharacterController.Move` rejects every move.
+      - `groundStickVelocity = -Infinity` also froze a grounded player, with W held through the real input path.
+      - The cause: these two checked only NaN, while every other field rejects ±Infinity.
+      - **Fix:** a finite check, plus 6 new test cases (±Infinity).
+      - **Re-verified:** `-Infinity` in the asset now logs one warning ("… is not finite — using -15"). The player
+        walks at 4 m/s, and when lifted 2 m he falls and lands.
+- [x] [Review][Patch] **The gallery opened invisibly when `PlayerConfig.cameraNearClip` was more than 0.1 m above
+      the scene camera's near clip.** [Assets/Scripts/ThirdPersonCamera.cs] (blind+edge)
+      - The cause: `GalleryView.Awake` places its canvas at `nearClipPlane + 0.1`, read from the serialized
+        camera, and the config's near clip was written only later, in `Start`.
+      - **Reproduced** at 0.3, the pre-ADR-5 value: planeDistance 0.195, inside the near plane. The "open" frame
+        was pixel-identical to the closed one (mean luma 142.5) while input stayed suppressed. The control at
+        0.095 drew the backdrop (mean 16.0).
+      - **Fix:** the near clip is applied in `Awake` under `[DefaultExecutionOrder(-100)]`. A *disabled* component
+        returns early (Unity calls `Awake` even on a disabled component, and the rigs switch the camera off),
+        and the head snap stays in `Start`.
+      - **Re-verified:** at 0.3, planeDistance 0.4 and the backdrop is drawn (mean 16.0); `gallery-near/sheet.png`
+        is the before state.
+      - Camera pose still 1.650 m up and 0.316 m forward of the feet. The head-bone warning is logged once.
+      - A disabled camera left a sentinel near clip (0.5) and pose untouched.
+- [x] [Review][Patch] **The drunk never reached the end of his route. He vanished mid-stride 0.45–0.51 m short in
+      7 of 7 cycles.** [Assets/Scenes/SampleScene.unity `DrunkRoute/WP3_alley`] (edge)
+      - The record's "reaches the end at 23.6 s, 0.9 s before despawn" came from `tools/route.py`'s 1 m radius.
+        By `EventActor`'s own test (remaining ≤ stopping distance, 0.257) he never arrived.
+      - At despawn: x 20.25–20.31, still walking at 0.53–0.57 m/s (`route-7cycles-before-fix/arrival.txt`).
+      - This was AC2's "arrive late and vanish mid-street", if only by half a metre.
+      - **Fix:** `WP3_alley` moved 19.8 → **20.4** (y 0.9705, ground + 0.1 like the other waypoints), placed from
+        the measured worst-case position 0.5 s before despawn.
+      - **Re-verified, 7 pooled cycles:** same instance; on the NavMesh throughout; 11.31–11.32 m walked. He
+        arrives by the agent's own test **0.52–0.57 s before despawn** and is braking 0.08 m from it when he
+        vanishes. The peak is unchanged: 1.43–1.49 s at x 26.10–26.12 (`route-7cycles/arrival.txt`,
+        `analysis.txt`).
+      - The scene diff is that one transform.
+- [x] [Review][Patch] **Nothing checked the player's CharacterController against NavMesh agent type 0**, which Task
+      1g asked for. Only the drunk's agent and the config's eye/step were checked.
+      [Assets/Scripts/ThirdPersonController.cs `TryGetAgentProblem`] (auditor+edge)
+      - **Fix:** a check at `Awake` and `OnValidate`, using `PlayerConfig.AgentMatchesBody`.
+      - **Positive control:** a 2.5 m / 0.4 m capsule gives exactly one clear warning.
+      - **Negative:** the shipped 1.77 / 0.30 gives none, in every run.
+- [x] [Review][Patch] **The camera's own config overrode the controller's, contradicting "the camera can never
+      disagree with the body it rides on".** [ThirdPersonCamera.cs `Cfg`] (blind+auditor+edge)
+      - **Fix:** the controller's config, the one the body check validates, wins. The camera's field is now only
+        the fallback.
+      - Today both point at the same asset, so behaviour is unchanged: pose read back at 1.650 / 0.316.
+- [x] [Review][Patch] **"Tuning the asset during play takes effect at once" overclaimed.** `stepOffset` and the
+      config check are applied at Awake only. The comment now says so. [ThirdPersonController.cs] (blind+edge)
+- [x] [Review][Patch] **Stale comments the diff made stale.** [CharacterAnimator.cs Speed thresholds 7 → 5.5;
+      EventActor.cs "8/100" → "2/25", the same 0.08 ratio] (auditor)
+- [x] [Review][Patch] **Tests that would NullReferenceException instead of failing, and a half-asserted test.**
+      [Assets/Tests/EditMode/PlayerConfigTests.cs] (blind+edge)
+      - `Assert.IsNotNull` was added on the config, prefab, agent and agent type.
+      - The eye half of the eye/near test now asserts the report, with a +Infinity case.
+- [x] [Review][Patch] **"Findings for Story 2.2 are in ADR-5's consequences" was not true for the spawn.** The
+      police-tape spawn (y 3.47) is now in ADR-5's consequences. (auditor)
+- [x] [Review][Patch] **ADR-5's "0.37 radii past the capsule, as before" used a measure the story did not define.**
+      The story's measure is body height: 4% → 6.3%. In metres it went 0.35 → 0.111, about 3× less. ADR-5 now
+      states all three. (auditor)
+- [x] [Review][Patch] **ADR-5's route row and "numbers moved" carried the wrong arrival claim and route.** Both are
+      corrected to the measured 11.3 m / 0.52–0.57 s. The Dev Agent Record lines are annotated below.
+
+**Deferred** (in `deferred-work.md` under "code review of story-2-1"):
+- [x] [Review][Defer] **`EventActor.Begin` ignores `Warp`'s bool.** An off-mesh spawn would replay from the last
+      despawn point with no warning. This predates 2.1; the bounded bake makes it easier to reach. Hypothesis: the
+      shipped spawn is on the mesh in 7 of 7 cycles. [EventActor.cs:325]
+- [x] [Review][Defer] **The bounded bake's Volume mode collects every collider in the box, and the voxel is pinned
+      at 0.1.** Recorded as a 7.4 decision, made on an estimate. This is Story 2.2's whole-town bake. [SampleScene
+      NavMeshSurface]
+- [x] [Review][Defer] **Looking up lifts the near plane to ~2.05 m on a 1.77 m body.** The pitched nudge belongs to
+      the see-through-walls family, which is Story 2.2's. Hypothesis, not reproduced. [ThirdPersonCamera.cs LateUpdate]
+- [x] [Review][Defer] **The dead player Animator's Run threshold (5.5) is a second copy of the speeds.** Wire it to
+      `PlayerConfig` when a rigged player lands. [CharacterAnimator.controller]
+
+**Dismissed (17), with the reason:**
+- **"The NavMesh bake is stale":** disproven by running. The play-mode triangulation bounds are exactly the new
+  Volume, the surface's build settings read r 0.30 / h 1.77 / climb 0.35 / voxel 0.1, and the drunk is on the
+  mesh.
+- **".meta files are missing":** the review diff excluded them; all are committed.
+- **"The drunk is scaled twice":** his prefab does not reference `main characters.fbx`.
+- **"The SpawnPoint misfits":** it is local to EventManager (5, 20, 0); in world space it is (31.8, 0.55, 19).
+- **"Other EventDefinitions keep 100/8":** `TownDrunk.asset` is the only one.
+- **The FBX `humanDescription.globalScale` 0.002:** the importer wrote it, and there is no Avatar.
+- **The re-flowed mixer-group line in the prefab:** serialisation noise.
+- **"A stopping distance under the radius jitters":** 7 cycles show a smooth brake (0.23 m/s at despawn, 0.08 m
+  out).
+- **"Peak passes WP1 only 0.07 s before Peak":** he stands at x 26.11, 0.21 m from the peak spot, in every cycle.
+- **"The body problem warns but keeps the bad value":** the story's fail-soft rule for eye-above-body is "log once
+  and keep running", and that holds. Picking which of two authored values is wrong would be a guess.
+- **Huge finite values (walk 1e38, jump > 1e37 overflows):** no designer types these. The realistic non-finite
+  case, Infinity, is fixed.
+- **`TryGetConfigProblem` reports the first problem only:** that is documented behaviour.
+- **NaN body height, and ignoring the centre and lossyScale:** Unity clamps the capsule, and ADR-5 rule 2 forbids
+  scaling a CharacterController root.
+- **`groundStickVelocity` 0 is accepted:** it is a legitimate, if flickery, choice.
+- **The near plane reaches through walls:** that is Story 2.2's (deferred-work "see-through walls"), and it
+  shrank 3× in metres.
+- **The rigs' 8.5 / 0.3 fallbacks and runner literals:** rigs are not review subjects.
+- **Eye 1.65 rather than the measured 1.52:** the recorded decision 1b.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -996,7 +1123,8 @@ Rigs: `Tools/Scale/*` (`Assets/Scripts/Editor/ScaleStudyRig.cs` + `Assets/Script
     size (`route/stride-probe-trace.csv`: +2.9 m/s slide at 3.5). Acceleration and stopping scaled to 1.37 / 0.26.
   - NavMesh agent 0 is 0.30 / 1.77 / 0.35 / 45, read back.
   - Slice-bounded re-bake at voxel 0.1: 1.5 s, **0.22 MB**, was 34 MB (`navmesh/bake.txt`).
-  - Route re-laid to 11.5 m: spawn x 31.8, waypoints 28.8 / 25.9 / 22.8 / 19.8.
+  - Route re-laid to 11.5 m: spawn x 31.8, waypoints 28.8 / 25.9 / 22.8 / 19.8. *(Review 2026-11-11: `WP3_alley`
+    moved to 20.4, so 11.3 m walked; see Review Findings.)*
   - Cue 25 / 2 m.
   - Rigs read the eye height and near clip from config. Stale "4×" comments rewritten. Animator Run threshold
     7 → 5.5 (that Animator is dead).
@@ -1006,6 +1134,9 @@ Rigs: `Tools/Scale/*` (`Assets/Scripts/Editor/ScaleStudyRig.cs` + `Assets/Script
 - **Task 8 (verified at the new scale)**:
   - Route (`route/after-analysis.txt`): 3 full cycles plus a partial, same pooled instance, on the NavMesh
     throughout. 11.5 m walked; he reaches the end at 23.6 s, 0.9 s before despawn. Peak 1.45–1.49 s at x 26.1.
+    *(Corrected by the 2026-11-11 review: "reaches" used a 1 m radius. By the agent's own arrival test he never
+    arrived, and vanished mid-stride 0.45–0.51 m short. With `WP3_alley` at 20.4 he now arrives 0.52–0.57 s before
+    despawn, over 7 cycles.)*
     Slide ±0.15 m/s per foot, +0.02 median.
   - Cue (`cue/after/`): tracks the curve within 1.2 dB. −53.9 dBFS at 20 m and −68.6 at 24 m. Exactly
     digital silence (= the deactivated floor) from 25 m.
@@ -1057,6 +1188,7 @@ New:
 
 Modified:
 - `Assets/Scripts/ThirdPersonController.cs`, `Assets/Scripts/ThirdPersonCamera.cs`
+- `Assets/Scripts/CharacterAnimator.cs` (comment only; review 2026-11-11)
 - `Assets/Scenes/SampleScene.unity`, `Assets/Scenes/SampleScene/NavMesh-game map.asset`
 - `ProjectSettings/NavMeshAreas.asset`
 - `Assets/Models/main characters.fbx.meta`
@@ -1079,3 +1211,4 @@ Modified:
 
 - 2026-11-10: Story file created by the loop CREATE phase (Claude Opus 5.5). Status → ready-for-dev.
 - 2026-11-11: Implemented by the loop DEV phase (Claude Opus 5.5). ADR-5 accepted, option (A) applied: people are 1.77 m with the eye at 1.65 m, F = 5.0; verified at the new scale. Status → review (AC4 and the feel/sound checks are queued for Alexv).
+- 2026-11-11: Code review by the loop REVIEW phase (Claude Opus 5.5): 0 decisions, 11 patches applied and re-verified by running, 4 deferred, 17 dismissed. Fixed: an infinite gravity or ground-stick wedging the player, the gallery opening invisibly under a raised near clip, the drunk vanishing short of his route end (`WP3_alley` 19.8 → 20.4), and the missing player-vs-NavMesh-agent check. ADR-5's route and near-clip rows corrected. Status stays `review` (AC4 and the perceptual checks are open for Alexv).

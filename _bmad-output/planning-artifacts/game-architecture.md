@@ -526,16 +526,16 @@ added later without reshaping the model.
   | Controller radius / skin / step offset | 0.30 / 0.03 / 0.35 m |
   | Jump apex / air time | 1.2 m / 0.80 s (gravity −15; kept in world metres, now 0.68 body heights) |
   | Walk / sprint | **4 / 7 m/s** (human-paced; the plain takes 202.4 s / 115.6 s) |
-  | Camera forward nudge / near clip | 0.316 / 0.095 m (scaled with the radius: the near plane still reaches 0.37 radii past the capsule, as before) |
+  | Camera forward nudge / near clip | 0.316 / 0.095 m (scaled with the radius: the near plane still reaches 0.37 radii past the capsule, as before. *Review 2026-11-11:* in the story's own measure, body height, that is 6.3% (was 4%); in metres it is 0.111 m (was 0.35 m), so it pokes into a wall about 3× less. Both written down, so neither reads as the whole truth) |
   | NavMesh agent 0 | radius 0.30, height 1.77, climb 0.35, slope 45, voxel 0.1 (radius ÷ 3), surface bounded to the slice (the whole-town bake is Story 2.2's AC) |
   | Drunk walk speed | 0.6 m/s: the DrunkWalk clip's measured stride at 1.67 m (0.44–0.77 m/s per foot). Planted-foot slide is +0.02 m/s median; it was +0.65 for the giant, and +2.9 at person size with the old 3.5 m/s (`route/*-analysis.txt`) |
-  | Drunk route | 11.5 m walked, about speed × 20 s (spawn x 31.8; waypoints 28.8 / **25.9 peak spot** / 22.8 / 19.8 at z 19). He reaches the end 0.9 s before despawn (it was 2.8 s of walking in place). Peak measured 1.45–1.49 s at x 26.1, over 3 pooled cycles |
+  | Drunk route | 11.3 m walked, about speed × 20 s (spawn x 31.8; waypoints 28.8 / **25.9 peak spot** / 22.8 / **20.4** at z 19). He reaches the last waypoint, by `EventActor`'s own arrival test (remaining ≤ stopping distance), 0.52–0.57 s before despawn, and is braking 0.08 m from it when he vanishes. Before, he spent 2.8 s walking in place. Peak measured 1.43–1.49 s at x 26.1, over 7 pooled cycles (`review/route-7cycles/arrival.txt`). *Corrected by the 2026-11-11 review:* the last waypoint was at 19.8, and the "0.9 s before despawn" first written here used a 1 m radius. Measured with the agent's own test, he never arrived: he vanished mid-stride 0.45–0.51 m short, in 7 of 7 cycles. |
   | Cue radius / falloff start | **25 m / 2 m** (measured: audible at the listener to 24 m (−68.6 dBFS) and digitally silent from 25 m, tracking the rolloff curve within 1.2 dB (`cue/after/analysis.txt`)) |
 
   **Numbers moved (before → after).**
   - Player: CC 8.86 / 0.95 / 0.08 → 1.77 / 0.30 / 0.03; step 2 → 0.35; eye 8.5 → 1.65 (code → config); nudge 1 → 0.316 (code → config); ground-stick −2 (code → config); near 0.3 → 0.095; walk / sprint 5 / 10 → 4 / 7.
   - Models: player model ×0.2; drunk `Armature` 0.01 → 0.002; drunk agent r / h 1 / 8 → 0.30 / 1.77.
-  - Drunk tuning: agent speed / acceleration / stopping 3.5 / 8 / 1.5 → 0.6 / 1.37 / 0.26 (all ×0.6/3.5); cue 100 / 8 → 25 / 2; route 60 m (spawn x 60; waypoints 45 / 30 / 15 / 0) → 11.5 m (spawn x 31.8; waypoints 28.8 / 25.9 / 22.8 / 19.8).
+  - Drunk tuning: agent speed / acceleration / stopping 3.5 / 8 / 1.5 → 0.6 / 1.37 / 0.26 (all ×0.6/3.5); cue 100 / 8 → 25 / 2; route 60 m (spawn x 60; waypoints 45 / 30 / 15 / 0) → 11.3 m (spawn x 31.8; waypoints 28.8 / 25.9 / 22.8 / 20.4; the last one moved from 19.8 by the review, see the route row).
   - NavMesh agent 0: 0.95 / 8.86 / 2 → 0.30 / 1.77 / 0.35.
   - Rigs: eye and near clip now read `PlayerConfig`.
 
@@ -547,6 +547,7 @@ added later without reshaping the model.
     - A line of tyres (x −223…−213) fences off the plain's west quarter at person scale.
     - The police car at spawn is ~2× real (9.5 m long); the porch door is ~1.4× (2.81 m); the bus-shelter roof is ~9 m up.
     - The census's "street block" sits ~60 m underground and is invisible.
+    - The player now spawns standing on the 1.4 m police-tape barrier at the origin (lands at y 3.47). The drop from (0, 20, 0) was laid out for the giant. *(Added by the 2026-11-11 review: Story 2.1 measured it, but it had reached only the story file.)*
   - **The rigs.** Distances in subject heights are unchanged by construction. The eye height and near clip are read from `PlayerConfig`, so the next rescale moves them too.
   - **The 1.14 recording spike is pinned to the old scale** (`EyeHeight 7.5`, `-vantage 38.59,8.29,6.27`). It is fenced throwaway code and is not modified (a README note says so).
   - **ADR-4 replays are scale-bound** once Story 1.17 persists them. None exist yet, so this costs replay nothing today.

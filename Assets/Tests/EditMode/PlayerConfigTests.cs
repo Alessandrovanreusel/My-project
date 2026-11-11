@@ -48,31 +48,41 @@ namespace CameraGame.Tests
             StringAssert.Contains("sprintSpeed", problem);
         }
 
-        [TestCase(0f)] [TestCase(9.81f)] [TestCase(float.NaN)]
-        public void GravityThatDoesNotPullDown_FallsBack(float bad)
+        // -Infinity / +Infinity: the Story 2.1 review reproduced -Infinity wedging the player in mid-air for good
+        // (CharacterController.Move rejects a non-finite move, and -Infinity + anything stays -Infinity).
+        [TestCase(0f)] [TestCase(9.81f)] [TestCase(float.NaN)] [TestCase(float.NegativeInfinity)] [TestCase(float.PositiveInfinity)]
+        public void GravityThatDoesNotPullDownOrIsNotFinite_FallsBack(float bad)
         {
             _cfg.gravity = bad;
             Assert.Less(_cfg.SafeGravity, 0f);
-            Assert.IsTrue(_cfg.TryGetConfigProblem(out _));
+            Assert.IsFalse(float.IsInfinity(_cfg.SafeGravity));
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string problem));
+            StringAssert.Contains("gravity", problem);
         }
 
-        [Test]
-        public void UpwardGroundStick_FallsBack()
+        [TestCase(2f)] [TestCase(float.NaN)] [TestCase(float.NegativeInfinity)] [TestCase(float.PositiveInfinity)]
+        public void UpwardOrNonFiniteGroundStick_FallsBack(float bad)
         {
-            _cfg.groundStickVelocity = 2f;
+            _cfg.groundStickVelocity = bad;
             Assert.LessOrEqual(_cfg.SafeGroundStickVelocity, 0f);
-            Assert.IsTrue(_cfg.TryGetConfigProblem(out _));
+            Assert.IsFalse(float.IsInfinity(_cfg.SafeGroundStickVelocity));
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string problem));
+            StringAssert.Contains("groundStickVelocity", problem);
         }
 
-        [TestCase(0f)] [TestCase(-1f)]
-        public void NonPositiveEyeOrNearClip_FallsBack(float bad)
+        [TestCase(0f)] [TestCase(-1f)] [TestCase(float.PositiveInfinity)]
+        public void UnusableEyeOrNearClip_FallsBackAndIsReported(float bad)
         {
             _cfg.eyeHeight = bad;
-            Assert.Greater(_cfg.SafeEyeHeight, 0f);
+            Assert.AreEqual(PlayerConfig.DefaultEyeHeight, _cfg.SafeEyeHeight);
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string eyeProblem));
+            StringAssert.Contains("eyeHeight", eyeProblem);
+
             _cfg.eyeHeight = PlayerConfig.DefaultEyeHeight;
             _cfg.cameraNearClip = bad;
-            Assert.Greater(_cfg.SafeCameraNearClip, 0f);
-            Assert.IsTrue(_cfg.TryGetConfigProblem(out _));
+            Assert.AreEqual(PlayerConfig.DefaultCameraNearClip, _cfg.SafeCameraNearClip);
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string nearProblem));
+            StringAssert.Contains("cameraNearClip", nearProblem);
         }
 
         [Test]
@@ -112,7 +122,9 @@ namespace CameraGame.Tests
         public void NavMeshAgentType0_IsTheBodyThePlayerConfigRidesIn()
         {
             var cfg = AssetDatabase.LoadAssetAtPath<PlayerConfig>(AssetPath);
+            Assert.IsNotNull(cfg, $"{AssetPath} is missing.");
             NavMeshBuildSettings agent = NavMesh.GetSettingsByID(0);
+            Assert.AreEqual(0, agent.agentTypeID, "NavMesh agent type 0 (Humanoid) does not exist.");
             Assert.IsFalse(PlayerConfig.TryGetBodyProblem(cfg.SafeEyeHeight, cfg.SafeStepOffset, agent.agentHeight,
                                                           agent.agentRadius, out string problem), problem);
             Assert.AreEqual(cfg.SafeStepOffset, agent.agentClimb, 0.01f,
@@ -123,7 +135,9 @@ namespace CameraGame.Tests
         public void DrunkPrefabAgent_MatchesAgentType0()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(DrunkPrefabPath);
+            Assert.IsNotNull(prefab, $"{DrunkPrefabPath} is missing.");
             var agent = prefab.GetComponent<NavMeshAgent>();
+            Assert.IsNotNull(agent, "The drunk prefab has no NavMeshAgent on its root.");
             NavMeshBuildSettings type0 = NavMesh.GetSettingsByID(agent.agentTypeID);
             Assert.IsTrue(PlayerConfig.AgentMatchesBody(agent.radius, agent.height, type0.agentRadius, type0.agentHeight),
                           $"Drunk agent r {agent.radius} h {agent.height} vs bake r {type0.agentRadius} h {type0.agentHeight}");

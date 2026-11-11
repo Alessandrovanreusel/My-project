@@ -25,8 +25,10 @@ public class ThirdPersonController : MonoBehaviour
     // Higher = faster turning, lower = slower. Adjust to taste.
     [SerializeField] private float mouseSensitivity = 0.15f;
 
-    // Read through the config's Safe* accessors every frame (cheap), so tuning the asset during play takes
-    // effect at once. Each falls back to the ADR-5 default when there is no config.
+    // Read through the config's Safe* accessors every frame (cheap), so tuning the speeds, jump, gravity or
+    // ground-stick during play takes effect at once. Two exceptions: stepOffset is written into the
+    // CharacterController once, at Awake, and the config is checked (and its problems reported) at Awake only —
+    // re-enter Play after changing either. Each falls back to the ADR-5 default when there is no config.
     private float WalkSpeed => config != null ? config.SafeWalkSpeed : PlayerConfig.DefaultWalkSpeed;
     private float SprintSpeed => config != null ? config.SafeSprintSpeed : PlayerConfig.DefaultSprintSpeed;
     private float StepOffset => config != null ? config.SafeStepOffset : PlayerConfig.DefaultStepOffset;
@@ -86,6 +88,8 @@ public class ThirdPersonController : MonoBehaviour
             GameLog.Warn("Player", $"PlayerConfig '{config.name}': {configProblem}.");
         if (PlayerConfig.TryGetBodyProblem(EyeHeight, StepOffset, _controller.height, _controller.radius, out string bodyProblem))
             GameLog.Warn("Player", $"{bodyProblem}.");
+        if (TryGetAgentProblem(_controller, out string agentProblem))
+            GameLog.Warn("Player", agentProblem);
 
         // Override the CharacterController's Inspector stepOffset with the config's value.
         // This makes the config the source of truth for movement tuning.
@@ -238,16 +242,38 @@ public class ThirdPersonController : MonoBehaviour
         }
     }
 
+    // The NavMesh agent type every character walks on (ADR-5: "Humanoid", one agent the size of the characters).
+    private const int HumanoidAgentTypeId = 0;
+
+    // ADR-5 / Story 2.1 (1g): the NavMesh is baked for ONE body, the characters'. An EditMode test holds the drunk's
+    // agent to agent type 0; this holds the PLAYER's capsule to it. That capsule lives in the scene, where no cheap
+    // test can reach it, so it is checked where the capsule is: at Awake (once per run) and at authoring time.
+    // Added by the Story 2.1 review — the story asked for it and nothing checked it.
+    private static bool TryGetAgentProblem(CharacterController cc, out string problem)
+    {
+        problem = null;
+        UnityEngine.AI.NavMeshBuildSettings agent = UnityEngine.AI.NavMesh.GetSettingsByID(HumanoidAgentTypeId);
+        if (agent.agentTypeID == HumanoidAgentTypeId
+            && !PlayerConfig.AgentMatchesBody(agent.agentRadius, agent.agentHeight, cc.radius, cc.height))
+            problem = $"the NavMesh agent type {HumanoidAgentTypeId} (radius {agent.agentRadius} m, height " +
+                      $"{agent.agentHeight} m) is not this body (radius {cc.radius} m, height {cc.height} m). ADR-5 " +
+                      "bakes one agent the size of the characters: fix the CharacterController, or the agent type and re-bake.";
+        return problem != null;
+    }
+
 #if UNITY_EDITOR
-    // Editor-only structural check (Story 2.1, 1g): the config's eye and step against this body.
+    // Editor-only structural check (Story 2.1, 1g): the config's eye and step, and the NavMesh agent, against this body.
     private void OnValidate()
     {
         // Authoring time only: entering and leaving play mode re-validates every object, which would repeat
         // the warning several times per run. At runtime Awake reports it, once (NFR8).
         if (UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode) return;
         var cc = GetComponent<CharacterController>();
-        if (cc != null && PlayerConfig.TryGetBodyProblem(EyeHeight, StepOffset, cc.height, cc.radius, out string problem))
+        if (cc == null) return;
+        if (PlayerConfig.TryGetBodyProblem(EyeHeight, StepOffset, cc.height, cc.radius, out string problem))
             Debug.LogWarning($"[Player] {name}: {problem}.", this);
+        if (TryGetAgentProblem(cc, out string agentProblem))
+            Debug.LogWarning($"[Player] {name}: {agentProblem}", this);
     }
 #endif
 

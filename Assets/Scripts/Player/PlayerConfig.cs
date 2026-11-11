@@ -76,12 +76,18 @@ namespace CameraGame.Player
         public float SafeSprintSpeed => Mathf.Max(SafeWalkSpeed, Positive(sprintSpeed, DefaultSprintSpeed));
         public float SafeStepOffset => NonNegative(stepOffset, DefaultStepOffset);
         public float SafeJumpHeight => NonNegative(jumpHeight, DefaultJumpHeight);
-        public float SafeGravity => float.IsNaN(gravity) || gravity >= 0f ? DefaultGravity : gravity;
+        // ⚠️ FINITE, not just "not NaN" (Story 2.1 review, reproduced): a gravity or ground-stick of -Infinity passed
+        // the old NaN-only check, made _verticalVelocity -Infinity, and CharacterController.Move rejected every move
+        // from then on — the player froze in mid-air with a clean console, and stayed frozen even after the asset
+        // was fixed, because -Infinity + anything is still -Infinity.
+        public float SafeGravity => !IsFinite(gravity) || gravity >= 0f ? DefaultGravity : gravity;
         public float SafeGroundStickVelocity =>
-            float.IsNaN(groundStickVelocity) || groundStickVelocity > 0f ? DefaultGroundStickVelocity : groundStickVelocity;
+            !IsFinite(groundStickVelocity) || groundStickVelocity > 0f ? DefaultGroundStickVelocity : groundStickVelocity;
         public float SafeEyeHeight => Positive(eyeHeight, DefaultEyeHeight);
         public float SafeCameraForwardNudge => NonNegative(cameraForwardNudge, DefaultCameraForwardNudge);
         public float SafeCameraNearClip => Positive(cameraNearClip, DefaultCameraNearClip);
+
+        private static bool IsFinite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
 
         private static float Positive(float v, float fallback) =>
             float.IsNaN(v) || float.IsInfinity(v) || v <= 0f ? fallback : v;
@@ -98,8 +104,8 @@ namespace CameraGame.Player
             else if (SafeSprintSpeed != sprintSpeed) problem = $"sprintSpeed {sprintSpeed} is unusable or slower than walkSpeed — using {SafeSprintSpeed}";
             else if (SafeStepOffset != stepOffset) problem = $"stepOffset {stepOffset} is negative or not a number — using {SafeStepOffset}";
             else if (SafeJumpHeight != jumpHeight) problem = $"jumpHeight {jumpHeight} is negative or not a number — using {SafeJumpHeight}";
-            else if (SafeGravity != gravity) problem = $"gravity {gravity} does not pull down — using {SafeGravity}";
-            else if (SafeGroundStickVelocity != groundStickVelocity) problem = $"groundStickVelocity {groundStickVelocity} pushes up — using {SafeGroundStickVelocity}";
+            else if (SafeGravity != gravity) problem = $"gravity {gravity} does not pull down or is not finite — using {SafeGravity}";
+            else if (SafeGroundStickVelocity != groundStickVelocity) problem = $"groundStickVelocity {groundStickVelocity} pushes up or is not finite — using {SafeGroundStickVelocity}";
             else if (SafeEyeHeight != eyeHeight) problem = $"eyeHeight {eyeHeight} is not a positive height — using {SafeEyeHeight}";
             else if (SafeCameraForwardNudge != cameraForwardNudge) problem = $"cameraForwardNudge {cameraForwardNudge} is negative — using {SafeCameraForwardNudge}";
             else if (SafeCameraNearClip != cameraNearClip) problem = $"cameraNearClip {cameraNearClip} is not positive — using {SafeCameraNearClip}";

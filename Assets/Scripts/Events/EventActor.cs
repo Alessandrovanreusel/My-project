@@ -564,7 +564,7 @@ namespace CameraGame.Events
             // Smooth from key 2 onward ONLY. keys[0] and keys[1] both sit at value 1 — they are the flat
             // full-volume plateau — and SmoothTangents would give key 1 a tangent averaged from its
             // neighbours (steeply negative) while key 0 kept zero. Hermite between two equal-valued keys with
-            // mismatched tangents BULGES: ≈1.018 at the shipped 8/100 values, and ≈11% if cueFalloffStart ever
+            // mismatched tangents BULGES: ≈1.018 at the shipped 2/25 values (8/100 before ADR-5 — the same 0.08 ratio), and ≈11% if cueFalloffStart ever
             // widens toward half the radius. A rolloff curve that amplifies is not what "full volume" means.
             for (int i = 2; i < curve.length; i++)
                 curve.SmoothTangents(i, 0f);          // default flat tangents would make the rest ripple
