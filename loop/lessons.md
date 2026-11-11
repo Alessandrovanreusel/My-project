@@ -48,3 +48,28 @@ or a pattern that worked, concrete enough to act on.
 - Assets/Models/game map .fbx is a complete export of the shared folder's game map .blend (16,738 meshes, 5,677,935 tris, same bounds). 15,080 of those meshes are particle instances that exist only after depsgraph evaluation, so compare FBX counts against evaluated object_instances, never against bpy.data.meshes (1,658).
 - The town map is a ~810 x 570 m central plain (street block, row of houses, industrial yard, lake shore, offshore structure ~250 m out) inside a ring of ~1 km mountain tiles, with no dock or pier. Check _bmad-output/verification/plan-epic-2/map_topdown.png before placing anything in the world.
 - A recursive grep from the project root runs past the 2-minute tool timeout (Library/ and LFS binaries). Scope searches to _bmad-output/, loop/ or Assets/Scripts.
+
+## From 2-1-settle-the-players-scale-in-the-town (2026-11-11)
+
+- The player's live eye height is the code literal ThirdPersonCamera.cs:79 (feet + 8.5 m): main characters.fbx has no skeleton, so the head-bone lookup always fails (the standing 'Head bone not found!' warning).
+- The Photo Shoot rig shoots from the subject's bounds-centre height at distances in subject heights; it has never used an eye height and is scale-invariant by construction.
+- Assets/Scenes/SampleScene/NavMesh-game map.asset is 36 MB in plain git (no *.asset LFS rule): a finer re-bake can pass GitHub's 50 MB warning or 100 MB hard limit and break the orchestrator's push.
+- The deferred 'NavMesh bake dimensions are metric' entry read SampleScene's unused built-in NavMeshSettings block (m_NavMeshData 0); the real bake is the NavMeshSurface on 'game map' with NavMeshAreas agent type 0 (0.95 / 8.86 / climb 2).
+- The drunk's cue has never been measured at the listener: Story 1.8 computed its curve, and its evidence went to Temp/. Use an OnAudioFilterRead tap on the AudioListener's GameObject.
+- After a play-mode rig run the MCP bridge drops for 10-60 s: call refresh_unity(wait_for_ready) and check that execute_menu_item returned success before starting a wait loop (two blind 10-minute waits lost here).
+- AI Navigation 2.0.10: with overrideVoxelSize off the bake uses the agent settings' voxelSize (0.1667), not radius/3. Set the override explicitly and read cellSize back from the NavMeshData's SerializedObject.
+- The census's street block (cars, Casa, HH, doors) sits ~60 m underground (y~-60) under the plain. The visible slice is the raised road, pines, the police car (Cube.006_*, ~2x real) and one house at x~-47.
+- At person scale the road is a raised slab with 1.2-1.65 m edges, reachable only near x 0 (a 0.13 m kerb at x 0.5); a tyre line at x -223..-213 fences off the plain's west quarter. Route player rigs accordingly.
+- To stage a different eye height through the REAL ThirdPersonCamera, add Armature/Hips/Spine/Chest/Neck/Head/Head_end under the player: it prefers a head bone over the PlayerConfig eye height.
+- Since ADR-5, rigs read the eye height and near clip from Assets/Data/Player/PlayerConfig.asset (PhotoShootRig.ReadPlayerEye); never hard-code an eye height.
+- Unity's working files are CRLF: edit them with a script that reads with newline='' and converts patterns, or one edit turns into a whole-file diff.
+- sprint-status.yaml line 2 is a commented '# last_updated:'. Edit the real 'last_updated:' key (~line 40), never the first textual match.
+- The grader's occlusion rays do not see the town's pines: at person scale the Town Placement Study hides the drunk in 3 of 12 directions while every grade is unchanged. Judge occlusion from the pictures.
+- Measure a NavMesh actor's 'arrival' with the agent's own test (remainingDistance <= stoppingDistance), never a fixed radius: Story 2.1's 1 m 'reach' radius reported 'arrives 0.9 s early' for a drunk who vanished 0.5 m short of his last waypoint in 7 of 7 cycles.
+- Unity calls Awake even on a DISABLED component: moving initialisation from Start to Awake makes it run inside rigs that switch the component off before play. Guard it with `if (!enabled) return;`.
+- [DefaultExecutionOrder] does order Awake across scene objects (measured in 6000.3: GalleryView.Awake saw ThirdPersonCamera's Awake at -100). Use it when one component's Awake reads a value another writes.
+- Before moving a value into a config applied at runtime, find every reader of the old source: GalleryView read Camera.nearClipPlane once in Awake, so the config value applied later in Start made the gallery open invisibly.
+- Fail-soft accessors must check finiteness, not just NaN: -Infinity in a velocity term wedges a CharacterController for good (Move rejects the whole vector, and -inf + x stays -inf), even after the config is fixed.
+- After a rig leaves play mode, Unity MCP can answer 'No Unity Editor instances found' for ~20 s during the domain reload. Check Get-Process Unity and retry before assuming a crash.
+- To wait for N event lifecycles without sleeping, run Monitor with an until-loop that counts '[Events] TownDrunk → Spawn' in Editor.log after the line count recorded before Play; the log records every phase transition.
+- execute_code compiles with CodeDom (C# 6), where `Object` is ambiguous with `object`. Write `UnityEngine.Object.FindObjectsByType<...>`.
