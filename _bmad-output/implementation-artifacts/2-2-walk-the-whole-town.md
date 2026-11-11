@@ -564,12 +564,12 @@ changes the world every other system is measured in.
   - [x] 4.2 Move the player spawn (1i).
   - [ ] 4.3 Add road access (1j) under `TownAccess`, or record why none is needed.
 
-- [ ] **Task 5: Edges, water and the oil rig (AC3)**
-  - [ ] 5.1 Add the `WorldBounds` layer, the `TownBounds` root and its barriers (1c). Remove the water's collider.
+- [x] **Task 5: Edges, water and the oil rig (AC3)**
+  - [x] 5.1 Add the `WorldBounds` layer, the `TownBounds` root and its barriers (1c). Remove the water's collider.
         Add any `NavMeshModifierVolume` needed under the water.
-  - [ ] 5.2 Decide the oil rig (1d) and record it in the result file's `decisions`. The documentation follows in
+  - [x] 5.2 Decide the oil rig (1d) and record it in the result file's `decisions`. The documentation follows in
         Task 11.
-  - [ ] 5.3 **Edge walks:** at least 6 shore points and 8 ring bearings, walk and sprint, held 10 s, plus a jump.
+  - [x] 5.3 **Edge walks:** at least 6 shore points and 8 ring bearings, walk and sprint, held 10 s, plus a jump.
         Output `edges/`, with the top-down trace and an eye photo at each contact.
 
 - [ ] **Task 6: Below the world: FallRecovery (AC3)**
@@ -1147,6 +1147,24 @@ resolves. Reversal: re-run the tool with the rule changed.
   slab's north edge in 2.1's measured gap — capsule clear (CheckCapsule), no 16 m drop, not on the barrier.
 - 4.3 Road access (1j): decided after the whole-town bake (Task 8), from whether every part paths through the
   road's existing steppable runs (census: 7 per side). Recorded there.
+
+### Task 5 — edges, water and the oil rig (2026-11-11)
+
+- 5.1 `Tools/Town/Build Town Bounds` (`TownBoundsBuilder.cs`), reading the ONE polygon in `TownBoundsConfig.asset`:
+  layer `WorldBounds` added through the TagManager's SerializedObject and read back (= 9); scene root `TownBounds`
+  with 8 BoxColliders on the playable area's edges (shore z 269.5; ring x −680 / 260, z −400, and the cut NE/SE
+  corners) and 12 round the pond, no renderer, each from 2 m under the lowest ground on its edge to 6 m over the
+  highest (`edges/bounds-build.txt`); a NavMeshModifierVolume (Not Walkable) over the pond. The sea's collider was
+  removed by the collider rule (Task 4). No volume under the sea is needed: the bake volume is the polygon's bounding
+  box, which ends at the shore (z 269.5). FallRecovery's ground casts ignore the WorldBounds layer. Scene saved in
+  its own call.
+- 5.2 Oil rig: **(B) out of bounds** (1d) — the shoreline barrier; recorded in the result file; the docs follow in
+  Task 11.
+- 5.3 `Tools/Town/Edge Walks (Play)` → `edges/` (edges.csv, trace.csv, trace.png, photos/, sheet.jpg): 6 shore points
+  + 8 ring bearings (3 of which reach the shore), walk and sprint, W held 10 s after contact, then a jump at the
+  barrier: **28/28 inside the playable area on every frame (0 m beyond), the shore walks end at z 268.7 standing on
+  ground (never over the water), every jump lands inside.** The east and south-east hills stop the player by slope
+  before the barrier (y 27–30). In play mode the only enabled camera is Main Camera (AR8 read-back).
 
 ### Completion Notes List
 

@@ -43,6 +43,7 @@ namespace CameraGame.World
         private ThirdPersonController _tpc;
         private readonly RaycastHit[] _hits = new RaycastHit[16];
         private Vector2[] _fallbackArea;
+        private int _groundMask = ~0;   // every layer but WorldBounds: a barrier's side is never "ground beneath"
 
         /// <summary>How many times the player has been put back this session (for rigs and tests).</summary>
         public int Recoveries { get; private set; }
@@ -66,6 +67,8 @@ namespace CameraGame.World
             _cc = GetComponent<CharacterController>();
             _tpc = GetComponent<ThirdPersonController>();
             _fallbackArea = TownBoundsConfig.DefaultPlayableArea;
+            int bounds = LayerMask.NameToLayer("WorldBounds");
+            if (bounds >= 0) _groundMask = ~(1 << bounds);
 
             // Fail soft (NFR8): say ONCE what is wrong, then run on the measured defaults. Never throw.
             if (config == null)
@@ -126,7 +129,7 @@ namespace CameraGame.World
             float r = Mathf.Max(0.05f, _cc.radius * 0.9f);
             Vector3 from = p + Vector3.up * (r + 0.05f);
             float dist = Mathf.Max(0.1f, from.y - BelowWorldY);
-            int n = Physics.SphereCastNonAlloc(from, r, Vector3.down, _hits, dist, ~0, QueryTriggerInteraction.Ignore);
+            int n = Physics.SphereCastNonAlloc(from, r, Vector3.down, _hits, dist, _groundMask, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < n; i++)
                 if (_hits[i].collider != _cc) return false;
             return true;
@@ -135,7 +138,7 @@ namespace CameraGame.World
         private void TrySample(Vector3 p)
         {
             _nextSampleTime = Time.time + SampleInterval;
-            int n = Physics.RaycastNonAlloc(p + Vector3.up * 0.1f, Vector3.down, _hits, 0.1f + GroundProbe, ~0, QueryTriggerInteraction.Ignore);
+            int n = Physics.RaycastNonAlloc(p + Vector3.up * 0.1f, Vector3.down, _hits, 0.1f + GroundProbe, _groundMask, QueryTriggerInteraction.Ignore);
             bool ground = false;
             for (int i = 0; i < n; i++)
             {
