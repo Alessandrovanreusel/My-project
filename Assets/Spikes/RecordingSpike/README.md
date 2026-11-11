@@ -4,6 +4,10 @@ This folder is the prototype that measured how a **built** copy of the game can 
 gameplay. It produced the evidence behind **ADR-4** in `_bmad-output/planning-artifacts/game-architecture.md`.
 It is **not game code** and is **never referenced by game code**.
 
+> **Pinned to the old world scale (2026-11-11).** The spike's `EyeHeight 7.5` and its `-vantage 38.59,8.29,6.27`
+> predate **ADR-5** (Story 2.1), which made the characters 1.77 m people with the eye at 1.65 m. The code was
+> deliberately not changed; re-derive both before reusing any of it.
+
 ## The fence
 
 - `CameraGame.Spikes.RecordingSpike.asmdef`: `autoReferenced: false`, and

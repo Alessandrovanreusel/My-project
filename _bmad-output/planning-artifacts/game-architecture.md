@@ -4,7 +4,7 @@ project: 'Camera Game'
 date: '2026-05-27'
 author: 'Alexv'
 version: '1.1'
-updated: '2026-11-10'  # ADR-4 proposed by Story 1.14 (replay + export-time encode), awaiting Alexv; Clip Recording — sprint-change-proposal-2026-11-10.md
+updated: '2026-11-11'  # ADR-5 accepted by Story 2.1 (world scale: characters scaled to the town, F = 5.0; Alexv may veto). Before: '2026-11-10'  # ADR-4 proposed by Story 1.14 (replay + export-time encode), awaiting Alexv; Clip Recording — sprint-change-proposal-2026-11-10.md
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 status: 'complete'
 engine: 'Unity 6.3 LTS (6000.3.8f1)'
@@ -39,6 +39,9 @@ existing first-person controller/camera and the Drunk-Pack animations already in
   *How* a built game records itself was measured in **ADR-4** (Story 1.14): **proposed 2026-11-10,
   awaiting Alexv: replay recording, with MP4 made only at export**. The Frame-Read grader (ADR-2) becomes the per-frame engine of clip grading.
   See **Clip Recording** below.
+- **World scale** (ADR-5, accepted 2026-11-11 by Story 2.1; Alexv may veto): the characters are people, 1.77 m
+  tall with the eye at 1.65 m, in a town modelled in roughly real metres. Every distance in the game is world
+  metres. The scale rule for new content is in ADR-5.
 
 **Project Structure:** Hybrid Unity layout (by-type at root, feature folders under
 `Scripts/`) with one `CameraGame.asmdef` for the slice and `CameraGame.*` namespaces.
@@ -180,8 +183,9 @@ These are NOT provided by the engine and must be decided in the next steps:
 | 5 | Input | Extend existing PlayerInput (Send-Messages); add Capture/RaiseCamera/Zoom; gate by mode | Least disruption to working input; one map for the slice. |
 | 6 | Memory card persistence | In-memory `CapturedClip` store capped in seconds of footage (evolves GalleryService); disk-ready seam; cross-session by Epic 9 | Video needs a hard bound; editing needs clips to survive. *(Revised 2026-11-10 — was "Gallery persistence: in-memory List<CapturedShot>; defers disk to Epic 4/5".)* |
 | 7 | Code organization | CameraGame.* namespaces; feature folders; one asmdef; SO event channel for ShotCaptured | Lean for solo dev; clean dependency seams without over-engineering. |
-| 8 | Audio / pooling | 3D AudioSource per actor (~25m rolloff, 1 mixer); generic ObjectPool<T> | Sufficient for the slice; satisfies no-leak metric. |
+| 8 | Audio / pooling | 3D AudioSource per actor (25 m rolloff in world metres, 1 mixer); generic ObjectPool<T> | Sufficient for the slice; satisfies no-leak metric. *(Revised 2026-11-11 by ADR-5: the 25 m is now 25 world metres. It was 100 units, converted at 4×, which measured as 20 person-metres.)* |
 | 9 | Clip recording | **ADR-4 — Proposed 2026-11-10, awaiting Alexv:** (B) replay recording; MP4 (H.264 via Media Foundation + AAC) only at export | Measured in a Windows build (Story 1.14): (B) costs +0.8 ms/frame over 3 rounds (not distinguishable from 0) and ~195 KB/s as 16-bit, (A) dropped 86–89% of its captures to a starved encoder, (C) needs ~250 MB/s of RAM. *(Added 2026-11-10; revised 2026-11-10 by Story 1.14 and its code review.)* |
+| 10 | World scale | **ADR-5 — Accepted 2026-11-11 (Story 2.1; Alexv may veto):** (A) the characters are scaled to the town. People are 1.77 m with the eye at 1.65 m; the town keeps its modelled, roughly real-metre size; F = 5.0 | Photographed and measured from the player's eye at four spots under all three options. Keeping 8.86 m giants puts the eye above every pine and eave. Scaling the town ×5 gives the same pictures for 30+ moved values and a 25×-area NavMesh. *(Added 2026-11-11.)* |
 
 ### Camera & State
 
@@ -244,7 +248,7 @@ the dependency direction.*
 - `EventActor` MonoBehaviour: lifecycle FSM `Spawn → Build → Peak → WindDown → Despawn`;
   each phase has duration + Animator state + telegraph cue. Exposes `SubjectBounds`, `IsAtPeak`.
 - `EventDefinition` ScriptableObject: phase timings (~20–30s life, ~1.5s peak window),
-  cue audio, animation set, NavMesh route, cue radius (~25m).
+  cue audio, animation set, NavMesh route, cue radius (25 m in world metres, ADR-5; *revised 2026-11-11*).
 - Pathing: NavMeshAgent (AI Navigation). Animation: Animator (Drunk Pack).
 - `EventManager`: spawns from an object pool, caps concurrency (1 for the slice), owns
   spawn timing. Pooling prevents the object leaks called out in the GDD success metrics.
@@ -466,6 +470,95 @@ added later without reshaping the model.
   *(Revised 2026-11-10 by the Story 1.14 code review. The numbers were corrected against the evidence; the
   licence/cost row was added; fidelity was re-measured on every tick; and the export failure story and the
   defects 1.15 must not inherit are now spelled out. The decision is unchanged.)*
+
+- **ADR-5 (World scale) — Accepted (2026-11-11) — decided by measurement in Story 2.1 under the loop's
+  "decide, flag, keep going"; Alexv may veto.** *(Evidence: `_bmad-output/verification/2-1-settle-the-players-scale-in-the-town/`,
+  git-ignored; rebuild it with `Tools/Scale/*`, `Tools/Grading/Photo Shoot (Play)` and `Tools/Events/Trace Actor Route (Play)`.)*
+
+  **Decision: (A) — the characters are scaled to the town.** The town stays at its modelled size, which is
+  roughly real metres, and the player and every character become people: **1.77 m tall, eye 1.65 m**.
+  Today's characters were 8.86 m tall (measured), so the factor is **F = 5.0**. That retires the second factor
+  in circulation, **4×**, behind the drunk's 100-unit cue radius.
+
+  **Why.** Three options were staged in the real town and photographed from the player's eye at the same four
+  spots (a car, the one surface house's door, a pine, the street), with a person posed beside each object and
+  an orthographic witness frame whose drawn heights are measured. Under (C) the eye sits at 8.5 m: the pine tops
+  (6.9 m) and the house eave (5.6 m) are *below* the eye, the porch door is out of the bottom of the frame, and the
+  whole woodland is seen from above. That means climbing a roof or a hill could never show the player anything
+  the street did not, which is the story's whole point. Under (A) and (B) the eye is a person's and the town reads
+  as a place. (A) and (B) come out as near-similar triangles: their eye views differ by 5–9 grey levels (A vs C:
+  33–47), the residue being eye 1.65 vs 1.70-equivalent, nudge, and settings that do not scale, as predicted. So
+  (A) against (B) is a question of **cost**, and (B) costs far more.
+  - It moves 30+ values, every world-positioned rig vantage, physics and shadow distances, and a 25×-area NavMesh.
+  - It puts coordinates out to ±10 km.
+  - Every future asset would be imported at 8.8 m per person.
+  - It would break Story 2.2's AR9 bounds check.
+
+  | Evidence | (C) keep | (A) characters ÷ 5 — **chosen** | (B) town × 5 |
+  |---|---|---|---|
+  | Eye ÷ door head (2.81 m above its deck) | 8.50 / 2.81 = 3.02 | 1.65 / 2.81 = 0.59 | 8.50 / 14.05 = 0.60 |
+  | Eye ÷ car roof (police car, 2.56 m) | 3.32 | 0.64 | 0.66 |
+  | Eye ÷ pine (canopy 0.65 m / top 6.93 m) | 13.1 / 1.23 | 2.52 / 0.24 | 2.60 / 0.25 |
+  | Eye ÷ house eave / ridge (5.63 / 10.31 m) | 1.51 / 0.82 | 0.29 / 0.16 | 0.30 / 0.16 |
+  | Plain, 810 m, walk / sprint | 161.9 s / 80.9 s at 5 / 10 m/s | 161.9 / 81.0 s at 5 / 10; 202.4 s / 115.6 s at the chosen 4 / 7 | 161.9 s / 80.9 s (4050 m) at 25 / 50 m/s; ×5 longer at 5 / 10 (computed) |
+  | Tuned values moved / code literals among them | 0 / 0 (but the cue stays 20 person-m, not 25) | 21 / 3 | 30+ / 3, plus every rig world position |
+  | NavMesh re-bake | none | {NAVMESH_COST} | ~25× today's 36 MB area at the same voxel (est. ~900 MB, over GitHub's 100 MB limit: not baked) |
+
+  Paths:
+  - photographs: `options/contact-sheet.png`;
+  - eye ratios: `options/*/photos.json`;
+  - crossings: `crossing/*/crossing.csv`;
+  - inventory: `inventory/tuned-numbers.md`;
+  - comparison: `decision/comparison.md`.
+
+  **The scale rule for all future content.**
+  1. A person is **1.77 m** (the drunk measures 1.67 m in his stooped idle). The town's own modelling is roughly real metres; new buildings, props and vehicles are modelled at real size.
+  2. **Never scale a root that carries a `CharacterController`, `NavMeshAgent` or `AudioSource`.** Scale the visual, and author those components in metres. `AudioSource` distances never scale with a transform.
+  3. **Skinned Generic models** (the drunk, `husband_rigged.fbx`): scale the prefab's `Armature` transform (the drunk: 0.01 → **0.002**), never the importer. The clips were read back as rotation-only with constant-1 bone scales, none on `Armature`, so the `Armature` scale cannot be overridden.
+  4. **Unskinned or skeleton-less models** (the player, `main characters.fbx`): the importer's Scale Factor (`globalScale` 1 → **0.2**).
+  5. **Epic 3's bandit, CEO and oil-rig worker** in `Assets/Models/` follow the same rule. Measure each one's animated height in play mode first, then scale it to ~1.7–1.8 m by the rule above.
+
+  **Design constants Epic 2 builds on** (all in `PlayerConfig.asset`, `TownDrunk.asset`, the drunk prefab or `NavMeshAreas.asset`):
+
+  | Constant | Value |
+  |---|---|
+  | Character height / eye height | 1.77 m / 1.65 m (0.93 of stature) |
+  | Controller radius / skin / step offset | 0.30 / 0.03 / 0.35 m |
+  | Jump apex / air time | 1.2 m / 0.80 s (gravity −15; kept in world metres, now 0.68 body heights) |
+  | Walk / sprint | **4 / 7 m/s** (human-paced; the plain takes 202.4 s / 115.6 s) |
+  | Camera forward nudge / near clip | 0.316 / 0.095 m (scaled with the radius: the near plane still reaches 0.37 radii past the capsule, as before) |
+  | NavMesh agent 0 | radius 0.30, height 1.77, climb 0.35, slope 45, {NAVMESH_VOXEL} |
+  | Drunk walk speed | {DRUNK_SPEED} |
+  | Drunk route | {DRUNK_ROUTE} |
+  | Cue radius / falloff start | **25 m / 2 m** (measured: {CUE_AFTER}) |
+
+  **Numbers moved (before → after).**
+  - Player: CC 8.86 / 0.95 / 0.08 → 1.77 / 0.30 / 0.03; step 2 → 0.35; eye 8.5 → 1.65 (code → config); nudge 1 → 0.316 (code → config); ground-stick −2 (code → config); near 0.3 → 0.095; walk / sprint 5 / 10 → 4 / 7.
+  - Models: player model ×0.2; drunk `Armature` 0.01 → 0.002; drunk agent r / h 1 / 8 → 0.30 / 1.77.
+  - Drunk tuning: {DRUNK_MOVED}; cue 100 / 8 → 25 / 2; route {ROUTE_MOVED}.
+  - NavMesh agent 0: 0.95 / 8.86 / 2 → 0.30 / 1.77 / 0.35.
+  - Rigs: eye and near clip now read `PlayerConfig`.
+
+  **Consequences.**
+  - **Occlusion is real now.** Cars and pines hide a 1.67 m drunk that an 8.8 m one towered over. The Town Placement Study grades differently because the world changed, not the grader. This is why Story 2.5's vantage points matter.
+  - **The cue's audible area is 16× smaller in world terms** (100 → 25 m radius). In person terms it goes from a measured 20 m to the design's 25 m.
+  - **The town has giant-scale leftovers, and they are now level-design work for Story 2.2:**
+    - The road is a raised slab whose edges stand **1.2–1.65 m** above the grass along most of its length. That is a wall at a 0.35 m step, and the road is reachable only where the grass meets it (near x 0).
+    - A line of tyres (x −223…−213) fences off the plain's west quarter at person scale.
+    - The police car at spawn is ~2× real (9.5 m long); the porch door is ~1.4× (2.81 m); the bus-shelter roof is ~9 m up.
+    - The census's "street block" sits ~60 m underground and is invisible.
+  - **The rigs.** Distances in subject heights are unchanged by construction. The eye height and near clip are read from `PlayerConfig`, so the next rescale moves them too.
+  - **The 1.14 recording spike is pinned to the old scale** (`EyeHeight 7.5`, `-vantage 38.59,8.29,6.27`). It is fenced throwaway code and is not modified (a README note says so).
+  - **ADR-4 replays are scale-bound** once Story 1.17 persists them. None exist yet, so this costs replay nothing today.
+
+  **Reversal cost.** Going back to (C) means reverting about 13 files:
+  - `PlayerConfig.asset` values and the importer scale;
+  - the drunk prefab and `TownDrunk.asset`;
+  - `NavMeshAreas.asset` and the scene's controller and route;
+  - a re-bake (the old 36 MB asset is in git history).
+
+  It is about an hour, cheap today. After Stories 2.2–2.4 merge, it also means re-placing everything they put
+  in the world at person scale. Moving to (B) instead costs everything in its column above.
 
 ---
 

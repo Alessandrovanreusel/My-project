@@ -145,3 +145,22 @@ meanwhile. His choices:
   question, and shipping an LGPL ffmpeg versus driving Media Foundation directly.
 - Evidence: `_bmad-output/verification/1-14-decide-how-the-game-records-video/` and ADR-4 in
   `game-architecture.md`.
+
+## 2026-11-11 — ADR-5 accepted: the characters are scaled to the town (Alexv may veto)
+
+- **Story 2.1** staged three options in the real town and photographed each from the player's eye at the same
+  four spots, with the drunk posed beside each object: (A) scale the characters to the town, (B) scale the
+  town ×5 to the characters, (C) keep both. It measured the eye ratios, crossing times through the real
+  controller and real input, and every tuned number each option moves. **Chosen: (A).** People are 1.77 m
+  with the eye at 1.65 m (they were 8.86 m), so F = 5.0. That retires the 4× behind the drunk's 100-unit cue
+  radius, which measured as 20 person-metres at the listener; the cue is now 25 m.
+- Why: at 8.5 m the eye sits above every pine top and eave in the slice, so a vantage point could never show
+  more than the street. (B) photographs almost exactly like (A) (similar triangles, measured) but moves 30+
+  values and needs a NavMesh 25× the area.
+- **Decided, not gated** (loop rule "decide, flag, keep going"; AC4 is a batched human check). If Alexv vetoes
+  after Stories 2.2–2.4 merge, their placements must be redone.
+- New level-design work the person scale exposes, for Story 2.2: the road is a raised slab with 1.2–1.65 m
+  edges, a tyre line fences off the plain's west quarter, the police car is ~2× real, and the old "street
+  block" is buried ~60 m underground.
+- Evidence: `_bmad-output/verification/2-1-settle-the-players-scale-in-the-town/` and ADR-5 in
+  `game-architecture.md`.
