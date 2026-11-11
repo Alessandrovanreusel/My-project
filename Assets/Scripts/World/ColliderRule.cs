@@ -13,6 +13,8 @@ namespace CameraGame.World
         Water,
         /// <summary>Buried under the plain: only a player who fell through the world could reach it.</summary>
         Buried,
+        /// <summary>A pine: its TRUNK blocks (a capsule round it); its foliage, which hangs to 1.2 m over a 4 m radius, does not.</summary>
+        Trunk,
     }
 
     /// <summary>
@@ -26,13 +28,22 @@ namespace CameraGame.World
     /// stumps. Before this rule every one of them carried a MeshCollider, so a grass tuft stopped the player like a wall.
     ///
     /// The rule: no collider for grass (whatever its height), for any other scatter no taller than a step above the
-    /// ground under it, for water, or for anything buried below the plain. Everything else — pines, trees, stumps,
-    /// rocks, props, buildings, terrain — keeps its collider.
+    /// ground under it, for water, or for anything buried below the plain; pines get a collider round the trunk only.
+    /// Everything else — trees, stumps, rocks, props, buildings, terrain — keeps its mesh collider.
+    ///
+    /// ⚠️ Measured on the way (Story 2.2): every scatter collider in the scene referenced a mesh the FBX no longer
+    /// contains and loaded with no mesh — the pines, rocks and grass never collided at all. The tool that applies this
+    /// rule therefore REPAIRS the kept ones (the MeshFilter's mesh), and an EditMode test checks every reference resolves.
     /// </summary>
     public static class ColliderRule
     {
         /// <summary>The .blend particle family that is grass (its instances are named "…|Cube.012_M18_0|Dupli|n").</summary>
         public const string GrassFamily = "Cube";
+
+        /// <summary>The .blend particle family that is the pine trees ("…|Circle.005_M18.001_0.001|Dupli|n"). Measured
+        /// (Story 2.2): a pine's lowest foliage tier hangs at 1.2–1.36 m out to a 4 m radius, so a whole-mesh collider
+        /// would make each of ~6,000 pines, 4–9 m apart, a 7–8 m chest-high wall. The trunk alone blocks.</summary>
+        public const string TrunkFamily = "Circle";
 
         /// <summary>The material-name prefix of the map's water (Water.001).</summary>
         public const string WaterMaterialPrefix = "Water";
@@ -64,7 +75,7 @@ namespace CameraGame.World
         public static bool NeedsHeightAboveGround(string objectName)
         {
             string family = ScatterFamily(objectName);
-            return family != null && family != GrassFamily;
+            return family != null && family != GrassFamily && family != TrunkFamily;
         }
 
         /// <summary>
@@ -82,6 +93,7 @@ namespace CameraGame.World
             string family = ScatterFamily(objectName);
             if (family == null) return ColliderVerdict.Keep;
             if (family == GrassFamily) return ColliderVerdict.Grass;
+            if (family == TrunkFamily) return ColliderVerdict.Trunk;
             if (!float.IsNaN(heightAboveGround) && !float.IsNaN(stepHeight) && heightAboveGround <= stepHeight) return ColliderVerdict.LowScatter;
             return ColliderVerdict.Keep;
         }

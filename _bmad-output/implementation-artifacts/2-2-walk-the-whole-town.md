@@ -558,10 +558,10 @@ changes the world every other system is measured in.
         and time it. Then do the read-backs from AC1. Add the EditMode importer test.
 
 - [ ] **Task 4: Scatter colliders, spawn and road access (AC2)**
-  - [ ] 4.1 Implement the 1b rule and its tests. Apply it through the tool, update `AddMeshColliders.cs`, save the
+  - [x] 4.1 Implement the 1b rule and its tests. Apply it through the tool, update `AddMeshColliders.cs`, save the
         scene in its **own** `execute_code` call (memory: an unsaved-changes dialog turns one menu call into six),
         and diff the YAML: only the removed components.
-  - [ ] 4.2 Move the player spawn (1i).
+  - [x] 4.2 Move the player spawn (1i).
   - [ ] 4.3 Add road access (1j) under `TownAccess`, or record why none is needed.
 
 - [ ] **Task 5: Edges, water and the oil rig (AC3)**
@@ -1129,6 +1129,24 @@ resolves. Reversal: re-run the tool with the rule changed.
   15,020 before AND after (nothing new broke), the orphaned override still targets nothing; the .meta diff is the two
   flags. EditMode guards added (`TownMapGuardTests`: camera import off, light import off, SampleScene and the NavMesh
   asset each < 50 MB): 195/195. The play-mode "only Main Camera" read-back is logged by every town rig run.
+
+### Task 4 — colliders and spawn (2026-11-11)
+
+- 4.1 `ColliderRule` (+ `Trunk` for pines) with `ColliderRuleTests` (pure); applied by `Tools/Town/Apply Collider Rule
+  to the Map` — and by `Tools/Add MeshColliders to World`, the same pass, so a re-run never re-adds what was
+  removed. On SampleScene (1.7 s): kept 1,045, **repaired 929** (909 rocks taller than a step + 20 stumps, their
+  MeshCollider now holds the MeshFilter's mesh), **removed 8,765** (7,996 grass, 91 low rocks, the buried set
+  (674 renderers incl. the dome and the −6.5 m plane under spawn), the sea, and two oil-rig legs whose first
+  material is the water), **5,999 pine trunk capsules** (3 m, radius = 90th-percentile distance of the lowest
+  metre's vertices, clamped 0.25–1.2 m). Read back: 1,974 MeshColliders, **0 without a mesh** (was 15,020).
+  Scene saved in its own call; object counts HEAD → saved: MeshCollider 16,738 → 1,974, CapsuleCollider 0 → 5,999,
+  stripped GameObject refs −8,765, every other object type unchanged (`colliders/report.txt`); the file went
+  16.9 → 7.8 MB. New EditMode guard: every map MeshCollider reference in SampleScene resolves to a mesh the FBX
+  holds (its logic finds 15,020 broken in the HEAD scene, 0 now). EditMode 217/217.
+- 4.2 Spawn (1i): the player now stands at (0.45, 2.153, 3.6), yaw 58.8° (toward the drunk's peak), on the road
+  slab's north edge in 2.1's measured gap — capsule clear (CheckCapsule), no 16 m drop, not on the barrier.
+- 4.3 Road access (1j): decided after the whole-town bake (Task 8), from whether every part paths through the
+  road's existing steppable runs (census: 7 per side). Recorded there.
 
 ### Completion Notes List
 
