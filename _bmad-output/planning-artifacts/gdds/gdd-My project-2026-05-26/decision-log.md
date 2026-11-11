@@ -164,3 +164,23 @@ meanwhile. His choices:
   block" is buried ~60 m underground.
 - Evidence: `_bmad-output/verification/2-1-settle-the-players-scale-in-the-town/` and ADR-5 in
   `game-architecture.md`.
+
+## 2026-11-11 — The town's edges, and the oil rig is out of bounds (Story 2.2)
+
+- **Story 2.2** walked the whole town at person scale with the real controller and real input. It measured the
+  edges and the water, and settled where the town ends: the central plain plus the ring's inner slopes, one polygon in
+  `TownBoundsConfig`. Invisible barriers stand at the water's edge and on the ring's slopes (layer `WorldBounds`).
+  There are no markers and no gating. The water has no collider, and a player who falls out of the world is put back
+  on the last safe ground (in at most 0.16 s in every provoked case, against the ~2 s the AC allows).
+- **The oil rig is deliberately out of bounds (option B).** It stands ~220 m off the shore on legs, with decks
+  45–88 m up. Nothing walkable reaches it (the long grey strip at x ≈ −548 ends 113 m short), and from the shore
+  nothing on it can be graded (the 0.20 size gate reaches ≈ 27.6 m at full zoom). Making it reachable would mean a
+  ~220 m walkway that is not in Alexv's map. **Consequence for Epic 3:** the oil-rig smoke-break event must be staged
+  where the player can get within ~27 m of the worker, in the industrial yard (the farm) or on the shore.
+- **Decided, not gated** (the AC has no approval clause; loop rule "decide, flag, keep going"). Reversal: add a
+  walkway under a `TownAccess` root, extend the polygon over it, and re-bake.
+- Also found and fixed on the way: 15,020 of the map's 16,738 colliders (every pine, rock, grass tuft and stump)
+  pointed at meshes a reimport had removed, so the player walked through every tree. Pines now have a trunk
+  collider, rocks and stumps have their mesh back, and grass, low scatter, the water and the buried block have none.
+- Evidence: `_bmad-output/verification/2-2-walk-the-whole-town/` and "World bounds and traversal (Story 2.2)" in
+  `game-architecture.md`.
