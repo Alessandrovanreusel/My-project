@@ -47,6 +47,13 @@ locatable, look like a good photograph or a good clip. Alexv chose **batch them*
   yours. `decisions` and `lessons` are the opposite: only the new ones from this phase.
 - **Never mark a perceptual AC verified yourself**, and never phrase it as passed. The story can
   still close: it waits in `review` with the check queued, and later stories may build on it.
+- **A human check is for what only a person can judge. It is never a place to park a defect.** If
+  your own measurement or your own read says an AC is probably *not* met, fix it now. That applies
+  even when the fix involves a choice: make it by measuring, and record it in `decisions`. Queue the
+  human check after the fix, for the feel. (Story 2.2: "the player stops at x 258 on an open slope
+  that keeps rising, which will read as an invisible wall", against an AC that says the *terrain*
+  stops them. That was queued for Alexv through dev and review, with the one-line fix written beside
+  it.)
 
 ## Approvals that must come before other work starts
 

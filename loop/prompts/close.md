@@ -10,7 +10,10 @@ Check, by running things rather than reading:
 3. Every acceptance criterion in `{story_file}` has either evidence you can open (paths that exist
    under `_bmad-output/verification/{unit}/` or tests) or a `human_checks` entry. Open a sample of
    the captures and confirm they show what the story says they show. Blank, uniform or near-white
-   images mean the rig is broken (CLAUDE.md).
+   images mean the rig is broken (CLAUDE.md). **Read every queued human check's `my_read`.** A check
+   whose own read says the AC is likely not met is a failing AC, not evidence. Fix it if that is
+   small (making any choice by measurement, as a decision). Otherwise write `failed` with the fix as
+   your `next_hint`.
 4. The story file is complete: tasks ticked honestly, Dev Agent Record, review notes, File List.
 5. `git status`: nothing tracked is uncommitted, and no untracked file under `Assets/`,
    `_bmad-output/planning-artifacts/` or `_bmad-output/implementation-artifacts/` that belongs to
