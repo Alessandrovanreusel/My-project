@@ -176,5 +176,37 @@ namespace CameraGame.Tests
             Assert.AreEqual(0f, PlayerConfig.NearPlaneReach(float.NaN, 1.7f, 0.095f));
             Assert.AreEqual(0f, PlayerConfig.NearPlaneReach(60f, 1.7f, 0f));
         }
+
+        [Test]
+        public void NearPlanePoints_CentreCornersAndMidpoints_MatchTheReach()
+        {
+            // Story 2.2 cross-review: the camera tests these 9 points when a surface is inside its cast's start sphere
+            var pts = new Vector3[9];
+            Vector3 cam = new Vector3(1f, 1.65f, 2f);
+            Quaternion rot = Quaternion.Euler(-80f, 270f, 0f);   // looking up 80°, facing −x
+            PlayerConfig.NearPlanePoints(cam, rot, 60f, 16f / 9f, 0.095f, pts);
+            float reach = PlayerConfig.NearPlaneReach(60f, 16f / 9f, 0.095f);
+            Assert.AreEqual(0.095f, Vector3.Distance(cam, pts[0]), 1e-4f, "the centre lies one near clip along the view");
+            Assert.AreEqual(0f, Vector3.Angle(rot * Vector3.forward, pts[0] - cam), 0.01f);
+            for (int i = 1; i <= 4; i++) Assert.AreEqual(reach, Vector3.Distance(cam, pts[i]), 1e-4f, "corner " + i);
+            for (int i = 5; i <= 8; i++) Assert.Less(Vector3.Distance(cam, pts[i]), reach, "midpoint " + i);
+            // the highest point looking up 80° from 1.65 m is 1.65 + 0.095 sin 80° + 0.0548 cos 80° = 1.753 m
+            float top = float.NegativeInfinity;
+            foreach (Vector3 p in pts) top = Mathf.Max(top, p.y);
+            Assert.AreEqual(1.753f, top, 0.002f);
+        }
+
+        [Test]
+        public void NearPlanePoints_BadInputs_CollapseOntoTheCamera()
+        {
+            var pts = new Vector3[9];
+            Vector3 cam = new Vector3(3f, 2f, 1f);
+            PlayerConfig.NearPlanePoints(cam, Quaternion.identity, float.NaN, 1.7f, 0.095f, pts);
+            foreach (Vector3 p in pts) Assert.AreEqual(cam, p);
+            PlayerConfig.NearPlanePoints(cam, Quaternion.identity, 60f, 1.7f, -1f, pts);
+            foreach (Vector3 p in pts) Assert.AreEqual(cam, p);
+            Assert.DoesNotThrow(() => PlayerConfig.NearPlanePoints(cam, Quaternion.identity, 60f, 1.7f, 0.095f, new Vector3[3]));
+            Assert.DoesNotThrow(() => PlayerConfig.NearPlanePoints(cam, Quaternion.identity, 60f, 1.7f, 0.095f, null));
+        }
     }
 }

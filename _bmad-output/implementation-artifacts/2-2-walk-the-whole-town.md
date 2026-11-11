@@ -767,6 +767,127 @@ with `EnumWindows`. Its content equalled HEAD, so "Reload" was posted to it.
 - Restored afterwards: SampleScene is open and not dirty, with no rig object. The dev's `fall/` and
   `colliders/report.txt` evidence is put back exactly as found (`diff -r` clean against the copy taken before).
 
+### Cross-review findings (independent reviewer; loop FIX phase, 2026-11-11)
+
+The cross-review (`loop/runtime/results/2-2-walk-the-whole-town/cross-review-findings-20261111-084114.md`, a separate session
+on another model) raised 3 findings. Each was treated as a hypothesis and **run**, not argued:
+- the rig modes are `Tools/Town/Cross-review - far waypoints | low overhead | walls, near-plane instrument (Play)`, in
+  `TownRigRunner.CrossReview*.cs`;
+- the evidence is in `_bmad-output/verification/2-2-walk-the-whole-town/cross-review/`.
+
+**Result:** findings 1 and 3 were confirmed and fixed, and re-verified by running. Finding 2 was a confirmed evidence gap,
+closed by re-measuring with a new instrument. One hypothesis is deferred.
+
+- [x] [Cross-review][Patch] **1. A partial path's end counted as reaching the waypoint**
+      [EventActor.cs `Update` → `StepAlongRoute`, `NextRouteStep`]
+  - **Reproduced** with the real pooled drunk (`longroute/before-fix/`). The rig staged a clone of his definition with a
+    10-minute walking Build phase, and set the agent to 20 m/s. Routes: pub → farm → house_row, and pub → corner_nw →
+    house_row.
+    - In all 3 runs the actor left waypoint 0 while **162 m** (the farm, twice) and **419 m** (corner_nw) short of it,
+      with remainingDistance 0.256 / 0.01 and PathPartial.
+    - The dev's own trace already showed it (`navmesh/agents_trace.csv`): the lone corner_nw agent read PathComplete,
+      remaining 0, both 400 m and 70.8 m short.
+  - **Fix:**
+    - Arrival is measured against the waypoint itself: mapped onto the NavMesh, horizontal distance ≤ stopping distance +
+      0.5 m.
+    - A path that ends short of the waypoint is re-planned from there, as long as each re-plan ends ≥ 1 m closer.
+    - A re-plan that gets no closer (a dead end or an island) warns once, and the route moves on as before.
+    - The decision is a pure function, `NextRouteStep`, with 6 EditMode tests (`EventActorRouteTests`).
+  - **Re-verified** (`longroute/after-fix-2/`):
+    - the farm is reached at **0.2 m**, and at **0.0 m** on the second cycle of the same pooled instance, then house_row;
+    - the dead end: a re-plan to 70.7 m short of corner_nw, **one** warning ("… cannot be reached … (said once)"), then on
+      to house_row 512 m away, reached at 0.0 m;
+    - console: 1 provoked warning, 0 others, 0 errors.
+  - **Regression** (`cross-review/route-regression/after-fix/`): the drunk's own route, 3 full pooled cycles plus a 4th.
+    - He arrives **0.71–0.79 s** before despawn (dev's run: 0.72–0.76).
+    - The peak lasts **1.45–1.49 s at x 26.31–26.34** (dev's run: 1.45–1.50 at 26.30–26.32).
+    - One instance, on the NavMesh every frame.
+    - The dev's `route/after/` was copied aside first and put back unchanged (`diff -r` clean).
+  - **A rig defect found on the way:** the first run disabled the player's controller. That made FallRecovery warn 28
+    times, because a disabled controller never calls Move, so `isGrounded` goes stale. Shipped code never disables it,
+    and the rig now leaves it on.
+- [x] [Cross-review][Patch] **3. A surface inside the camera cast's start sphere was skipped**
+      [ThirdPersonCamera.cs `ClearNudge` → `NearPlaneClearNudge`, `Duck`; PlayerConfig `NearPlanePoints`]
+  - **The scenario as written is disproven** (`overhead/before-fix/`). Flat beams with undersides at 1.60–1.95 m gave 0
+    see-through and 0 geometric hits in 40 poses:
+    - the controller always stops with its axis 0.330 m (radius + skin) from the beam's edge, outside the 0.177 m start
+      sphere, so the cast sees every beam;
+    - looking up 80°, the near plane's highest point is 1.753 m, not ~1.85 m.
+  - **The mechanism is real for a SLOPING underside** (worked out, then run, `overhead/before-fix-tilted/`):
+    - slabs descending 10–30° stop the top of the capsule inside the start sphere, and the cast skipped them;
+    - the full 0.316 m nudge then put the near plane inside the slab: the whole frame showed through at 10–25°, and at
+      30° the camera itself was inside (17 see-through poses, 19 geometric hits).
+  - **In the town** (`walls/before-fix-overhangs/`), at the overhangs Task 9 walked under: rock.007 gave 9 see-through
+    poses (up to 132,258 px), and rock.023 gave 4 (62,617 px).
+  - **Fix:**
+    - A start-overlap is now tested on the near plane itself: lines from the eye to its centre, corners and edge
+      midpoints, each stretched by the 0.03 m wall margin. The longest clear nudge wins (6 halvings). This runs only while
+      something is inside the start sphere, and allocates nothing.
+    - **A fallback the same rig found:** walking up the hill into rock.023 at −30° WEDGES the body. The
+      CharacterController's top ends **0.106–0.125 m inside the rock** (`ComputePenetration`), so no forward nudge is
+      clear. The eye then drops in 5 cm steps (at most 0.3 m) to the first clear pose. If none is clear, it stays at the
+      eye.
+  - **Re-verified:**
+    - overhead, 64 poses (flat and tilted): **0 see-through, 0 geometric hits** (`overhead/after-fix-2/`), and the 40
+      flat-beam poses identical to before the fix;
+    - the rock.023 wedge (body 0.125 m in the rock): the camera is at 1.500 m (ducked 0.15 m) with 0 see-through
+      (`walls/final/log.txt`, PRESSED lines);
+    - the open-space pose is unchanged: 1.6500 m up and 0.3160 m forward at pitch −80, 0 and +80.
+  - **For Alexv's eye:** under a 10–15° slope, looking up 45–60°, the eye drops 5 cm, because at nudge 0 the near plane
+    sits inside the margin.
+  - **Tests and docs:** 2 EditMode tests (`PlayerConfigTests.NearPlanePoints_*`). The deferred entry "the camera's wall
+    cast assumes the near plane's reach stays inside the body" is updated: partly resolved. The hypothetical `wideFov` 90
+    on 32:9 stays open.
+- [x] [Cross-review][Evidence] **2. AC4's wall evidence was thinner than "14 walls, 0 see-through" read**
+  - **Confirmed** from `walls/after/per-wall.csv`:
+    - 5 of the 14 walls had 0 valid poses;
+    - the slab edge, an inside corner and the bus shelter were missing;
+    - the scatter pine, scatter rock and planter see-through poses had been written off untested.
+  - **Closed by re-measuring** with a new instrument (`TownRigRunner.CrossReviewWalls.cs`, `walls/final/`):
+    - **Markers:** double-sided, 2 cm INSIDE every collider-backed visible surface within 1.2 m of the eye. Each surface
+      is found on its renderer's own mesh, so a trunk slimmer than its capsule is measured where it is seen.
+    - **A against B:** A is the real near clip, and B is a 0.005 near clip from the same pose. Only what the near clip
+      reveals counts, and leaks round an edge cancel out.
+    - **Two controls per pose:** the near surfaces switched off (the marker is in view), and the camera put 3 cm from the
+      surface (the instrument sees a near plane past it).
+    - **Every A-not-B pixel is classified** by a ray against the render meshes, up to the near plane: it cut a wall, it
+      cut collider-less geometry, or it found no surface (an instrument artifact).
+  - **Result on the fixed camera:** 20 walls, 1,500 poses and 414 valid, with **0 see-through and 0 geometric hits on
+    every wall**. All 6,155 sampled A-not-B pixels are artifacts, with no surface before the near plane.
+
+    | Wall | Valid poses |
+    |---|---|
+    | House | 20 |
+    | Log cabin, north / east | 55 / 15 |
+    | Farm shed | 62 |
+    | Supermarket glass | 18 |
+    | Street building, west | 55 |
+    | Planter | 9 |
+    | Tyre line | 20 |
+    | Police car | 10 |
+    | Scatter pine | 10 |
+    | Scatter rock | 2 |
+    | Hillside | 4 |
+    | Road slab edge | 20 |
+    | Inside corner (pressed into it, contact normals 90° apart) | 66 |
+    | rock.007 | 22 |
+    | rock.023 | 7 |
+    | Tyre overhang | 19 |
+  - **Not testable, each for a stated reason:**
+    - the solo pine: another tree (Circle_M17_0) stops the body first;
+    - the mountain face and rock.006: when the body stops, no surface is within 1.2 m of the eye (a slope the player
+      stands on), and there were 0 geometric hits;
+    - the bus shelter: it exists only in the buried set (census: BusStop_Vetro_0 at y −61), so there is none on the
+      surface;
+    - the road slab: its collider is the raised top (1.25 m) with no side face. It was walked into at its edge, and its
+      top lies 0.3 m below the near plane's lowest point.
+  - **The earlier written-off poses:** the scatter pine, the scatter rock and the planter each read 0 see-through with
+    this instrument. The old marker had shown round the visual trunk and over the rock. The planter's thin line is still
+    the .blend's art seam, queued for Alexv as before.
+
+**Deferred:** an authoring check that every route leg is `PathComplete` on the baked mesh (deferred-work, "cross-review FIX
+of story-2-2"). Today's only route is the drunk's 11 m, and it completes.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -1491,6 +1612,13 @@ Queued in the result file, none self-certified:
 - New: `Assets/Scripts/World/TownRigRunner.Walls.cs`
 - New: `Assets/Scripts/World/TownRigRunner.cs`
 - New (code review): `Assets/Scripts/World/TownRigRunner.Review.cs` (rig modes for the review's FallRecovery scenarios)
+- Modified (cross-review FIX): `Assets/Scripts/Events/EventActor.cs` (arrival measured at the waypoint; re-plan; give up once),
+  `Assets/Scripts/ThirdPersonCamera.cs` (start-overlaps tested on the near plane; the wedge fallback),
+  `Assets/Scripts/Player/PlayerConfig.cs` (`NearPlanePoints`), `Assets/Tests/EditMode/PlayerConfigTests.cs`,
+  `Assets/Scripts/Editor/TownRig.cs` and `Assets/Scripts/World/TownRigRunner.Review.cs` (the cross-review rig menu items
+  and their hook)
+- New (cross-review FIX): `Assets/Tests/EditMode/EventActorRouteTests.cs`, `Assets/Scripts/World/TownRigRunner.CrossReview.cs`,
+  `Assets/Scripts/World/TownRigRunner.CrossReviewWalls.cs` (rig modes), with their `.meta` files
 - New: `Assets/Tests/EditMode/ColliderRuleTests.cs`
 - Modified: `Assets/Tests/EditMode/PlayerConfigTests.cs`
 - New: `Assets/Tests/EditMode/TownBoundsConfigTests.cs`
@@ -1515,3 +1643,4 @@ Queued in the result file, none self-certified:
 - 2026-11-11: Story file created by the loop CREATE phase (Claude Opus 5.5). Status → ready-for-dev.
 - 2026-11-11: Implemented by the loop DEV phase (Claude Opus 5.5, attempts 1–2). Status → review.
 - 2026-11-11: Code review by the loop REVIEW phase (Claude Opus 5.5): 2 patches to FallRecovery (applied and re-verified by running), 3 deferred, 10 dismissed. Status stays review (perceptual checks open).
+- 2026-11-11: Cross-review FIX phase (Claude Opus 5.5): findings 1 (the event actor's arrival at a partial path's end) and 3 (the camera skipping a surface inside its cast, reproduced on sloping overhangs and a boulder wedge) fixed and re-verified by running; finding 2 (AC4 evidence) closed by re-measuring 20 walls with a near-plane instrument (0 see-through on the fixed camera); 1 hypothesis deferred. EditMode 250/250. Status stays review.

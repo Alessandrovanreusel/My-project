@@ -32,6 +32,11 @@ public class ThirdPersonCamera : MonoBehaviour
     // Story 2.2 (AC4): the cast that keeps the near plane out of walls. Pre-allocated (no garbage per frame); every layer
     // but the invisible town barriers (WorldBounds), which are not walls and show nothing behind them.
     private readonly RaycastHit[] _wallHits = new RaycastHit[8];
+    private readonly Vector3[] _nearPoints = new Vector3[9];   // the near plane at a candidate pose (NearPlaneClear)
+    private bool _wedged;                                       // this frame, not even a nudge of 0 keeps the near plane clear
+
+    // How far the eye may drop when the body is wedged into an overhang (Duck), in metres.
+    private const float MaxDuck = 0.3f;
     private int _wallMask = ~0;
     private Camera _cam;
 
@@ -137,30 +142,92 @@ public class ThirdPersonCamera : MonoBehaviour
         // nothing is hit, so the pose is exactly the old one at pitch 0: 1.65 m up and 0.316 m forward of the feet.
         Vector3 head = GetHeadPosition();
         Vector3 forward = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
-        transform.position = head + forward * ClearNudge(head, forward);
+        float nudge = ClearNudge(head, forward);
+        transform.position = _wedged ? Duck(head) : head + forward * nudge;
     }
 
     /// <summary>How far forward of the body axis the camera can sit without its near plane reaching a surface: the
     /// configured nudge, cut short where a sphere — the near plane's reach (from the live FOV, aspect and near clip) plus
     /// the wall margin — cast from the axis along the facing meets something. The player's own capsule is never hit: a
-    /// cast ignores colliders it starts inside, and the camera's own body is skipped by name of its root.</summary>
+    /// cast ignores colliders it starts inside, and the camera's own body is skipped by name of its root. A surface the
+    /// cast STARTS inside is tested on the near plane itself (NearPlaneClearNudge), never skipped.</summary>
     private float ClearNudge(Vector3 head, Vector3 forward)
     {
         float nudge = ForwardNudge;
+        _wedged = false;
         if (_cam == null) _cam = GetComponent<Camera>();   // enabled after Awake (rigs do that): set up here instead
         if (nudge <= 0f || _cam == null) return nudge;
         float radius = PlayerConfig.NearPlaneReach(_cam.fieldOfView, _cam.aspect, _cam.nearClipPlane) + WallMargin;
         if (radius <= 0f) return nudge;
         int n = Physics.SphereCastNonAlloc(head, radius, forward, _wallHits, nudge, _wallMask, QueryTriggerInteraction.Ignore);
         float clear = nudge;
+        bool startsInside = false;
         for (int i = 0; i < n; i++)
         {
             RaycastHit h = _wallHits[i];
             if (h.collider == null || h.collider.transform.IsChildOf(target)) continue;
-            if (h.distance <= 0f && h.point == Vector3.zero) continue;   // overlapping at the start: not in front of us
+            // Overlapping at the start: the cast cannot say how far ahead it is, so the near plane is tested directly below.
+            if (h.distance <= 0f && h.point == Vector3.zero) { startsInside = true; continue; }
             clear = Mathf.Min(clear, h.distance);
         }
-        return Mathf.Max(0f, clear);
+        clear = Mathf.Max(0f, clear);
+        return startsInside ? NearPlaneClearNudge(head, forward, clear) : clear;
+    }
+
+    /// <summary>
+    /// ⚠️ Story 2.2 (cross-review finding 3, reproduced in a rig). A surface already inside the cast's start sphere at the eye
+    /// used to be skipped. An underside sloping DOWN 10–30° in front of the head (a boulder's overhang) stops the capsule's top
+    /// right there, so the full nudge put the near plane inside it, and at 30° the camera itself: looking up showed what was
+    /// behind it, the whole frame. Here the near plane is tested where it would be: lines from the eye (inside the body, so in
+    /// free space) to its centre, corners and edge midpoints, each stretched by the wall margin. The longest clear nudge up to
+    /// <paramref name="upTo"/> wins, found in a few halvings. At 0 the near plane lies inside the capsule's skin, where the
+    /// controller lets no surface be. Runs only while something is that close to the head; no allocation.
+    /// </summary>
+    private float NearPlaneClearNudge(Vector3 head, Vector3 forward, float upTo)
+    {
+        if (NearPlaneClear(head, head + forward * upTo)) return upTo;
+        float lo = 0f, hi = upTo;
+        for (int i = 0; i < 6; i++)
+        {
+            float mid = 0.5f * (lo + hi);
+            if (NearPlaneClear(head, head + forward * mid)) lo = mid;
+            else hi = mid;
+        }
+        if (lo <= 0f && !NearPlaneClear(head, head)) _wedged = true;
+        return lo;
+    }
+
+    /// <summary>
+    /// ⚠️ Story 2.2 (cross-review, reproduced at the boulder rock.023 on the south hill). Walking up a slope into an overhang
+    /// that slopes DOWN wedges the body: the CharacterController ended with its top 0.106 m INSIDE the rock, the rock 2–3 cm
+    /// from the eye, so no forward nudge could keep the near plane out and the view showed the hillside behind the rock. The
+    /// clear view is lower: the eye drops in 5 cm steps, up to <see cref="MaxDuck"/>, and the first pose whose near plane the
+    /// lines from the eye find clear wins. If none is, the camera stays at the eye: it is never moved somewhere untested.
+    /// </summary>
+    private Vector3 Duck(Vector3 head)
+    {
+        for (int step = 1; step * 0.05f <= MaxDuck + 1e-4f; step++)
+        {
+            Vector3 p = head + Vector3.down * (step * 0.05f);
+            if (NearPlaneClear(head, p)) return p;
+        }
+        return head;
+    }
+
+    private bool NearPlaneClear(Vector3 eye, Vector3 cameraPosition)
+    {
+        PlayerConfig.NearPlanePoints(cameraPosition, transform.rotation, _cam.fieldOfView, _cam.aspect, _cam.nearClipPlane, _nearPoints);
+        float margin = WallMargin;
+        for (int p = 0; p < _nearPoints.Length; p++)
+        {
+            Vector3 d = _nearPoints[p] - eye;
+            float len = d.magnitude;
+            if (len < 1e-5f) continue;
+            int n = Physics.RaycastNonAlloc(eye, d / len, _wallHits, len + margin, _wallMask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+                if (_wallHits[i].collider != null && !_wallHits[i].collider.transform.IsChildOf(target)) return false;
+        }
+        return true;
     }
 
     // Returns the world position of the character's head.

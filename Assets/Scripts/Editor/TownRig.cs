@@ -71,6 +71,13 @@ namespace CameraGame.EditorTools
         [MenuItem("Tools/Town/Film Shore and Hill (Play)")] public static void Film() => Run("film", Out("film"));
         [MenuItem("Tools/Town/Review - FallRecovery spawn outside the area (Play)")] public static void ReviewOutside() => Run("review", Out("review/outside"), "outside");
         [MenuItem("Tools/Town/Review - FallRecovery ring and backstop (Play)")] public static void ReviewRing() => Run("review", Out("review/ring"), "ring");
+        [MenuItem("Tools/Town/Cross-review - far waypoints (Play)")] public static void XLongRoute() => Run("xreview", Out(XOut("longroute")), "longroute");
+        [MenuItem("Tools/Town/Cross-review - low overhead (Play)")] public static void XOverhead() => Run("xreview", Out(XOut("overhead")), "overhead");
+        [MenuItem("Tools/Town/Cross-review - walls, near-plane instrument (Play)")] public static void XWalls() => Run("xreview", Out(XOut("walls")), "walls");
+
+        /// <summary>The cross-review rigs write to cross-review/&lt;case&gt;/&lt;label&gt;, the label set in SessionState
+        /// "TownRig.XLabel" (session only: nothing is left in the registry) (e.g. before-fix / after-fix), so a re-run never overwrites the evidence it is compared with.</summary>
+        private static string XOut(string kase) => "cross-review/" + kase + "/" + SessionState.GetString("TownRig.XLabel", "run");
 
         public static void Run(string mode, string outputDir, string staging = "")
         {

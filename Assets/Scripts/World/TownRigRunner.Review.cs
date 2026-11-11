@@ -22,7 +22,10 @@ namespace CameraGame.World
         partial void ExtraModes6(ref IEnumerator routine)
         {
             if (mode == "review") routine = staging == "outside" ? ReviewOutside() : ReviewRing();
+            else ExtraModes7(ref routine);
         }
+
+        partial void ExtraModes7(ref IEnumerator routine);
 
         private static readonly FieldInfo CfgField = typeof(FallRecovery).GetField("config", BindingFlags.NonPublic | BindingFlags.Instance);
         private static readonly FieldInfo FallbackField = typeof(FallRecovery).GetField("_fallback", BindingFlags.NonPublic | BindingFlags.Instance);

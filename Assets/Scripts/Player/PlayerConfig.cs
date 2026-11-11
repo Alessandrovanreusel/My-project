@@ -151,6 +151,29 @@ namespace CameraGame.Player
             return Mathf.Sqrt(nearClip * nearClip + halfH * halfH + halfW * halfW);
         }
 
+        /// <summary>
+        /// The near plane of a camera at <paramref name="position"/> turned by <paramref name="rotation"/>: [0] its centre,
+        /// [1..4] its corners, [5..8] its edge midpoints (Story 2.2, cross-review: the camera tests these against the walls
+        /// when a surface is already inside its cast). Fills <paramref name="into"/> (length ≥ 9) without allocating. Non-finite
+        /// or non-positive inputs put every point on the camera position.
+        /// </summary>
+        public static void NearPlanePoints(Vector3 position, Quaternion rotation, float fieldOfViewDegrees, float aspect, float nearClip, Vector3[] into)
+        {
+            if (into == null || into.Length < 9) return;
+            if (!IsFinite(fieldOfViewDegrees) || !IsFinite(aspect) || !IsFinite(nearClip) || nearClip <= 0f)
+            {
+                for (int i = 0; i < 9; i++) into[i] = position;
+                return;
+            }
+            float halfH = Mathf.Tan(Mathf.Clamp(fieldOfViewDegrees, 0f, 179f) * 0.5f * Mathf.Deg2Rad) * nearClip;
+            float halfW = halfH * Mathf.Max(0f, aspect);
+            Vector3 c = position + rotation * Vector3.forward * nearClip;
+            Vector3 u = rotation * Vector3.up * halfH, r = rotation * Vector3.right * halfW;
+            into[0] = c;
+            into[1] = c + u + r; into[2] = c + u - r; into[3] = c - u + r; into[4] = c - u - r;
+            into[5] = c + u; into[6] = c - u; into[7] = c + r; into[8] = c - r;
+        }
+
         /// <summary>Whether a NavMesh agent describes the same body, within tolerance (ADR-5: one agent the size
         /// of the characters).</summary>
         public static bool AgentMatchesBody(float agentRadius, float agentHeight, float bodyRadius, float bodyHeight,

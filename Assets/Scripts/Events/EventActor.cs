@@ -53,8 +53,47 @@ namespace CameraGame.Events
         private bool _running;                   // true from Begin() until despawn; gates Update and latches the single Despawn signal
         private bool _warpWarned;                // Story 2.2: the off-mesh-spawn warning is said once per actor, not every respawn
 
+        // Story 2.2 (cross-review): where the current waypoint sits on the NavMesh, and how far short the last path end
+        // stopped, so "arrived" is measured against the waypoint itself, not only against the end of the agent's path.
+        private Vector3 _waypointOnMesh;
+        private float _lastShortfall = float.PositiveInfinity;
+        private bool _routeDone;                 // at the last waypoint (or it cannot be got closer to): nothing left to step
+        private bool _shortWarned;               // the unreachable-waypoint warning is said once per actor
+
         // How far from the spawn point the NavMesh may be for the agent to be placed there (Story 2.2, the Warp guard).
         private const float SpawnSnapDistance = 1f;
+
+        // How far from a waypoint the NavMesh may be for it to be mapped onto it (Story 2.2, cross-review).
+        private const float WaypointSnapDistance = 2f;
+
+        /// <summary>How much farther than the agent's stopping distance a waypoint may be, horizontally, and still count as
+        /// reached (metres).</summary>
+        public const float ArrivalSlack = 0.5f;
+
+        /// <summary>How much closer a re-planned path must end to count as progress towards a waypoint the previous path fell
+        /// short of (metres).</summary>
+        public const float ReplanProgress = 1f;
+
+        /// <summary>What the actor does once its agent reports the end of its path.</summary>
+        public enum RouteStep { Arrived, Replan, GiveUp }
+
+        /// <summary>
+        /// Story 2.2 (cross-review finding 1). <c>remainingDistance</c> is measured to the end of the agent's CURRENT path, not
+        /// to the waypoint. On the whole-town mesh one query runs out of search budget ~270–430 m out and returns a PARTIAL
+        /// path, and at its end the agent reads remainingDistance ≈ 0 (measured: 0.256 m with the drunk 162 m short of the
+        /// farm). So a waypoint is reached only within stopping distance + <see cref="ArrivalSlack"/> of the waypoint itself.
+        /// Short of it, the actor re-plans from where it stands (a fresh query, a fresh budget) as long as each re-plan ends
+        /// at least <see cref="ReplanProgress"/> closer; otherwise the waypoint cannot be reached from here (a dead end or an
+        /// island) and the route gives up on it. Pure, so EditMode tests pin it. A non-finite shortfall gives up rather than
+        /// re-plan forever.
+        /// </summary>
+        public static RouteStep NextRouteStep(float shortfall, float previousShortfall, float stoppingDistance)
+        {
+            if (float.IsNaN(shortfall) || float.IsInfinity(shortfall)) return RouteStep.GiveUp;
+            float stop = stoppingDistance > 0f ? stoppingDistance : 0f;   // NaN and negatives read as 0
+            if (shortfall <= stop + ArrivalSlack) return RouteStep.Arrived;
+            return shortfall < previousShortfall - ReplanProgress ? RouteStep.Replan : RouteStep.GiveUp;
+        }
 
         /// <summary>
         /// The single fail-soft gate for every NavMeshAgent access (AC3, NFR8). True only when the agent
@@ -305,6 +344,8 @@ namespace CameraGame.Events
             // walk progress so a pooled actor reused for the next cycle starts from the first waypoint.
             _route = route;
             _waypointIndex = 0;
+            _routeDone = false;
+            _lastShortfall = float.PositiveInfinity;
 
             // The agent ships DISABLED on the prefab so a prewarmed/pooled instance that is momentarily off
             // the NavMesh (e.g. parked at the manager's y=20 anchor) never logs Unity's "Failed to create
@@ -458,13 +499,13 @@ namespace CameraGame.Events
             // arrived at the current one. Purely cosmetic/positional — the timers below own phase advancement,
             // so arriving early just idles the body at the last waypoint and arriving late stops it mid-route.
             // Guarded so it adds no per-frame allocation and cannot throw (AC2/AC3).
-            if (NavUsable && _route != null && _route.HasWaypoints
+            // ⚠️ The end of the agent's path is not the waypoint (Story 2.2, cross-review): StepAlongRoute checks the
+            // waypoint itself, and re-plans a path that stopped short of it.
+            if (NavUsable && _route != null && _route.HasWaypoints && !_routeDone
                 && definition.GetPhase(_phase).advanceAlongRoute
-                && !_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance
-                && _waypointIndex < _route.Count - 1)
+                && !_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance)
             {
-                _waypointIndex++;
-                SetDestinationToCurrentWaypoint();
+                StepAlongRoute();
             }
 
             if (_timer <= 0f)
@@ -610,10 +651,44 @@ namespace CameraGame.Events
             curve.MoveKey(index, k);
         }
 
+        /// <summary>The agent has come to the end of its path: on to the next waypoint if this one is reached, a re-plan
+        /// from here if the path stopped short of it, or (when a re-plan gets no closer) on without it, warned once.
+        /// Called only under the NavUsable/HasWaypoints guard in Update.</summary>
+        private void StepAlongRoute()
+        {
+            Vector3 at = transform.position;
+            float shortfall = Vector2.Distance(new Vector2(at.x, at.z), new Vector2(_waypointOnMesh.x, _waypointOnMesh.z));
+            RouteStep step = NextRouteStep(shortfall, _lastShortfall, _agent.stoppingDistance);
+            if (step == RouteStep.Replan)
+            {
+                _lastShortfall = shortfall;
+                _agent.SetDestination(_route.GetWaypoint(_waypointIndex));   // a fresh query from here, with a fresh search budget
+                return;
+            }
+            if (step == RouteStep.GiveUp && !_shortWarned)
+            {
+                _shortWarned = true;
+                GameLog.Warn("Events", $"{SubjectId}: waypoint {_waypointIndex} cannot be reached from {at}: its path ends {shortfall:0.0} m short " +
+                                       "(a dead end or an island), so the route moves on without it (said once). Keep each waypoint reachable from the one before.");
+            }
+            if (_waypointIndex < _route.Count - 1)
+            {
+                _waypointIndex++;
+                SetDestinationToCurrentWaypoint();
+            }
+            else _routeDone = true;
+        }
+
         /// <summary>Points the agent at the current waypoint. Gated by NavUsable/HasWaypoints at every call
         /// site, so SetDestination is never invoked off-mesh (where it would warn and return false).</summary>
         private void SetDestinationToCurrentWaypoint()
         {
+            // What "arrived" is measured against (StepAlongRoute): the waypoint mapped onto the NavMesh, as SetDestination maps it.
+            Vector3 wp = _route.GetWaypoint(_waypointIndex);
+            _waypointOnMesh = NavMesh.SamplePosition(wp, out NavMeshHit onMesh, WaypointSnapDistance, _agent.areaMask) ? onMesh.position : wp;
+            _lastShortfall = float.PositiveInfinity;
+            _routeDone = false;
+
             // SetDestination returns false when the target cannot be mapped onto the NavMesh. Swallowing that
             // made an unreachable waypoint indistinguishable from a healthy route: remainingDistance stays at
             // Infinity, the arrival test in Update never fires again, and the actor plays its walk animation
