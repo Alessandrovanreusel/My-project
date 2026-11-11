@@ -572,14 +572,14 @@ changes the world every other system is measured in.
   - [x] 5.3 **Edge walks:** at least 6 shore points and 8 ring bearings, walk and sprint, held 10 s, plus a jump.
         Output `edges/`, with the top-down trace and an eye photo at each contact.
 
-- [ ] **Task 6: Below the world: FallRecovery (AC3)**
-  - [ ] 6.1 Add `TownBoundsConfig` (script, asset, `.meta`), `FallRecovery` and `ThirdPersonController.Teleport`,
+- [x] **Task 6: Below the world: FallRecovery (AC3)**
+  - [x] 6.1 Add `TownBoundsConfig` (script, asset, `.meta`), `FallRecovery` and `ThirdPersonController.Teleport`,
         with EditMode tests for the config (Safe*, finite checks, `TryGetConfigProblem`) and for any pure helper.
         Run `refresh_unity` and `read_console`, then **read the asset back through the editor**.
-  - [ ] 6.2 **Provoke the four cases, 5 cycles each, back to back** (AC3). Write `fall/fall.csv` (case, cycle,
+  - [x] 6.2 **Provoke the four cases, 5 cycles each, back to back** (AC3). Write `fall/fall.csv` (case, cycle,
         below-at, restored-at, seconds, restore position, grounded-after, on-NavMesh, capsule-clear) and a frame
         after each restore. Warn at the top of the rig's output that these warnings are provoked on purpose.
-  - [ ] 6.3 **Fail-soft:** no config, and an invalid config (NaN, ±Infinity, belowWorldY above the ground). Each
+  - [x] 6.3 **Fail-soft:** no config, and an invalid config (NaN, ±Infinity, belowWorldY above the ground). Each
         must warn once and keep running.
 
 - [x] **Task 7: Walls (AC4)**
@@ -589,14 +589,14 @@ changes the world every other system is measured in.
   - [x] 7.3 **The open-space pose is unchanged:** 1.650 up and 0.316 forward, read back in the open, at pitch 0
         and ±80.
 
-- [ ] **Task 8: The whole-town NavMesh, the paths from the pub, and the drunk (AC5, AC6)**
+- [x] **Task 8: The whole-town NavMesh, the paths from the pub, and the drunk (AC5, AC6)**
   - [x] 8.1 Write `Assets/Scripts/Editor/TownNavMeshBaker.cs` (`Tools/Town/Bake Town NavMesh`). Bake with the 1g
         settings and persist to the same asset. Record the time, size and tiles in `navmesh/bake.txt`. **Check the
         file size before committing.**
-  - [ ] 8.2 **Paths:** from the pub to every part, plus the 25 m grid, plus real-agent walks of the 3 longest
+  - [x] 8.2 **Paths:** from the pub to every part, plus the 25 m grid, plus real-agent walks of the 3 longest
         paths. Output `navmesh/paths.png`, `paths.csv` and `grid.csv`. Explain or fix every failure.
-  - [ ] 8.3 **The `Warp` guard** (AC6) and its provoked case.
-  - [ ] 8.4 **The drunk:** a route trace of ≥ 3 pooled cycles on the new bake, `route/after/`, compared with 2.5 and
+  - [x] 8.3 **The `Warp` guard** (AC6) and its provoked case.
+  - [x] 8.4 **The drunk:** a route trace of ≥ 3 pooled cycles on the new bake, `route/after/`, compared with 2.5 and
         with 2.1's numbers.
 
 - [ ] **Task 9: Walk the whole town (AC2)**
@@ -1187,7 +1187,7 @@ resolves. Reversal: re-run the tool with the rule changed.
 - 7.3 Open-space pose read back on the slab: **1.6500 m up, 0.3160 m forward, 0 sideways at pitch −80, 0 and +80**,
   near clip 0.095 (before the fix the eye rose to ~1.96 m when looking up).
 
-### Task 8 — the whole-town NavMesh (2026-11-11, IN PROGRESS)
+### Task 8 — the whole-town NavMesh (2026-11-11)
 
 - 8.1 DONE `Tools/Town/Bake Town NavMesh` (`TownNavMeshBaker.cs`): Volume = the playable polygon's bounding box
   (x −680…260, z −400…269.5), y −8…110 (bakeYMin/Max in the config), layers Default + WorldBounds, physics
@@ -1205,14 +1205,57 @@ resolves. Reversal: re-run the tool with the rule changed.
   density is the ~6,000 pine-trunk holes; a 1024-voxel tile changes nothing (127,635 triangles, 0 of 11 recovered;
   tested in memory, scene reopened from disk). One target is genuinely cut off: the boulder ledge
   `hill_south_boulders` fails even from 85 m away (5.3 m short).
-  **Next:** decide how "every path completes" is met (options: chain the query through hubs and report single-query
-  reach separately; move the hill part off the ledge; or reduce the hole count — e.g. trunk capsules not carving
-  and pines as NavMeshObstacles — and re-measure), fix or explain every grid failure, redraw on the top-down.
-- 8.3 CODE DONE, NOT YET PROVOKED: `EventActor.Begin` enables the agent only where NavMesh lies within 1 m of the
-  spawn, CHECKS Warp's bool, and on failure stands the agent down (lifecycle in place) and warns ONCE per actor;
-  the old per-spawn off-mesh warning no longer doubles it. Rig: `Tools/Town/Warp Guard - provoked (Play)` (spawn
-  staged over the hole). EditMode 233/233, console clean apart from the baseline head-bone warning.
-- 8.4 NOT RUN: `Tools/Events/Trace Actor Route - 2.2 after (Play)` (≥ 3 cycles) vs `route/before/`.
+  **Decision (8.2, attempt 2): "every path completes" = a chain of complete legs**, measured against the alternative:
+  - **Pines out of the bake** (every trunk capsule `ignoreFromBuild`, rebuilt in memory and never saved): 57k
+    triangles, and one query from the pub reaches 11/18 (500–750 m). That is not enough, and agents would walk through
+    trunks. Rejected.
+  - **A chain of single queries** (`TownRigRunner.Chain`): query toward the target, continue from where a partial
+    answer stopped, then re-query EVERY leg on its own between consecutive waypoints. The chain passes only if each
+    leg is `PathComplete` with its end within 0.5 m. Parts the pub cannot chain to are tried from the nearest part
+    already reached. That is how events move (ADR-3: a route is waypoints). **Chosen.**
+  - Result (`navmesh/log.txt`, `paths.csv`, `paths.png`): **one query 7/18; a chain from the pub 18/18.**
+    `hill_south_boulders` was moved to the FOOT of the boulder pile (70.7, 5.7, −334.5). Its old point is the pile's
+    top, a NavMesh island 5 m up that no path reaches (`census/parts_before_8.2.json` keeps it).
+  - **Real agents.** (1) One per part from the pub, given ONLY the part as destination: 17/18 reached it.
+    hill_northwest stood on its part from 224 s, but the rig's first test also required `hasPath`; the test is fixed.
+    The **corner_nw agent never arrived**: its partial first path led into a dead end beside the grey strip at
+    x ≈ −546 by the shore. (2) The three longest chains walked waypoint by waypoint (`navmesh/chain-walk/`):
+    corner_sw (4 waypoints, 1,332 m), corner_nw (3, 904 m) and hill_northwest (2, 755 m) **all arrived**, each leg by
+    the agent's own test, on the mesh every frame. So **Epic 3 keeps consecutive waypoints within ~250 m** and never
+    trusts one long destination (architecture §World bounds).
+  - **Grid 25 m:** 941 points on the mesh. 399 complete in one query, 488 through a chain, **54 unreached, each
+    classified** (`navmesh/islands.csv`, `README.txt`):
+    - 30 sit on top of an object (a roof, a white tree's crown, the tyre line, a rock), and the ground at its foot is
+      reached;
+    - 8 are edge patches with reached ground within 8 m;
+    - 12 are the south-west ring above ~20 m, behind slopes over 45°, which the player cannot climb either
+      (explained by slope, not walked);
+    - 4 are inside the villa's walled enclosure, which has no opening a 0.6 m agent fits through
+      (`navmesh/crop_enclosure.png`; noted for Alexv).
+- 8.3 DONE (`navmesh/warp-guard/`): spawn staged over the hole, PROVOKED ON PURPOSE. 80 s: 3 full lifecycles plus a
+  4th spawn on ONE pooled instance, every one in place at (−380, −229) with the agent off, **exactly one warning**
+  ("… off the NavMesh … (said once)"), 0 errors, and no "Failed to create agent".
+- 8.4 DONE (`route/after/analysis.txt`, `arrival.txt`; `tools/arrival.py`, EventActor's own 0.2571 m test): 3 full
+  pooled cycles plus a partial 4th, one instance, on the mesh every frame. He arrives **0.72–0.76 s before despawn**
+  (before, on the slice bake: 0.49–0.58; 2.1: 0.52–0.57). The peak lasts **1.45–1.50 s at x 26.30–26.32** (before:
+  1.45–1.49 at x 26.09–26.12). The new mesh's corners move his line ~0.2 m, and he walks 11.6 m instead of 11.3 m.
+
+### Task 6.2 / 6.3 — FallRecovery provoked (2026-11-11)
+
+- 6.2 `Tools/Town/Fall Recovery (Play)` → `fall/` (fall.csv, summary.txt, frames/, frames_sheet.jpg,
+  hole_fall_and_restore.mp4). PROVOKED ON PURPOSE: 4 cases × 5 cycles back to back. **Worst time from going below or
+  out to the restore is 0.160 s** (under the plain 0.152–0.160; the hole 0.047–0.077 below the lip, 0.15–0.18 after
+  leaving the ground; the buried block 0.016–0.031; the edge with Edge 07 disabled 0.000, the same frame). In every
+  cycle the player is grounded within 0.11 s, on the NavMesh, with the capsule clear and no falling speed carried
+  over (−1 m/s after the restore against −4 before). New UI canvases: 0, and the after-frames are ordinary views.
+  Console: exactly 20 provoked `[World]` warnings, 0 other, 0 errors. The first run could not see the edge case,
+  because FallRecovery restores in the very Update that finds the body outside. The rig now reads that instant from
+  FallRecovery's record (run 1 kept in `fall-run1-edge-unobserved/`).
+- 6.3 fail-soft, three menu items (`fall/failsoft-*`): no config, an invalid config (NaN / ±∞ / not a polygon), and
+  **a floor of the world typed above the ground (50 m)**. Before this, a finite floor was accepted as typed, and it
+  would have put a standing player back every frame. Now `SafeBelowWorldY` requires it below `bakeYMin` (+3 tests). Each
+  case gives **one** config warning at boot, a 6 s walk on open ground with 0 recoveries, and the hole still recovered
+  (0.16–0.18 s), with 0 other warnings and 0 errors.
 
 ### Completion Notes List
 
