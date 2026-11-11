@@ -690,7 +690,8 @@ def run_phase(u: Unit, us: dict, phase: str, state: dict) -> dict:
         "unit": u.id, "epic": u.epic, "attempt": attempt, "branch": u.branch, "story_file": story_file,
         "base_ref": us.get("base_ref") or "master", "result_path": rel(result_path),
         "findings_path": us.get("findings") or "",
-        "previous_failure": (f"### The previous attempt did not finish\n\n{hint}\n\nCheck what it committed "
+        "previous_failure": (("" if hint.startswith("### ") else "### The previous attempt did not finish\n\n") +
+                             f"{hint}\n\nCheck what it committed "
                              f"(`git log {us.get('base_ref') or 'master'}..HEAD`) before redoing anything.") if hint else "",
     }
     if phase in NEEDS_UNITY:
@@ -774,6 +775,25 @@ def review_sources(base_ref: str, branch: str) -> dict[str, str]:
     names = git("diff", "--name-only", "--diff-filter=d", f"{base_ref}..{branch}", check=False).stdout.splitlines()
     files = {p: git("show", f"{branch}:{p}", check=False).stdout for p in names if REVIEW_SOURCE_RE.search(p)}
     return {p: t for p, t in files.items() if not is_rig(p, t)}
+
+
+GAME_PATH_RE = re.compile(r"^(?:Assets|ProjectSettings|Packages)/")
+
+
+def game_changes(old: str, new: str) -> list[str]:
+    """The files a commit range changed in the game itself (Assets, ProjectSettings, Packages), rigs and
+    their .meta left out: what a player would get, as opposed to docs, evidence and verification tools."""
+    if not old or not new or old == new:
+        return []
+    out = []
+    for p in git("diff", "--name-only", f"{old}..{new}", check=False).stdout.splitlines():
+        if not GAME_PATH_RE.search(p):
+            continue
+        src = p[:-5] if p.endswith(".meta") else p
+        text = git("show", f"{new}:{src}", check=False).stdout if REVIEW_RIG_RUNTIME_RE.search(src) else ""
+        if not is_rig(src, text):
+            out.append(p)
+    return out
 
 
 def _distinctive(lines) -> set[str]:
@@ -1069,12 +1089,37 @@ def run_unit(u: Unit, state: dict) -> str:
         if res["status"] == "stopped":
             return "stopped"
         finish_phase_git(u, phase)
-        progressed = git("rev-parse", u.branch, check=False).stdout.strip() != tip
+        new_tip = git("rev-parse", u.branch, check=False).stdout.strip()
+        progressed = new_tip != tip
         us["history"].append({"phase": phase, "status": res["status"], "summary": res.get("summary", ""),
                               "minutes": res.get("_minutes"), "log": res.get("_log"), "at": now()})
         absorb_result(us, res)
         report(f"{u.id} {phase} a{res.get('_attempt')} → **{res['status']}** ({res.get('_minutes')} min): "
                f"{res.get('summary', '')[:300]}")
+
+        built = game_changes(tip, new_tip) if res["status"] == "ok" and phase == "close" and progressed else []
+        if built:
+            # A close never certifies its own build. Story 2.2's first close failed AC3 and handed its
+            # retry a plan to build a rock edge round the whole ring: that retry would have built it,
+            # judged it and merged it, with no other session ever looking at it.
+            us["attempts"][phase] = runs = us["attempts"].get(phase, 0) + 1
+            if runs >= MAX_RUNS:
+                park(u, us, state, phase, f"close passed its own changes to the game {runs} times running "
+                                          f"instead of only verifying them; last: {', '.join(built[:3])}")
+                git("checkout", "master")
+                return "parked"
+            us["hint"] = (
+                "### Verify what the previous close built\n\n"
+                f"The previous close attempt passed, but it changed the game itself ({len(built)} file(s): "
+                f"{', '.join(built[:12])}{' …' if len(built) > 12 else ''}). A close never certifies its "
+                "own build, so you are that work's independent check. Read those changes as a reviewer "
+                "would, run what exercises them (the story's rigs, the scene, the tests) and look at the "
+                "evidence yourself, not at its summary. Then run the six checks. Its result said: "
+                f"{res.get('summary', '')[:600]}")
+            log(f"{u.id}: close attempt {res.get('_attempt')} passed its own changes to the game "
+                f"({len(built)} file(s)); a fresh close verifies them")
+            save_state(state)
+            continue
 
         if res["status"] == "ok":
             state["unity_restarts"] = 0

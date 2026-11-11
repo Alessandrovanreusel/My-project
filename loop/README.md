@@ -71,6 +71,7 @@ seconds, having seen 5 of 10 files.)
 | An AC says you must approve something before a later story starts | Never starts that story; does other work, pings your phone once, and starts it the moment you approve |
 | Compile errors, failing tests, review findings | Fixes them itself |
 | A phase fails | Retries in a fresh session with a hint. Parks the unit after 3 failures that committed nothing, or 6 of any kind (a session that runs out of context on a big story commits its work and hands over; that is progress, not a failure) |
+| The final check (close) changes the game itself to make a story pass | Runs one more fresh close to verify that change before merging: a session never certifies its own build. Rigs and docs don't count |
 | A real blocker (login, purchase, licence, missing asset) | Parks the unit, pings your phone, moves to work that doesn't depend on it |
 | Unity unreachable | Restarts Unity; after 2 failed restarts in a row it stops everything and pings you |
 | Claude usage limit | Waits until the reset time the limit names (or 20 minutes if it names none), then starts a fresh session that is told it was cut off and checks git first. Pings you only for waits over 3 hours |
