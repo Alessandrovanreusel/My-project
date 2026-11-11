@@ -98,7 +98,8 @@ guarded = "#if UNITY_EDITOR\nusing UnityEngine;\n"
 check("rigs: editor-folder rigs and editor-guarded runtime runners/feeds are tools",
       L.is_rig("Assets/Scripts/Editor/PhotoShootRig.cs", "using UnityEditor;")
       and L.is_rig("Assets/Scripts/Player/ScaleStudyRunner.cs", "\ufeff" + guarded)
-      and L.is_rig("Assets/Scripts/Core/RigVideoFeed.cs", guarded), "")
+      and L.is_rig("Assets/Scripts/Core/RigVideoFeed.cs", guarded)
+      and L.is_rig("Assets/Scripts/World/TownRigRunner.Edges.cs", guarded), "")
 check("rigs: a shipped Runner, an unguarded one, or a Rigidbody script is still reviewed",
       not L.is_rig("Assets/Scripts/Events/EventRunner.cs", "using UnityEngine;\n#if UNITY_EDITOR\n")
       and not L.is_rig("Assets/Scripts/Player/RigidbodyMover.cs", guarded), "")

@@ -99,7 +99,7 @@ REVIEW_SOURCE_RE = re.compile(r"^(Assets|Packages)/.+\.(cs|asmdef|asmref|shader|
 # (runners, feeds) by name AND only when the whole file sits behind #if UNITY_EDITOR, so a shipped
 # class that happens to be called "...Runner" is still reviewed. (Case-sensitive "Rig[A-Z]": not "Rigidbody".)
 REVIEW_RIG_RE = re.compile(r"^Assets/Scripts/Editor/[^/]*Rig[^/]*$", re.I)
-REVIEW_RIG_RUNTIME_RE = re.compile(r"/(?:\w*Runner|Rig[A-Z]\w*)\.cs$")
+REVIEW_RIG_RUNTIME_RE = re.compile(r"/(?:\w*Runner|Rig[A-Z]\w*)(?:\.\w+)?\.cs$")   # incl. partials: TownRigRunner.Edges.cs
 
 
 @dataclass
