@@ -232,9 +232,8 @@ namespace CameraGame.Gallery
             _canvas.sortingOrder = GallerySortingOrder;
 
             // ⚠️ Just past the near plane, NOT the default 100. A Screen Space - Camera canvas is drawn at
-            // a real distance in the world and world geometry in front of it OCCLUDES it — and this game's
-            // town is modelled at roughly 4x metric scale, so a canvas 100 units out would spend most of its
-            // life inside a building. Sitting it a hair past the near plane means nothing can get in front
+            // a real distance in the world and world geometry in front of it OCCLUDES it — a canvas 100 m
+            // out would spend most of its life inside a building or a pine. Sitting it a hair past the near plane means nothing can get in front
             // of it without also being inside the lens.
             _canvas.planeDistance = uiCamera.nearClipPlane + 0.1f;
 

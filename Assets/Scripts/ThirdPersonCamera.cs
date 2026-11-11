@@ -1,4 +1,5 @@
 using UnityEngine;
+using CameraGame.Player;
 
 /// <summary>
 /// First-person POV camera that sits at the character's head position
@@ -11,6 +12,16 @@ public class ThirdPersonCamera : MonoBehaviour
     // The player's Transform. The camera reads the character's Y rotation (yaw)
     // from this to know which direction to face horizontally.
     [SerializeField] private Transform target;
+
+    [Header("Tuning")]
+    // Eye height, forward nudge and near clip, in metres (ADR-5). Falls back to the player controller's own
+    // config, then to PlayerConfig's defaults, so the camera can never disagree with the body it rides on.
+    [SerializeField] private PlayerConfig config;
+
+    private PlayerConfig Cfg => config != null ? config : (_controller != null ? _controller.Config : null);
+    private float EyeHeight => Cfg != null ? Cfg.SafeEyeHeight : PlayerConfig.DefaultEyeHeight;
+    private float ForwardNudge => Cfg != null ? Cfg.SafeCameraForwardNudge : PlayerConfig.DefaultCameraForwardNudge;
+    private float NearClip => Cfg != null ? Cfg.SafeCameraNearClip : PlayerConfig.DefaultCameraNearClip;
 
     // --- Private references found at runtime ---
 
@@ -45,6 +56,11 @@ public class ThirdPersonCamera : MonoBehaviour
             // Get the controller script so we can read the pitch (up/down look angle).
             _controller = target.GetComponent<ThirdPersonController>();
 
+            // The near clip scales with the body (ADR-5): nudge + near - radius is how far the near plane
+            // reaches past the capsule, and it must stay what it was in body proportions.
+            var cam = GetComponent<Camera>();
+            if (cam != null) cam.nearClipPlane = NearClip;
+
             // Snap camera to head position on the first frame (no smoothing needed).
             transform.position = GetHeadPosition();
             transform.rotation = Quaternion.Euler(0f, target.eulerAngles.y, 0f);
@@ -64,7 +80,7 @@ public class ThirdPersonCamera : MonoBehaviour
 
         // POSITION: at the head, then nudged slightly forward so we see past the character mesh.
         // Without this offset, you'd see the inside of the character's head model.
-        transform.position = GetHeadPosition() + transform.forward * 1f;
+        transform.position = GetHeadPosition() + transform.forward * ForwardNudge;
     }
 
     // Returns the world position of the character's head.
@@ -75,7 +91,7 @@ public class ThirdPersonCamera : MonoBehaviour
         if (_headBone != null)
             return _headBone.position;
 
-        // Fallback: CharacterController height is ~8.86, so head is near Y=8.5 above feet.
-        return target.position + Vector3.up * 8.5f;
+        // Fallback (the live path: this model has no skeleton): the eye height above the feet, from config.
+        return target.position + Vector3.up * EyeHeight;
     }
 }

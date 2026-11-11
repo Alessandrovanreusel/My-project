@@ -15289,7 +15289,7 @@ Transform:
   m_GameObject: {fileID: 84554082}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 2.3, z: 19}
+  m_LocalPosition: {x: 19.8, y: 1.024104, z: 19}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -59220,7 +59220,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
+  near clip plane: 0.095
   far clip plane: 1000
   field of view: 60
   orthographic: 0
@@ -59312,6 +59312,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ThirdPersonCamera
   target: {fileID: 0}
+  config: {fileID: 11400000, guid: a34aed72974c1514e8eb72e47c9ac86c, type: 2}
 --- !u!64 &330694231
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -84162,7 +84163,7 @@ Transform:
   m_GameObject: {fileID: 467870728}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 15, y: 2.3, z: 19}
+  m_LocalPosition: {x: 22.8, y: 0.83514583, z: 19}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -189795,7 +189796,7 @@ Transform:
   m_GameObject: {fileID: 1083109921}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 45, y: 2.3, z: 19}
+  m_LocalPosition: {x: 28.8, y: 0.53973734, z: 19}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -210026,7 +210027,7 @@ Transform:
   m_GameObject: {fileID: 1196830009}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 30, y: 2.3, z: 19}
+  m_LocalPosition: {x: 25.9, y: 0.64671814, z: 19}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -327707,12 +327708,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d428e3b59a17ff94195c054c833fa9e3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ThirdPersonController
-  walkSpeed: 5
-  sprintSpeed: 10
-  stepOffset: 2
+  config: {fileID: 11400000, guid: a34aed72974c1514e8eb72e47c9ac86c, type: 2}
   mouseSensitivity: 0.15
-  jumpHeight: 1.2
-  gravity: -15
   cameraTransform: {fileID: 0}
 --- !u!114 &1871784531
 MonoBehaviour:
@@ -327762,13 +327759,13 @@ CharacterController:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Height: 8.86
-  m_Radius: 0.95
+  m_Height: 1.77
+  m_Radius: 0.3
   m_SlopeLimit: 45
-  m_StepOffset: 0.3
-  m_SkinWidth: 0.08
+  m_StepOffset: 0.35
+  m_SkinWidth: 0.03
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 4.43, z: 0}
+  m_Center: {x: 0, y: 0.885, z: 0}
 --- !u!95 &1871784533
 Animator:
   serializedVersion: 7
@@ -483595,7 +483592,7 @@ Transform:
   m_GameObject: {fileID: 2036851499}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 55, y: -17.7, z: 19}
+  m_LocalPosition: {x: 26.8, y: -19.44534, z: 19}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -492190,9 +492187,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshSurface
   m_SerializedVersion: 0
   m_AgentTypeID: 0
-  m_CollectObjects: 2
-  m_Size: {x: 10, y: 10, z: 10}
-  m_Center: {x: 0, y: 2, z: 0}
+  m_CollectObjects: 1
+  m_Size: {x: 200, y: 25, z: 120}
+  m_Center: {x: 20, y: 2.5, z: 20}
   m_LayerMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -492203,8 +492200,8 @@ MonoBehaviour:
   m_IgnoreNavMeshObstacle: 1
   m_OverrideTileSize: 0
   m_TileSize: 256
-  m_OverrideVoxelSize: 0
-  m_VoxelSize: 0.31666666
+  m_OverrideVoxelSize: 1
+  m_VoxelSize: 0.1
   m_MinRegionArea: 2
   m_NavMeshData: {fileID: 23800000, guid: 255eb66f1ad78d446a3ee7bfac8270ef, type: 2}
   m_BuildHeightMesh: 0

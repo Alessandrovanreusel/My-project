@@ -365,10 +365,10 @@ namespace CameraGame.Events
                 // accent path on the old mode would reintroduce it one field over.
                 if (TryResolveCueDistances(out float falloffStart, out float radius, out _))
                 {
-                    // Distances come from the DEFINITION, in world units, not from the prefab. This world is
-                    // ~4× metric (see EventDefinition.cueRadius), so the design's "~25 m" is ~100 units here —
-                    // and when the open world-scale question is finally settled, retuning every event is one
-                    // data edit each instead of a hunt through prefabs.
+                    // Distances come from the DEFINITION, in world metres, not from the prefab. ADR-5 (Story
+                    // 2.1) settled the world scale: the town is roughly real metres and the characters are
+                    // people, so the design's "~25 m" is 25 here (it was 100 units, converted at 4×). A future
+                    // rescale is still one data edit per event instead of a hunt through prefabs.
                     //
                     // minDistance is written for the Inspector's benefit only: under Custom rolloff the engine
                     // takes attenuation from the curve alone and ignores it (see GetRolloffCurve).

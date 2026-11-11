@@ -213,6 +213,7 @@ namespace CameraGame.EditorTools
             runner.manager = manager;
             runner.cam = cam;
             runner.chaseCamera = chase;
+            PhotoShootRig.ReadPlayerEye(out runner.eyeHeight, out _, out _);
             runner.player = player;
             runner.service = service;
             runner.view = view;

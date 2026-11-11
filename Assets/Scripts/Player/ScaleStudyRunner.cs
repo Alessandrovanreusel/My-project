@@ -161,6 +161,10 @@ namespace CameraGame.Player
             if (_tpc == null) return float.NaN;
             FieldInfo f = typeof(ThirdPersonController).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             if (f != null && f.FieldType == typeof(float)) return (float)f.GetValue(_tpc);
+            // Since ADR-5 the tuning lives in PlayerConfig (same field names), read through the controller.
+            PlayerConfig cfg = _tpc.Config;
+            FieldInfo cf = typeof(PlayerConfig).GetField(name, BindingFlags.Instance | BindingFlags.Public);
+            if (cf != null) return cfg != null ? (float)cf.GetValue(cfg) : float.NaN;
             PropertyInfo p = typeof(ThirdPersonController).GetProperty(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
             return p != null ? System.Convert.ToSingle(p.GetValue(_tpc), Inv) : float.NaN;
         }
