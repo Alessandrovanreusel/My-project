@@ -646,6 +646,127 @@ changes the world every other system is measured in.
   - [x] 13.3 Story status → `review`. Update `sprint-status.yaml`: the entry, and the **real** `last_updated:` key
         at ~line 40 (lesson 66). No `: ` and no trailing `:` (lesson 13). Check it with `yaml.safe_load`.
 
+### Review Findings
+
+Code review on 2026-11-11, loop REVIEW phase, of `5df4a9a..ee2bc07`: the story's own commits. The merge from master in
+`ee2bc07` touches only `loop/`. It was done by a fresh session that did not write the code.
+- **Three layers, run in this session:** Blind Hunter (diff only), Edge Case Hunter (diff + project) and Acceptance
+  Auditor (diff + story).
+- **What was reviewed:** the shipped code, which is:
+  - runtime: `FallRecovery`, `TownBoundsConfig`, `ColliderRule`, the camera's wall cast, `ThirdPersonController.Teleport`,
+    the `EventActor` Warp guard and `PlayerConfig`;
+  - editor tools: `AddMeshColliders`, `TownBoundsBuilder`, `TownNavMeshBaker` and `MapCheck`, plus `tools/map/*.py`;
+  - the scene, asset and `.meta` changes, and the tests.
+
+  The rigs (`TownRig*`, `TownCensus`, `TownPhotos`) were run and extended as tools. They were not reviewed (standing
+  rule).
+- **Result:** about 20 raw findings, triaged into **0 new decisions, 2 patches (both applied and re-verified by
+  running), 3 deferred and 10 dismissed.**
+
+What was **run**, not read. Each scenario was played in SampleScene through the real `ThirdPersonController`,
+`FallRecovery` and keyboard path, with configs staged as clones, never the asset:
+- a valid playable area that does not contain the spawn;
+- `minRestoreAge` 5 s, `safeSampleInterval` 0.01 s and the shipped values, each walked into the real hole 3 cycles
+  (before and after the fix);
+- `maxAirborneSeconds` 0.5 against ordinary jumps;
+- the collider tool's **second cycle** on the processed map;
+- the real re-export, to measure its stderr;
+- the full `Fall Recovery` rig as a regression (4 cases × 5 cycles);
+- the EditMode suite.
+
+New rig modes: `Tools/Town/Review - FallRecovery spawn outside the area (Play)` and `… ring and backstop (Play)`, in
+`TownRigRunner.Review.cs`. Evidence: `_bmad-output/verification/2-2-walk-the-whole-town/review/` (`outside-before-fix/`
+vs `outside/`, `ring-before-fix/` vs `ring/`, `colliders/`, `mapcheck/`, `fall-regression/`).
+
+**Patches (applied, re-verified by running):**
+- [x] [Review][Patch] **A playable area that does not contain the spawn froze the player and flooded the console:
+      one put-back and one warning per frame.** [Assets/Scripts/World/FallRecovery.cs `Update`] (edge)
+      - **Reproduced** (`review/outside-before-fix/log.txt`). The config was a valid polygon, the shipped one shifted
+        2 km east. The spawn sits outside it, so FallRecovery put the player back on the spawn (outside) every frame:
+        - idle: **241 recoveries and 241 `[World]` warnings in 240 frames**, never grounded;
+        - W held 3 s: **283 in 283 frames, moved 0 m**;
+        - **629 warnings in ~7 s.** Even the hole could not be reached.
+      - NFR8 asks for one warning and a game that keeps running. A polygon that is valid but wrong is the authoring
+        mistake most likely when Epic 3 edits the area.
+      - **Fix:** "left the playable area" fires only when there is somewhere inside to put the player back: a
+        remembered safe spot, or a spawn that is inside. Otherwise one warning ("said once") names the cause. Falling
+        below the world is still caught everywhere.
+      - **Re-verified** (`review/outside/log.txt`): idle, **0 recoveries and 1 warning**, grounded; W held, **7.6 m
+        walked, 0 recoveries**; the hole still put the player back; 2 `[World]` warnings in all.
+- [x] [Review][Patch] **Two valid timing values together sent every fall back to the spawn, ~450 m from the hole.**
+      [Assets/Scripts/World/FallRecovery.cs ring buffer] (edge)
+      - **The cause:** the ring holds 16 safe spots, so it reaches back 16 × `safeSampleInterval` (4 s as shipped).
+        When that is shorter than `minRestoreAge`, no spot is ever old enough, and `Recover` falls back to the spawn.
+      - **Reproduced** in the real hole, 3 cycles per case (`review/ring-before-fix/ring.csv`):
+        - `minRestoreAge` 5 s, after the player had stood 7 s on safe ground: **3 of 3 to the spawn (453 m)**;
+        - `safeSampleInterval` 0.01 s: **1 of 3** (it depends on how long the fall lasted);
+        - shipped values: 0 of 6.
+      - **Fix:** `FallRecovery.RingSampleInterval` = max(interval, 2 × `minRestoreAge` / 16), so the ring always
+        reaches back at least twice the restore age. One warning when the typed interval is lengthened. The shipped
+        0.25 s / 0.5 s is unchanged. 5 EditMode cases (`TownBoundsConfigTests.RingSampleInterval_*`).
+      - **Re-verified** (`review/ring/ring.csv`): **12 of 12 falls put back by the hole**:
+        - restore age 5 s → the spot stood on 7 s earlier, 14 m from the drop;
+        - interval 0.01 s → the lip, 11.6–11.9 m from the walk start;
+        - the shipped values → 11.0–11.9 m, against 11.0–11.6 before.
+
+**Deferred** (in `deferred-work.md` under "code review of story-2-2"):
+- [x] [Review][Defer] **`maxAirborneSeconds` accepts a value shorter than a jump.** Reproduced: at 0.5 s, 3 of 3
+      ordinary jumps (airborne 0.69–0.78 s) are put back; the shipped 3 s gives 0 of 6. The right floor is the
+      longest legitimate time in the air, a level-design number. [TownBoundsConfig.cs `SafeMaxAirborneSeconds`]
+- [x] [Review][Defer] **`MapCheck.ReexportMenu` never reads Blender's stderr, writes the FBX in place, and ignores
+      the exit code.** Not reproduced: the real export wrote **0 bytes** to stderr (5 MB to stdout, which is read) in
+      25 s (`review/mapcheck/stderr_volume.txt`). The menu only runs after a DIFFERS, and today it says MATCH.
+      Harden it the next time the map changes. [MapCheck.cs:62-72]
+- [x] [Review][Defer] **The camera's wall cast assumes the near plane's reach stays inside the 0.30 m body.** A
+      start-overlapping hit is skipped. Computed with `NearPlaneReach` + margin: 0.177 m as shipped (FOV 60, 16:9),
+      0.254 m on 32:9, but **0.394 m at `wideFov` 90 on 32:9**. Hypothesis, not reproduced. Revisit if `wideFov` is
+      ever raised above ~80. [ThirdPersonCamera.cs `ClearNudge`]
+
+**Dismissed (10), with the reason:**
+- **"Re-running the collider tool would strip the repaired rocks"** (its ground probe could hit the rock's own, now
+  real, collider): **disproven by running the second cycle.** `AddMeshColliders.Apply()` on the processed map left
+  every collider bit-identical: 1,974 MeshColliders (0 null), 5,999 capsules with the same radius, height and centre,
+  and kept 1,974 / added 0 / repaired 0 / removed 0 (`review/colliders/`). `TownCensus.Column` skips scatter
+  colliders and capsules. The scene was reopened from disk afterwards, and the dev's `colliders/report.txt` put back.
+- **"The re-export deadlocks on stderr":** see the deferral: 0 bytes measured on the real path.
+- **"The bake volume ignores the map's rotation"** (`TownNavMeshBaker` subtracts only the position): the map root is
+  at the origin with identity rotation and scale 1 (read back), so the volume is exact today.
+- **"`TownBoundsBuilder` duplicates an inactive `TownBounds`"** (`GameObject.Find` sees active objects only): nothing
+  deactivates it, and it is an editor tool run by hand.
+- **"The camera's 8-hit, unsorted sphere-cast buffer can drop the nearest wall":** that needs more than 8 colliders
+  inside a 0.18 m sphere swept 0.316 m. The wall rig found 0 geometric hits on 14 walls.
+- **"`NothingBeneath` ignores only the CharacterController, so another collider on the player would mask a fall":**
+  the player carries only the CharacterController (read back).
+- **"A legitimate long fall trips the 3 s airborne backstop":** at gravity −15 that needs a 67 m drop. The highest
+  ground the player reached is ~30 m (edge walks).
+- **"The fall rig's 'restore age −1' rows hide a fallback to the spawn":** they are rig bookkeeping. The restore point
+  is the previous cycle's kept spot (−379, −233.18), by the hole.
+- **"The Warp guard leaves the agent disabled for good":** it is re-enabled at the next spawn that is on the mesh
+  (read). The dev's provoked run covers it: 3 lifecycles plus a 4th spawn, one warning, 0 errors.
+- **Acceptance Auditor, AC5 "every path completes":** this is met only under the chain-of-legs reading (one query
+  reaches 7/18, and a single-destination agent never reached corner_nw). It is already a recorded decision in the
+  batch queued for Alexv, not a code defect, so no new decision. Every other AC clause has its evidence on disk or a
+  queued human check.
+
+**Environment note (not a code finding).** After the orchestrator merged master into this branch (07:59), the
+SampleScene file on disk had changed under the open editor. The first `refresh_unity` raised a modal dialog, "The open
+scene(s) have been modified externally". It blocked the main thread silently: MCP timeouts, 0 % CPU. It was found
+with `EnumWindows`. Its content equalled HEAD, so "Reload" was posted to it.
+
+**Regression after the fixes** (`review/fall-regression/`, the dev's `fall/` kept as found):
+- `Tools/Town/Fall Recovery (Play)`, 4 cases × 5 cycles (`review/fall-regression/summary.txt`, `log.txt`):
+  - the worst time from going below or out to the restore is **0.162 s** (the dev's run: 0.160);
+  - grounded within 0.159 s; on the NavMesh, capsule clear and inside on 20/20; no new UI;
+  - console: 20 provoked `[World]` warnings, 0 other warnings, 0 errors.
+  - The rig flags 1/20, and it is the rig's own measure. Hole cycle 0 was put back 0.136 s after leaving the
+    ground, before its feet were 0.3 m below the lip. So the rig's "below → restore" is NaN, and `NaN <= 2` reads as
+    a fail. Every other check of that cycle passed. The restore was faster, not slower.
+- `Tools/Town/Fall Recovery - fail-soft invalid config (Play)` (`review/failsoft-invalid-config/`): **one** config
+  warning at boot, 0 recoveries in a 6 s walk on open ground, the hole still recovered, 0 other warnings, 0 errors.
+- EditMode **242/242** (237 + the 5 new ring-interval cases). The console holds only the provoked warnings named above.
+- Restored afterwards: SampleScene is open and not dirty, with no rig object. The dev's `fall/` and
+  `colliders/report.txt` evidence is put back exactly as found (`diff -r` clean against the copy taken before).
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -1369,6 +1490,7 @@ Queued in the result file, none self-certified:
 - New: `Assets/Scripts/World/TownRigRunner.Tour.cs`
 - New: `Assets/Scripts/World/TownRigRunner.Walls.cs`
 - New: `Assets/Scripts/World/TownRigRunner.cs`
+- New (code review): `Assets/Scripts/World/TownRigRunner.Review.cs` (rig modes for the review's FallRecovery scenarios)
 - New: `Assets/Tests/EditMode/ColliderRuleTests.cs`
 - Modified: `Assets/Tests/EditMode/PlayerConfigTests.cs`
 - New: `Assets/Tests/EditMode/TownBoundsConfigTests.cs`
@@ -1392,3 +1514,4 @@ Queued in the result file, none self-certified:
 
 - 2026-11-11: Story file created by the loop CREATE phase (Claude Opus 5.5). Status → ready-for-dev.
 - 2026-11-11: Implemented by the loop DEV phase (Claude Opus 5.5, attempts 1–2). Status → review.
+- 2026-11-11: Code review by the loop REVIEW phase (Claude Opus 5.5): 2 patches to FallRecovery (applied and re-verified by running), 3 deferred, 10 dismissed. Status stays review (perceptual checks open).

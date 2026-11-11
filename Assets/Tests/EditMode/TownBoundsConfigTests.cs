@@ -118,6 +118,26 @@ namespace CameraGame.Tests
         }
 
         [Test]
+        public void RingSampleInterval_LeavesTheShippedValuesAlone()
+        {
+            // the shipped config: one spot every 0.25 s, 16 of them (4 s) against a 0.5 s restore age
+            Assert.AreEqual(TownBoundsConfig.DefaultSafeSampleInterval,
+                FallRecovery.RingSampleInterval(TownBoundsConfig.DefaultSafeSampleInterval, TownBoundsConfig.DefaultMinRestoreAge));
+        }
+
+        [TestCase(0.01f, 0.5f)]    // sampling very often: 16 spots covered 0.16 s
+        [TestCase(0.25f, 5f)]      // a long restore age: 16 spots covered 4 s
+        [TestCase(0.25f, 60f)]
+        [TestCase(0.25f, 0f)]
+        public void RingSampleInterval_AlwaysReachesBackPastTheRestoreAge(float interval, float restoreAge)
+        {
+            // Code review (reproduced): when the ring did not reach back past minRestoreAge, every fall went back to the spawn.
+            float used = FallRecovery.RingSampleInterval(interval, restoreAge);
+            Assert.GreaterOrEqual(used, interval, "never samples MORE often than typed");
+            Assert.GreaterOrEqual(used * FallRecovery.RingSize, 2f * restoreAge, "the ring must span at least twice the restore age");
+        }
+
+        [Test]
         public void TheShippedAsset_HasNoProblem_AndExcludesThePond()
         {
             var shipped = AssetDatabase.LoadAssetAtPath<TownBoundsConfig>("Assets/Data/World/TownBoundsConfig.asset");

@@ -33,7 +33,7 @@ namespace CameraGame.World
         /// <summary>The bounds this runs on (null = the measured defaults).</summary>
         public TownBoundsConfig Config => config;
 
-        private const int RingSize = 16;
+        public const int RingSize = 16;
         private readonly Vector3[] _samplePos = new Vector3[RingSize];
         private readonly float[] _sampleTime = new float[RingSize];
         private int _sampleCount, _sampleHead;
@@ -44,6 +44,7 @@ namespace CameraGame.World
         private readonly RaycastHit[] _hits = new RaycastHit[16];
         private Vector2[] _fallbackArea;
         private int _groundMask = ~0;   // every layer but WorldBounds: a barrier's side is never "ground beneath"
+        private bool _noPlaceInsideWarned;
 
         /// <summary>How many times the player has been put back this session (for rigs and tests).</summary>
         public int Recoveries { get; private set; }
@@ -57,6 +58,15 @@ namespace CameraGame.World
         private float NothingBeneathFor => config != null ? config.SafeNothingBeneathSeconds : TownBoundsConfig.DefaultNothingBeneathSeconds;
         private float SampleInterval => config != null ? config.SafeSafeSampleInterval : TownBoundsConfig.DefaultSafeSampleInterval;
         private float MinRestoreAge => config != null ? config.SafeMinRestoreAge : TownBoundsConfig.DefaultMinRestoreAge;
+        /// <summary>How often a safe spot is remembered, so that the ring of <see cref="RingSize"/> spots always reaches back
+        /// at least twice <paramref name="minRestoreAge"/>: the typed interval, or longer when that is too short.
+        /// ⚠️ Code review (Story 2.2, reproduced): the ring spans RingSize × interval. With minRestoreAge 5 s (or an interval
+        /// of 0.01 s) no remembered spot was ever old enough, and EVERY fall put the player back on the spawn, ~440 m from
+        /// the hole they fell into. Pure; the shipped values (0.25 s, 0.5 s) are unchanged by it.</summary>
+        public static float RingSampleInterval(float sampleInterval, float minRestoreAge) =>
+            Mathf.Max(sampleInterval, minRestoreAge * 2f / RingSize);
+
+        private float EffectiveSampleInterval => RingSampleInterval(SampleInterval, MinRestoreAge);
         private float GroundProbe => config != null ? config.SafeGroundProbeDistance : TownBoundsConfig.DefaultGroundProbeDistance;
         private float NavProbe => config != null ? config.SafeNavMeshProbeDistance : TownBoundsConfig.DefaultNavMeshProbeDistance;
 
@@ -71,10 +81,16 @@ namespace CameraGame.World
             if (bounds >= 0) _groundMask = ~(1 << bounds);
 
             // Fail soft (NFR8): say ONCE what is wrong, then run on the measured defaults. Never throw.
+            string warning = null;
             if (config == null)
-                GameLog.Warn("World", "FallRecovery has no TownBoundsConfig assigned — running on the built-in measured defaults.");
+                warning = "FallRecovery has no TownBoundsConfig assigned — running on the built-in measured defaults.";
             else if (config.TryGetConfigProblem(out string problem))
-                GameLog.Warn("World", $"TownBoundsConfig '{config.name}': {problem}.");
+                warning = $"TownBoundsConfig '{config.name}': {problem}.";
+            if (EffectiveSampleInterval > SampleInterval)
+                warning = (warning != null ? warning + " Also: " : $"TownBoundsConfig '{(config != null ? config.name : "defaults")}': ") +
+                          $"safeSampleInterval {SampleInterval} s × {RingSize} remembered spots does not reach back past minRestoreAge " +
+                          $"{MinRestoreAge} s — remembering one every {EffectiveSampleInterval} s instead.";
+            if (warning != null) GameLog.Warn("World", warning);
         }
 
         private void Start()
@@ -106,7 +122,7 @@ namespace CameraGame.World
             string reason = null;
             if (!IsFinite(p)) reason = "its position is not a number";
             else if (p.y < BelowWorldY) reason = $"its feet went below the world (y < {BelowWorldY})";
-            else if (!Allowed(p)) reason = "it left the playable area";
+            else if (!Allowed(p) && CanPutBackInside()) reason = "it left the playable area";
             else if (!grounded)
             {
                 if (_airborne > MaxAirborne) reason = $"it was airborne for over {MaxAirborne} s";
@@ -120,6 +136,24 @@ namespace CameraGame.World
 
             if (reason != null) Recover(reason, p);
             else if (grounded && Time.time >= _nextSampleTime) TrySample(p);
+        }
+
+        /// <summary>
+        /// Whether leaving the playable area can be undone: a safe spot inside it has been remembered, or the spawn is inside.
+        /// ⚠️ Code review (Story 2.2, reproduced): a valid polygon that does not contain the spawn put the player back ON THE
+        /// SPAWN — outside — every frame: frozen, with one warning per frame (629 in 7 s). Now the area check waits until the
+        /// player has stood inside it, and says so once. Falling below the world is still caught everywhere.
+        /// </summary>
+        private bool CanPutBackInside()
+        {
+            if (_sampleCount > 0 || Allowed(_fallback)) return true;
+            if (!_noPlaceInsideWarned)
+            {
+                _noPlaceInsideWarned = true;
+                GameLog.Warn("World", $"The spawn {_fallback} is outside TownBoundsConfig's playable area, and the player has not stood inside it yet, " +
+                                      "so leaving the area is not put back until they have (said once). Check playableArea against the spawn.");
+            }
+            return false;
         }
 
         /// <summary>True when a sphere the width of the body, cast straight down from the feet, finds no surface above
@@ -137,7 +171,7 @@ namespace CameraGame.World
 
         private void TrySample(Vector3 p)
         {
-            _nextSampleTime = Time.time + SampleInterval;
+            _nextSampleTime = Time.time + EffectiveSampleInterval;
             int n = Physics.RaycastNonAlloc(p + Vector3.up * 0.1f, Vector3.down, _hits, 0.1f + GroundProbe, _groundMask, QueryTriggerInteraction.Ignore);
             bool ground = false;
             for (int i = 0; i < n; i++)
@@ -186,7 +220,7 @@ namespace CameraGame.World
             }
             _airborne = 0f;
             _nothingBeneath = 0f;
-            _nextSampleTime = now + SampleInterval;
+            _nextSampleTime = now + EffectiveSampleInterval;
             Recoveries++;
             LastRecoveryTime = now;
             LastReason = reason;

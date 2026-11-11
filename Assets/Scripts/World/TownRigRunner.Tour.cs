@@ -30,7 +30,10 @@ namespace CameraGame.World
         {
             if (mode == "tour") routine = Tour();
             else if (mode == "film") routine = Film();
+            else ExtraModes6(ref routine);
         }
+
+        partial void ExtraModes6(ref IEnumerator routine);
 
         /// <summary>
         /// A short real-time film for Alexv's edge check (human check 1): the real controller walks to the shore barrier

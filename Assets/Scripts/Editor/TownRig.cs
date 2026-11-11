@@ -69,6 +69,8 @@ namespace CameraGame.EditorTools
         [MenuItem("Tools/Town/Walk the Whole Town (Play)")] public static void Tour() => Run("tour", Out("walk/after/walk"), "walk");
         [MenuItem("Tools/Town/Walk the Whole Town - sprint (Play)")] public static void TourSprint() => Run("tour", Out("walk/after/sprint"), "sprint");
         [MenuItem("Tools/Town/Film Shore and Hill (Play)")] public static void Film() => Run("film", Out("film"));
+        [MenuItem("Tools/Town/Review - FallRecovery spawn outside the area (Play)")] public static void ReviewOutside() => Run("review", Out("review/outside"), "outside");
+        [MenuItem("Tools/Town/Review - FallRecovery ring and backstop (Play)")] public static void ReviewRing() => Run("review", Out("review/ring"), "ring");
 
         public static void Run(string mode, string outputDir, string staging = "")
         {
@@ -135,6 +137,21 @@ namespace CameraGame.EditorTools
                     bad.playableArea = new Vector2[] { Vector2.zero, Vector2.one };   // not a polygon
                     p.objectReferenceValue = bad;
                 }
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            else if (staging == "outside")
+            {
+                // review: a VALID polygon (the default shifted 2,000 m east) that does not contain the spawn
+                var fr = Object.FindFirstObjectByType<FallRecovery>(FindObjectsInactive.Include);
+                if (fr == null) return;
+                var so = new SerializedObject(fr);
+                SerializedProperty p = so.FindProperty("config");
+                var shifted = ScriptableObject.Instantiate((TownBoundsConfig)p.objectReferenceValue);
+                shifted.name = "TownBoundsConfig (rig: spawn outside the area on purpose)";
+                Vector2[] poly = TownBoundsConfig.DefaultPlayableArea;
+                shifted.playableArea = new Vector2[poly.Length];
+                for (int i = 0; i < poly.Length; i++) shifted.playableArea[i] = poly[i] + new Vector2(2000f, 0f);
+                p.objectReferenceValue = shifted;
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
             else if (staging == "spawnoffmesh")
