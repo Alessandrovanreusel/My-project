@@ -78,7 +78,8 @@ STORY_PHASES = ["create", "dev", "review", "cross-review", "fix", "close"]
 HOURS = {"create": 2, "dev": 8, "review": 5, "cross-review": 1, "fix": 4, "close": 2,
          "plan-epic": 3, "retro": 2, "smoke": 0.5}
 NEEDS_UNITY = {"create", "dev", "review", "fix", "close", "smoke"}
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 3                # failed attempts that committed NOTHING before a phase is parked...
+MAX_RUNS = 6                    # ...and failed attempts of any kind (handovers included)
 MAX_UNITY_RESTARTS = 2          # consecutive, before the whole loop stops
 LIMIT_WAIT_S = 20 * 60          # usage limit: wait, then retry the same attempt
 LIMIT_WAIT_MAX_S = 30 * 3600
@@ -942,10 +943,12 @@ def run_unit(u: Unit, state: dict) -> str:
             save_state(state)
             continue
 
+        tip = git("rev-parse", u.branch, check=False).stdout.strip()
         res = run_phase(u, us, phase, state)
         if res["status"] == "stopped":
             return "stopped"
         finish_phase_git(u, phase)
+        progressed = git("rev-parse", u.branch, check=False).stdout.strip() != tip
         us["history"].append({"phase": phase, "status": res["status"], "summary": res.get("summary", ""),
                               "minutes": res.get("_minutes"), "log": res.get("_log"), "at": now()})
         absorb_result(us, res)
@@ -971,12 +974,23 @@ def run_unit(u: Unit, state: dict) -> str:
                 git("checkout", "master")
                 return "parked"
         else:  # failed
-            us["attempts"][phase] = us["attempts"].get(phase, 0) + 1
+            # "failed" covers two different things: a session that got nowhere, and one that ran out of
+            # context halfway through a big story and handed over (as _rules.md tells it to). Only the
+            # first counts towards parking; a handover is judged by what it committed. (Story 2.2's first
+            # dev session did 7 of 13 tasks in 12 commits and was counted exactly like a dud.)
+            us["attempts"][phase] = runs = us["attempts"].get(phase, 0) + 1
+            stalls = us.setdefault("stalls", {})
+            if not progressed:
+                stalls[phase] = stalls.get(phase, 0) + 1
             us["hint"] = res.get("next_hint") or res.get("summary") or ""
-            if us["attempts"][phase] >= MAX_ATTEMPTS:
-                park(u, us, state, phase, f"failed {MAX_ATTEMPTS} times; last: {us['hint'][:160]}")
+            if stalls.get(phase, 0) >= MAX_ATTEMPTS or runs >= MAX_RUNS:
+                park(u, us, state, phase, f"failed {runs} times, {stalls.get(phase, 0)} of them with nothing "
+                                          f"committed; last: {us['hint'][:160]}")
                 git("checkout", "master")
                 return "parked"
+            if progressed:
+                log(f"{u.id}: {phase} attempt {runs} handed over with new commits; continuing "
+                    f"(run {runs} of at most {MAX_RUNS})")
         save_state(state)
 
     return "merged" if merge_unit(u, us, state) else "parked"

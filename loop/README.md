@@ -70,7 +70,7 @@ seconds, having seen 5 of 10 files.)
 | An AC needs your eyes or ears | Gathers the evidence, queues it, lets later stories build on it |
 | An AC says you must approve something before a later story starts | Never starts that story; does other work, pings your phone once, and starts it the moment you approve |
 | Compile errors, failing tests, review findings | Fixes them itself |
-| A phase fails | Retries in a fresh session with a hint, up to 3 times, then parks the unit |
+| A phase fails | Retries in a fresh session with a hint. Parks the unit after 3 failures that committed nothing, or 6 of any kind (a session that runs out of context on a big story commits its work and hands over; that is progress, not a failure) |
 | A real blocker (login, purchase, licence, missing asset) | Parks the unit, pings your phone, moves to work that doesn't depend on it |
 | Unity unreachable | Restarts Unity; after 2 failed restarts in a row it stops everything and pings you |
 | Claude usage limit | Waits 20 minutes and retries, for up to 30 hours |
