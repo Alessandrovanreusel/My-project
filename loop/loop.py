@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import datetime as dt
+import itertools
 import json
 import os
 import re
@@ -57,6 +58,8 @@ CONFIG_FILE = RUNTIME / "config.local.json"
 STOP_FILE = RUNTIME / "STOP"
 APPROVALS_FILE = RUNTIME / "approvals.txt"   # Alexv's sign-offs; safe to edit while the loop runs
 GATE_POLL_S = 600                            # idle re-check of approvals.txt when only gated work is left
+MERGE_TRIES = 3                              # a merge with no conflicts that still fails is retried...
+MERGE_RETRY_S = 20                           # ...after this long (a file held by Unity/OneDrive/a scan)
 PID_FILE = RUNTIME / "current.pid"
 DEPS_FILE = LOOP / "dependencies.yaml"
 LESSONS_FILE = LOOP / "lessons.md"
@@ -199,8 +202,10 @@ def stop_requested() -> bool:
 # ----------------------------------------------------------------------------- git
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess:
+    # No stdin: with a console attached, Git for Windows answers a locked file with "Unlink of file ...
+    # failed. Should I try again? (y/n)" and waits for a reply nobody will type.
     r = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
-                       errors="replace")
+                       errors="replace", stdin=subprocess.DEVNULL)
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {r.stderr.strip() or r.stdout.strip()}")
     return r
@@ -827,14 +832,63 @@ def next_phase(u: Unit, us: dict, phase: str) -> str:
     return seq[i + 1] if i + 1 < len(seq) else "merge"
 
 
+def merge_conflicts(branch: str) -> list[str]:
+    """The paths a merge of `branch` into master would REALLY conflict on, worked out by git merge-tree
+    without touching the working tree. Empty when it merges cleanly (or merge-tree itself failed)."""
+    r = git("merge-tree", "--write-tree", "--name-only", "master", branch, check=False)
+    if r.returncode != 1:
+        return []
+    return list(itertools.takewhile(bool, r.stdout.splitlines()[1:]))
+
+
+def remove_half_merged(branch: str) -> list[str]:
+    """A merge that dies halfway leaves the branch's NEW files behind as untracked copies, and those then
+    block every later checkout or merge. Remove exactly those: untracked files byte-identical to the
+    branch's own version of the same path (nobody's work is lost: the branch still has them)."""
+    out = git("status", "--porcelain", "-z", "--untracked-files=all", check=False).stdout
+    removed = []
+    for entry in filter(None, out.split("\0")):
+        p = entry[3:]
+        if not entry.startswith("?? "):
+            continue
+        theirs = git("rev-parse", "--verify", "--quiet", f"{branch}:{p}", check=False).stdout.strip()
+        if theirs and theirs == git("hash-object", "--", p, check=False).stdout.strip():
+            (ROOT / p).unlink(missing_ok=True)
+            removed.append(p)
+            d = (ROOT / p).parent
+            while d != ROOT and d.is_dir() and not any(d.iterdir()):   # and the folders they emptied
+                d.rmdir()
+                d = d.parent
+    return removed
+
+
 def merge_unit(u: Unit, us: dict, state: dict) -> bool:
     git("checkout", "master")
     sync_master()
+    conflicts = merge_conflicts(u.branch)
+    if conflicts:
+        park(u, us, state, "merge", f"merge conflict with master in {', '.join(conflicts[:5])}; resolve by hand "
+                                    "or ask Claude to rebase the branch")
+        return False
+    # Not a conflict, so a failure here is the machine: on 2026-11-11 a merge that git merge-tree called
+    # clean died halfway (most likely a file held by Unity, OneDrive or a virus scan right after the
+    # checkout), was reported as a "conflict", and stranded the branch's new files on master.
     summary = (us["history"][-1]["summary"] if us["history"] else "")[:200]
-    r = git("merge", "--no-ff", u.branch, "-m", f"loop: merge {u.id}\n\n{summary}\n\n{ATTRIBUTION}", check=False)
-    if r.returncode != 0:
+    err = ""
+    for attempt in range(1, MERGE_TRIES + 1):
+        r = git("merge", "--no-ff", u.branch, "-m", f"loop: merge {u.id}\n\n{summary}\n\n{ATTRIBUTION}", check=False)
+        if r.returncode == 0:
+            break
+        err = " ".join((r.stderr.strip() or r.stdout.strip()).split())
         git("merge", "--abort", check=False)
-        park(u, us, state, "merge", "merge conflict with master; resolve by hand or ask Claude to rebase the branch")
+        stray = remove_half_merged(u.branch)
+        log(f"{u.id}: merge attempt {attempt}/{MERGE_TRIES} failed, not a conflict: {err[:400]}"
+            + (f" (removed {len(stray)} half-merged file(s))" if stray else ""))
+        if attempt < MERGE_TRIES:
+            time.sleep(MERGE_RETRY_S)
+    else:
+        park(u, us, state, "merge", f"merge failed {MERGE_TRIES} times although it has no conflicts (a locked file? "
+                                    f"Unity, OneDrive or a virus scan): {err[:240]}")
         return False
     us["merged"] = True
     if us.get("lessons"):
