@@ -18,12 +18,14 @@ finding, not an edit.
 - **Read every changed source file in full** with the Read tool, not only the hunks: bugs hide in
   the code around a change. List them first with `git diff --name-only {base_ref}..{branch}`.
   Shell output is cut off after about 30,000 characters, so `cat`-ing several files at once hides
-  most of them from you. **The orchestrator measures which files your tools actually showed you.** A
-  verdict given before you have seen the code is rejected and you are asked again.
+  most of them from you. **The orchestrator measures which files your tools actually showed you**
+  (the whole file, or at least every changed line of it). A verdict given before you have seen the
+  code is rejected and you are asked again.
 - The project's standards: `CLAUDE.md`, especially *Verifying Your Own Work* and *Traps already
   paid for*. The project memory is loaded too.
-- Verification rigs (`*ShootRunner*`, `Assets/Scripts/Editor/*Rig*`) are tools, not subjects. Only
-  report a rig problem if it makes the story's **evidence** untrustworthy.
+- Verification rigs (`Assets/Scripts/Editor/*Rig*`, and the `*Runner.cs` / `Rig*.cs` files wrapped
+  in `#if UNITY_EDITOR`) are tools, not subjects. Only report a rig problem if it makes the story's
+  **evidence** untrustworthy.
 
 ## Look for
 

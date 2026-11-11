@@ -58,7 +58,8 @@ which is the only thing the orchestrator trusts. When an epic has no stories yet
 unit breaks it down; when every story in an epic has merged, a **retro** unit writes its lessons.
 
 The cross-review only counts if the reviewer **actually saw the code**. The loop checks this from
-its transcript: what share of each changed source file's lines its tools showed it. Below 80% of the
+its transcript: a file counts as seen when its tools showed it most of the file, or nearly every
+changed line of it (a diff review). Verification rigs are left out of the count. Below 80% of the
 files, it is asked again with the unread files named; if it is still shallow, its review is kept
 but marked *partial* in the report. (The first real cross-review answered "0 findings" after 16
 seconds, having seen 5 of 10 files.)
