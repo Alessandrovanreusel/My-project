@@ -660,7 +660,7 @@ Code review on 2026-11-11, loop REVIEW phase, of `5df4a9a..ee2bc07`: the story's
 
   The rigs (`TownRig*`, `TownCensus`, `TownPhotos`) were run and extended as tools. They were not reviewed (standing
   rule).
-- **Result:** about 20 raw findings, triaged into **0 new decisions, 2 patches (both applied and re-verified by
+- **Result:** 15 findings, triaged into **0 new decisions, 2 patches (both applied and re-verified by
   running), 3 deferred and 10 dismissed.**
 
 What was **run**, not read. Each scenario was played in SampleScene through the real `ThirdPersonController`,
