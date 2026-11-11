@@ -125,6 +125,11 @@ namespace CameraGame.World
                     }
                     Keys();
                     float restoredAt = _fall.Recoveries > before ? _fall.LastRecoveryTime : -1f;
+                    // The edge: FallRecovery puts the body back in the very Update that first finds it outside, so the rig (which
+                    // reads after Update) never sees it out. The instant it went out is then the restore frame, proven by
+                    // FallRecovery's own record of where it was taken from (outside the area).
+                    if (cs == "edge" && belowAt < 0f && restoredAt >= 0f && cfg != null && !cfg.IsAllowed(new Vector2(_fall.LastFrom.x, _fall.LastFrom.z)))
+                        belowAt = restoredAt;
                     Vector3 rp = _player.transform.position;
                     if (clip) File.WriteAllText(Path.Combine(outputDir, "clip", "times.csv"), clipTimes.ToString());
                     // how old the restore spot is: the last time the player stood within 0.1 m of it before the fall
