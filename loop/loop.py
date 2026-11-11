@@ -81,10 +81,16 @@ NEEDS_UNITY = {"create", "dev", "review", "fix", "close", "smoke"}
 MAX_ATTEMPTS = 3                # failed attempts that committed NOTHING before a phase is parked...
 MAX_RUNS = 6                    # ...and failed attempts of any kind (handovers included)
 MAX_UNITY_RESTARTS = 2          # consecutive, before the whole loop stops
-LIMIT_WAIT_S = 20 * 60          # usage limit: wait, then retry the same attempt
-LIMIT_WAIT_MAX_S = 30 * 3600
-LIMIT_RE = re.compile(r"usage limit|limit reached|hit your limit|rate.?limit|overloaded|"
+LIMIT_WAIT_S = 20 * 60          # usage limit that names no reset time: wait this long, then retry...
+LIMIT_WAIT_MAX_S = 30 * 3600    # ...for up to this long in all
+LIMIT_RESET_MAX_S = 8 * 86400   # a limit that names its reset time is waited out (the weekly one too)
+LIMIT_RE = re.compile(r"usage limit|limit reached|hit your (?:[\w-]+ )?limit|rate.?limit|overloaded|"
                       r"too many requests|\b429\b|\b529\b|credit balance", re.I)
+# Alexv's Claude allowance is shared with the loop. Measured 2026-11-11: the loop used ~43% of the
+# 7-day allowance per day, so running flat out it would lock him out of Claude for days before the
+# weekly reset. Between phases, the loop pauses once the 7-day window is this full and resumes when
+# it resets. Alexv can change it with "weekly_budget" in config.local.json (1.0 = use everything).
+WEEKLY_BUDGET = 0.90
 DISALLOWED = "AskUserQuestion,Workflow,EnterPlanMode,ExitPlanMode"
 REVIEW_DISALLOWED = DISALLOWED + ",Edit,Write,NotebookEdit,mcp__UnityMCP,mcp__blender,mcp__claude-in-chrome"
 # A cross-review is only trusted if the reviewer demonstrably SAW the code. Measured 2026-11-10: at
@@ -557,6 +563,111 @@ def claude_session(u: Unit, phase: str, prompt: str, logfile: Path) -> tuple[int
     return run_process(cmd, prompt, logfile, HOURS.get(phase, 4) * 3600, child_env(u.id, phase))
 
 
+def rate_limit_info(log_text: str) -> dict:
+    """The newest rate-limit snapshot a stream-json log reports ({} if it has none)."""
+    for line in reversed(log_text.splitlines()):
+        if '"rate_limit_event"' in line:
+            try:
+                return json.loads(line).get("rate_limit_info") or {}
+            except Exception:
+                continue
+    return {}
+
+
+def usage_limit(log_text: str) -> tuple[bool, float | None]:
+    """Did the session stop on a Claude usage limit, and when does it lift (epoch seconds, if it said)?
+
+    Judged from what the session itself reported: its newest rate-limit snapshot is "rejected", or its
+    final result is an error that names a limit, or the CLI printed one outside the JSON. Never from a
+    mere mention: every stream-json log carries routine `rate_limit_event` lines (14 in one review), and
+    matching those made ANY crash, timeout or missing result look like a limit, rerun for up to 30 h."""
+    info = rate_limit_info(log_text)
+    if info.get("status") == "rejected" and info.get("resetsAt"):
+        return True, float(info["resetsAt"])
+    for line in reversed(log_text.splitlines()[-200:]):
+        try:
+            e = json.loads(line)
+        except Exception:
+            if LIMIT_RE.search(line):
+                return True, None
+            continue
+        if isinstance(e, dict) and e.get("type") == "result":
+            return bool(e.get("is_error") and LIMIT_RE.search(str(e.get("result", "")))), None
+    return info.get("status") == "rejected", None
+
+
+def wait_out_limit(u: Unit, what: str, reset: float | None) -> tuple[bool, float]:
+    """Sleep through a usage limit: until the reset time it named (plus a margin), else LIMIT_WAIT_S.
+    Returns (stopped by Alexv, seconds waited)."""
+    wait = max(60.0, reset - time.time() + 90) if reset else float(LIMIT_WAIT_S)
+    until = dt.datetime.fromtimestamp(time.time() + wait).strftime("%a %d %b %H:%M")
+    log(f"{u.id}: usage limit hit ({what}); waiting until {until}")
+    report(f"{u.id}: paused for a Claude usage limit ({what}) until {until}")
+    if wait > 3 * 3600:
+        notify(f"loop paused by your Claude usage limit until {until}; it resumes by itself")
+    end = time.time() + wait
+    while time.time() < end:
+        if stop_requested():
+            return True, wait
+        time.sleep(min(30.0, max(1.0, end - time.time())))
+    return False, wait
+
+
+def weekly_budget() -> float:
+    try:
+        return float(config().get("weekly_budget", WEEKLY_BUDGET))
+    except Exception:
+        return WEEKLY_BUDGET
+
+
+def newest_usage() -> dict:
+    """The newest rate-limit snapshot any session reported: the loop's view of Alexv's allowance."""
+    for f in sorted(LOGS.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:6]:
+        info = rate_limit_info(f.read_text(encoding="utf-8", errors="replace"))
+        if info:
+            return info
+    return {}
+
+
+def weekly_usage() -> tuple[float | None, float | None]:
+    """(share of the 7-day allowance used, when that window resets), from the newest snapshot."""
+    info = newest_usage()
+    w = (info.get("unifiedWindows") or {}).get("seven_day") or {}
+    if not w and info.get("rateLimitType") == "seven_day":
+        w = info
+    used, reset = w.get("utilization"), w.get("resetsAt")
+    return (float(used) if used is not None else None), (float(reset) if reset else None)
+
+
+def budget_pause(state: dict) -> bool:
+    """Between phases: once the 7-day allowance is past Alexv's budget, sleep until it resets, so he
+    keeps the rest for himself. Re-reads the budget while waiting (raise it and the loop goes on).
+    Returns True if Alexv stopped the loop meanwhile."""
+    used, reset = weekly_usage()
+    if used is None or not reset or used < weekly_budget() or time.time() >= reset:
+        return False
+    until = dt.datetime.fromtimestamp(reset + 120).strftime("%a %d %b %H:%M")
+    if state.get("budget_pause") != reset:
+        state["budget_pause"] = reset
+        save_state(state)
+        log(f"BUDGET: weekly Claude allowance {used:.0%} used (budget {weekly_budget():.0%}); pausing until {until}")
+        report(f"**paused** — your weekly Claude allowance is {used:.0%} used; the loop leaves you the rest "
+               f"and resumes {until}")
+        notify(f"loop paused: your weekly Claude allowance is {used:.0%} used, so it leaves you the rest and "
+               f"resumes {until}. To let it use more, set weekly_budget in loop/runtime/config.local.json")
+    keep_awake(False)   # nothing to do for days: let the PC sleep; it resumes once awake after the reset
+    try:
+        while time.time() < reset + 120 and used >= weekly_budget():
+            if stop_requested():
+                return True
+            time.sleep(30)
+    finally:
+        keep_awake(True)
+    state.pop("budget_pause", None)
+    log("BUDGET: resuming")
+    return False
+
+
 def read_result(path: Path) -> dict | None:
     if not path.exists():
         return None
@@ -585,20 +696,30 @@ def run_phase(u: Unit, us: dict, phase: str, state: dict) -> dict:
     if phase in NEEDS_UNITY:
         ensure_unity()
     waited = 0
+    cuts = 0
     while True:
         started = time.time()
         log(f"{u.id}: {phase} attempt {attempt} → {rel(logfile)}")
         code, tail = claude_session(u, phase, render(phase, ctx), logfile)
         res = read_result(result_path)
         mins = (time.time() - started) / 60
-        if res is None and LIMIT_RE.search(tail) and waited < LIMIT_WAIT_MAX_S:
-            log(f"{u.id}: usage/rate limit hit after {mins:.0f} min; waiting {LIMIT_WAIT_S // 60} min")
-            report(f"{u.id} {phase}: paused for a Claude usage limit")
-            for _ in range(LIMIT_WAIT_S // 30):
-                if stop_requested():
-                    return {"status": "stopped"}
-                time.sleep(30)
-            waited += LIMIT_WAIT_S
+        hit, reset = usage_limit(logfile.read_text(encoding="utf-8", errors="replace")) if res is None else (False, None)
+        if hit and waited < (LIMIT_RESET_MAX_S if reset else LIMIT_WAIT_MAX_S):
+            stopped, slept = wait_out_limit(u, f"{phase} after {mins:.0f} min", reset)
+            if stopped:
+                return {"status": "stopped"}
+            waited += slept
+            cuts += 1
+            # The cut-off session may have committed half the work: the next one must know, and the
+            # log of what it did must survive (the retry used to overwrite it).
+            ctx["previous_failure"] = (
+                (ctx["previous_failure"] + "\n\n" if hint else "") +
+                f"### This attempt was cut off by a Claude usage limit\n\nThe previous session of this same "
+                f"attempt stopped after {mins:.0f} min, when the usage limit was reached (its log: "
+                f"{rel(logfile)}). It may have committed part of the work or left changes uncommitted. Run "
+                f"`git log {us.get('base_ref') or 'master'}..HEAD` and `git status` first, carry on from where "
+                f"it stopped, and do not redo what is already done.")
+            logfile = LOGS / f"{stamp}-{u.id}-{phase}-a{attempt}-r{cuts + 1}.jsonl"
             continue
         if res is None:
             res = {"status": "failed", "summary": f"no valid result file (exit {code}, {mins:.0f} min)",
@@ -712,17 +833,17 @@ def run_cross_review(u: Unit, us: dict) -> str | None:
                                   HOURS["cross-review"] * 3600, child_env(u.id, "cross-review"))
             text = logfile.read_text(encoding="utf-8", errors="replace")
             answer = final_message(text)
-            if not answer and LIMIT_RE.search(text[-20000:]) and waited < LIMIT_WAIT_MAX_S:
-                log(f"{u.id}: usage/rate limit during cross-review; waiting {LIMIT_WAIT_S // 60} min")
-                for _ in range(LIMIT_WAIT_S // 30):
-                    if stop_requested():
-                        stopped = True
+            # Checked BEFORE the answer is trusted: a session cut off by a limit "answers" with the
+            # limit message itself, which would be saved as a review with 0 findings.
+            hit, reset = usage_limit(text)
+            if hit:
+                answer = ""
+                if waited < (LIMIT_RESET_MAX_S if reset else LIMIT_WAIT_MAX_S):
+                    stopped, slept = wait_out_limit(u, "cross-review", reset)
+                    if stopped:
                         break
-                    time.sleep(30)
-                if stopped:
-                    break
-                waited += LIMIT_WAIT_S
-                continue
+                    waited += slept
+                    continue
             break
         if stopped or not answer.strip():
             break
@@ -930,7 +1051,7 @@ def run_unit(u: Unit, state: dict) -> str:
     report(f"start {u.kind} **{u.id}** at `{us['phase']}` on `{u.branch}`")
 
     while us["phase"] != "merge":
-        if stop_requested():
+        if stop_requested() or budget_pause(state):
             return "stopped"
         phase = us["phase"]
         if phase == "cross-review":
