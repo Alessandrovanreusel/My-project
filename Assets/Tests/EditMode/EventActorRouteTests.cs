@@ -49,6 +49,28 @@ namespace CameraGame.Tests.EditMode
         }
 
         [Test]
+        public void StalledRequest_ShortOfTheWaypoint_GivesUp_NeverResent()
+        {
+            // measured: from the dead end beside the grey strip, the agent's request toward corner_nw never came back
+            Assert.AreEqual(EventActor.RouteStep.GiveUp, EventActor.NextRouteStep(70.8f, float.PositiveInfinity, Stop, stalled: true));
+            Assert.AreEqual(EventActor.RouteStep.GiveUp, EventActor.NextRouteStep(70.8f, 418.6f, Stop, stalled: true));
+        }
+
+        [Test]
+        public void StalledRequest_AtTheWaypoint_IsStillArrived()
+        {
+            Assert.AreEqual(EventActor.RouteStep.Arrived, EventActor.NextRouteStep(Stop, float.PositiveInfinity, Stop, stalled: true));
+        }
+
+        [Test]
+        public void PendingTimeout_IsPositiveAndFinite()
+        {
+            // a structural guard (a zero or negative timeout would give up on every request the frame it is sent)
+            Assert.Greater(EventActor.PendingTimeout, 0f);
+            Assert.IsFalse(float.IsInfinity(EventActor.PendingTimeout));
+        }
+
+        [Test]
         public void BadStoppingDistance_ReadsAsZero()
         {
             Assert.AreEqual(EventActor.RouteStep.Arrived, EventActor.NextRouteStep(0.4f, float.PositiveInfinity, float.NaN));

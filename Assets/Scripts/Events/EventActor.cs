@@ -59,6 +59,7 @@ namespace CameraGame.Events
         private float _lastShortfall = float.PositiveInfinity;
         private bool _routeDone;                 // at the last waypoint (or it cannot be got closer to): nothing left to step
         private bool _shortWarned;               // the unreachable-waypoint warning is said once per actor
+        private float _pendingFor;               // how long the agent's current path request has been pending (the stall watchdog)
 
         // How far from the spawn point the NavMesh may be for the agent to be placed there (Story 2.2, the Warp guard).
         private const float SpawnSnapDistance = 1f;
@@ -74,6 +75,17 @@ namespace CameraGame.Events
         /// short of (metres).</summary>
         public const float ReplanProgress = 1f;
 
+        /// <summary>
+        /// How long the agent's own path request may stay pending before the actor treats it as a path that ended where it
+        /// stands (seconds). Story 2.2 cross-review FIX, second session, measured in <c>cross-review/longroute/</c>: at the dead
+        /// end beside the grey strip (−546, 255) the real actor's request toward corner_nw was still pending after 25 s, which
+        /// froze it there, silently, and the route never went on. Every request that did come back in the rig took at most
+        /// ~4.4 s (sampled once a second, 5 runs); 10 s is over twice that. It is wall time: the pathfinder runs a fixed number
+        /// of iterations per frame, so the same request takes longer at a lower frame rate (an isolated probe at ~116 fps got
+        /// the same corner_nw request back within ~6 s).
+        /// </summary>
+        public const float PendingTimeout = 10f;
+
         /// <summary>What the actor does once its agent reports the end of its path.</summary>
         public enum RouteStep { Arrived, Replan, GiveUp }
 
@@ -85,13 +97,16 @@ namespace CameraGame.Events
         /// Short of it, the actor re-plans from where it stands (a fresh query, a fresh budget) as long as each re-plan ends
         /// at least <see cref="ReplanProgress"/> closer; otherwise the waypoint cannot be reached from here (a dead end or an
         /// island) and the route gives up on it. Pure, so EditMode tests pin it. A non-finite shortfall gives up rather than
-        /// re-plan forever.
+        /// re-plan forever. <paramref name="stalled"/>: the agent's request never came back (pending past
+        /// <see cref="PendingTimeout"/>); the same request from the same spot is not sent again, so short of the waypoint the
+        /// route gives up on it.
         /// </summary>
-        public static RouteStep NextRouteStep(float shortfall, float previousShortfall, float stoppingDistance)
+        public static RouteStep NextRouteStep(float shortfall, float previousShortfall, float stoppingDistance, bool stalled = false)
         {
             if (float.IsNaN(shortfall) || float.IsInfinity(shortfall)) return RouteStep.GiveUp;
             float stop = stoppingDistance > 0f ? stoppingDistance : 0f;   // NaN and negatives read as 0
             if (shortfall <= stop + ArrivalSlack) return RouteStep.Arrived;
+            if (stalled) return RouteStep.GiveUp;
             return shortfall < previousShortfall - ReplanProgress ? RouteStep.Replan : RouteStep.GiveUp;
         }
 
@@ -346,6 +361,7 @@ namespace CameraGame.Events
             _waypointIndex = 0;
             _routeDone = false;
             _lastShortfall = float.PositiveInfinity;
+            _pendingFor = 0f;
 
             // The agent ships DISABLED on the prefab so a prewarmed/pooled instance that is momentarily off
             // the NavMesh (e.g. parked at the manager's y=20 anchor) never logs Unity's "Failed to create
@@ -502,10 +518,21 @@ namespace CameraGame.Events
             // ⚠️ The end of the agent's path is not the waypoint (Story 2.2, cross-review): StepAlongRoute checks the
             // waypoint itself, and re-plans a path that stopped short of it.
             if (NavUsable && _route != null && _route.HasWaypoints && !_routeDone
-                && definition.GetPhase(_phase).advanceAlongRoute
-                && !_agent.pathPending && _agent.remainingDistance <= _agent.stoppingDistance)
+                && definition.GetPhase(_phase).advanceAlongRoute)
             {
-                StepAlongRoute();
+                if (_agent.pathPending)
+                {
+                    // ⚠️ Unity's request can stay pending for good (measured: 78 s at a dead end, see PendingTimeout), and
+                    // waiting on it froze the actor in place, silently. Past PendingTimeout it counts as a path that ended
+                    // where the actor stands: arrived, or given up on, warned once.
+                    _pendingFor += Time.deltaTime;
+                    if (_pendingFor >= PendingTimeout) { _pendingFor = 0f; StepAlongRoute(true); }
+                }
+                else
+                {
+                    _pendingFor = 0f;
+                    if (_agent.remainingDistance <= _agent.stoppingDistance) StepAlongRoute(false);
+                }
             }
 
             if (_timer <= 0f)
@@ -651,24 +678,30 @@ namespace CameraGame.Events
             curve.MoveKey(index, k);
         }
 
-        /// <summary>The agent has come to the end of its path: on to the next waypoint if this one is reached, a re-plan
-        /// from here if the path stopped short of it, or (when a re-plan gets no closer) on without it, warned once.
-        /// Called only under the NavUsable/HasWaypoints guard in Update.</summary>
-        private void StepAlongRoute()
+        /// <summary>The agent has come to the end of its path (or its request never came back, <paramref name="stalled"/>): on to
+        /// the next waypoint if this one is reached, a re-plan from here if the path stopped short of it, or (when a re-plan
+        /// gets no closer, or stalled) on without it, warned once. Called only under the NavUsable/HasWaypoints guard in Update.</summary>
+        private void StepAlongRoute(bool stalled)
         {
             Vector3 at = transform.position;
             float shortfall = Vector2.Distance(new Vector2(at.x, at.z), new Vector2(_waypointOnMesh.x, _waypointOnMesh.z));
-            RouteStep step = NextRouteStep(shortfall, _lastShortfall, _agent.stoppingDistance);
+            RouteStep step = NextRouteStep(shortfall, _lastShortfall, _agent.stoppingDistance, stalled);
+            if (stalled) _agent.ResetPath();   // cancel the request that never came back, so nothing is left in flight
             if (step == RouteStep.Replan)
             {
+                // The agent's own request, not NavMesh.CalculatePath: CalculatePath's search is shorter, and from just west of
+                // the tyre line it found nothing closer where the agent's request found the detour round it (measured,
+                // cross-review/longroute/after-fix-3 against after-fix-2). A request that never comes back is caught in Update.
                 _lastShortfall = shortfall;
+                _pendingFor = 0f;
                 _agent.SetDestination(_route.GetWaypoint(_waypointIndex));   // a fresh query from here, with a fresh search budget
                 return;
             }
             if (step == RouteStep.GiveUp && !_shortWarned)
             {
                 _shortWarned = true;
-                GameLog.Warn("Events", $"{SubjectId}: waypoint {_waypointIndex} cannot be reached from {at}: its path ends {shortfall:0.0} m short " +
+                string why = stalled ? $"no path to it came back in {PendingTimeout:0} s" : $"its path ends {shortfall:0.0} m short";
+                GameLog.Warn("Events", $"{SubjectId}: waypoint {_waypointIndex} cannot be reached from {at}: {why} " +
                                        "(a dead end or an island), so the route moves on without it (said once). Keep each waypoint reachable from the one before.");
             }
             if (_waypointIndex < _route.Count - 1)
@@ -688,6 +721,7 @@ namespace CameraGame.Events
             _waypointOnMesh = NavMesh.SamplePosition(wp, out NavMeshHit onMesh, WaypointSnapDistance, _agent.areaMask) ? onMesh.position : wp;
             _lastShortfall = float.PositiveInfinity;
             _routeDone = false;
+            _pendingFor = 0f;
 
             // SetDestination returns false when the target cannot be mapped onto the NavMesh. Swallowing that
             // made an unreachable waypoint indistinguishable from a healthy route: remainingDistance stays at

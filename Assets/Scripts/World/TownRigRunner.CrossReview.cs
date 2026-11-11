@@ -95,7 +95,11 @@ namespace CameraGame.World
                 ("reachable_far_farm", new[] { "farm_industrial_yard", "house_row" }),
                 ("dead_end_corner_nw", new[] { "corner_nw", "house_row" }),
                 ("reachable_far_farm_cycle2", new[] { "farm_industrial_yard", "house_row" }),
+                // FIX phase, second session: starts AT the dead end (below), where the agent's own request toward corner_nw never
+                // comes back (an isolated probe: still pending after 78 s). Exercises EventActor's stall watchdog every run.
+                ("stall_from_dead_end", new[] { "corner_nw", "house_row" }),
             };
+            var deadEnd = new Vector3(-546.188f, 0.994f, 254.666f);   // where every corner_nw run ended (trace.csv)
             var csv = new StringBuilder("scenario,t,index,x,y,z,to_wp_m,remaining,status,pending,has_path\n");
             var events = new StringBuilder("scenario,t,from_index,to_index,x,z,dist_to_left_waypoint_m,remaining,status\n");
             var path = new NavMeshPath();
@@ -114,7 +118,17 @@ namespace CameraGame.World
                 Vector3[] c = path.corners;
                 _log.AppendLine($"{s.name}: route {string.Join(" → ", s.wps)}; ONE query pub → WP0: {path.status}, ends {(c.Length > 0 ? F(Hz(c[c.Length - 1], tr[0].position), "0.0") : "-")} m from WP0");
                 int w0 = _xWarnEvents;
-                actor.transform.SetPositionAndRotation(pub, Quaternion.identity);   // as EventManager.Spawn does
+                Vector3 start = s.name == "stall_from_dead_end" ? deadEnd : pub;
+                // the stall, forced: a pathfinding budget of 1 iteration per frame (Unity's default is 100) until the actor leaves
+                // waypoint 0, so the request toward corner_nw cannot come back inside EventActor.PendingTimeout at any frame rate
+                int itersBefore = NavMesh.pathfindingIterationsPerFrame;
+                bool forcedStall = s.name == "stall_from_dead_end";
+                if (forcedStall)
+                {
+                    NavMesh.pathfindingIterationsPerFrame = 1;
+                    _log.AppendLine($"  {s.name}: STAGING — NavMesh.pathfindingIterationsPerFrame {itersBefore} → 1 until waypoint 0 is left (EventActor.PendingTimeout {F(EventActor.PendingTimeout, "0.0")} s)");
+                }
+                actor.transform.SetPositionAndRotation(start, Quaternion.identity);   // as EventManager.Spawn does
                 actor.Begin(route);
                 int last = (int)WpIndexField.GetValue(actor);
                 var closest = new float[tr.Length];
@@ -130,6 +144,11 @@ namespace CameraGame.World
                     for (int i = 0; i < tr.Length; i++) closest[i] = Mathf.Min(closest[i], Hz(p, tr[i].position));
                     if (idx != last)
                     {
+                        if (forcedStall && NavMesh.pathfindingIterationsPerFrame != itersBefore)
+                        {
+                            NavMesh.pathfindingIterationsPerFrame = itersBefore;
+                            _log.AppendLine($"  t {F(t, "0.0")} s: pathfindingIterationsPerFrame put back to {itersBefore}; the stalled request had been pending {F(t, "0.0")} s");
+                        }
                         float d = Hz(p, tr[last].position);
                         events.AppendLine($"{s.name},{F(t)},{last},{idx},{F(p.x)},{F(p.z)},{F(d, "0.00")},{F(ag.remainingDistance)},{ag.pathStatus}");
                         _log.AppendLine($"  t {F(t, "0.0")} s: waypoint {last} → {idx} with the actor {F(d, "0.0")} m from waypoint {last} ({s.wps[last]}) at {V(p)}; remainingDistance {F(ag.remainingDistance)}, {ag.pathStatus}");
@@ -143,9 +162,10 @@ namespace CameraGame.World
                     }
                     stillFor = Hz(p, prevPos) < 0.01f ? stillFor + Time.deltaTime : 0f;
                     prevPos = p;
-                    if (idx == tr.Length - 1 && stillFor > 3f) break;   // standing at (or short of) the last waypoint for 3 s
+                    if (idx == tr.Length - 1 && stillFor > 3f && Hz(p, tr[idx].position) < 2f) break;   // standing AT the last waypoint for 3 s
                     if (stillFor > 25f) break;                           // stuck before the last waypoint
                 }
+                if (forcedStall) NavMesh.pathfindingIterationsPerFrame = itersBefore;
                 Vector3 end = actor.transform.position;
                 var cl = new StringBuilder();
                 for (int i = 0; i < tr.Length; i++) cl.Append($"WP{i} {s.wps[i]} {F(closest[i], "0.0")} m; ");
