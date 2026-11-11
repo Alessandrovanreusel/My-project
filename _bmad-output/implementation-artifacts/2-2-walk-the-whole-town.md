@@ -959,6 +959,46 @@ evidence predated the commit, so it might not have covered it.
     - a playable area about 11 times larger, out to the map's edge, which has holes in its outer tiles.
   - Recorded as a decision for Alexv (keep 1c as built). The AC2/AC3 human check now says so.
 
+#### CLOSE gate, attempt 1 (2026-11-11): FAILED on AC3's ring
+
+The close gate ran every check itself. Five of the six pass. The sixth fails on one AC clause.
+
+**What passed (run in this session, on HEAD `4f142da`):**
+- `refresh_unity` (forced, with a script compile), then `read_console`: 0 errors. The only warnings are the
+  baseline ones: the town's two large-triangle warnings, and three `[Pool]` warnings that Epic 1's `ObjectPoolTests`
+  provoke on purpose.
+- EditMode **253/253** (PlayMode: the project has no PlayMode tests).
+- Every evidence path in the queued human checks exists. These captures were opened and show real content:
+  - `fall/frames_sheet.jpg`: 20 ordinary views after each restore;
+  - `cross-review/walls/head-recheck/head_recheck_sample_sheet.jpg`: wall poses, with the green control marker;
+  - `navmesh/paths_small.jpg`: 18 parts and their legs;
+  - `edges/sheet.jpg`, `film/hill_sheet.jpg` and `fix-edges/flood_reachable_no_barriers_annotated.png`.
+- The story file is complete. The working tree has nothing tracked left uncommitted. The only untracked items are
+  `.codex/` and `AGENTS.md`, which are not this story's.
+- The editor state was read back: SampleScene is open and not dirty. `timeScale` is 1, quality is PC, and
+  `runInBackground` matches the project. `importCameras` and `importLights` are both off. `TownBounds` holds 9
+  children, and the `WorldBounds` layer is 9.
+
+**What fails: AC3, "the terrain or the shoreline stops them", on the mountain ring.**
+- The queued AC2/AC3 check's own read says the ring "will read as an invisible wall". Under the loop's close rule,
+  a check whose own read says the AC is likely not met is a failing AC, not evidence.
+- The FIX phase proved that moving a barrier cannot fix it. The close gate then measured **how much of the ring is
+  affected** (`close/ring_contact.py`, `.json` and `.png`). The script flood-fills the census 2 m surface grid from
+  the spawn inside today's polygon, with the controller's limits: 45° slope, and 2.35 m of rise per cell.
+  - **1,642 m of the 2,271 m ring barrier (72%) is reached on walkable ground, with walkable ground beyond it.**
+    There, the barrier stops the player and the terrain does not.
+  - Per edge:
+    - east x 260: 477 of 485 m;
+    - north-east cut (x 210 and the diagonal): 125 of 125 m;
+    - south-east cut: 96 of 111 m;
+    - south z −400: 474 of 880 m, in 37 runs;
+    - west x −680: 469 of 670 m.
+  - This agrees with the edge walks: b180, b225 and b270 were stopped by a TownBounds barrier, and `film/hill.mp4`
+    shows a stop at x 258.
+- No placement fix exists, so the remaining fix is a **visible edge**, and it is not small. See the result file's
+  `next_hint`: a re-runnable `Tools/Town/Build Town Edge` that places the map's own boulders along those 1,642 m
+  under a new `TownEdge` root. Then the rock, not the air, is what the player touches.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -1719,3 +1759,4 @@ Queued in the result file, none self-certified:
 - 2026-11-11: Code review by the loop REVIEW phase (Claude Opus 5.5): 2 patches to FallRecovery (applied and re-verified by running), 3 deferred, 10 dismissed. Status stays review (perceptual checks open).
 - 2026-11-11: Cross-review FIX phase (Claude Opus 5.5): findings 1 (the event actor's arrival at a partial path's end) and 3 (the camera skipping a surface inside its cast, reproduced on sloping overhangs and a boulder wedge) fixed and re-verified by running; finding 2 (AC4 evidence) closed by re-measuring 20 walls with a near-plane instrument (0 see-through on the fixed camera); 1 hypothesis deferred. EditMode 250/250. Status stays review.
 - 2026-11-11: Cross-review FIX phase, second session (Claude Opus 5.5). Re-ran every cross-review rig on the committed code. Found and fixed a hang in finding 1's re-plan: a path request that never came back froze the actor at a dead end with no warning. Now a 10 s watchdog moves on, and it is verified with a forced stall. Findings 2 and 3 hold on HEAD. Measured the east-hill stop: the whole ring is walkable to the map's edge, so it is a decision for Alexv, not a barrier placement. EditMode 253/253. Status stays review.
+- 2026-11-11: CLOSE gate, attempt 1 (Claude Opus 5.5): FAILED on AC3. The mountain ring stops the player with invisible barriers on walkable ground along 1,642 of its 2,271 m (measured). The other five close checks pass (console clean, EditMode 253/253, evidence real, story file complete, nothing uncommitted, editor restored). The fix (a visible edge) is handed to the next attempt. Status stays review.
