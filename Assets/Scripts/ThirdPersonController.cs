@@ -208,6 +208,27 @@ public class ThirdPersonController : MonoBehaviour
         _jumpRequested = false;
     }
 
+    /// <summary>
+    /// Moves the player to <paramref name="position"/> (their feet) at once, with no fall carried over (Story 2.2,
+    /// FallRecovery). The controller owns its motion state, so this is the one way anything else should move it.
+    ///
+    /// ⚠️ THE CHARACTERCONTROLLER IS SWITCHED OFF FOR THE MOVE. Physics does not auto-sync transforms in this project,
+    /// so writing transform.position on an enabled controller can be undone by its next Move(); disabling it, moving
+    /// the transform and enabling it again re-registers the body at the new place. The vertical velocity and any
+    /// pending jump are cleared, or a player put back after a long fall would slam into the ground at that speed.
+    /// </summary>
+    public void Teleport(Vector3 position)
+    {
+        if (_controller == null) _controller = GetComponent<CharacterController>();
+        bool wasEnabled = _controller.enabled;
+        _controller.enabled = false;
+        transform.position = position;
+        _controller.enabled = wasEnabled;
+        Physics.SyncTransforms();
+        _verticalVelocity = 0f;
+        _jumpRequested = false;
+    }
+
     // =====================================================================
     // MOVEMENT LOGIC
     // =====================================================================

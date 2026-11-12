@@ -1,0 +1,50 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f51d3ccbc9dc6544af6618e660bcdb7, type: 3}
+  m_Name: TownBoundsConfig
+  m_EditorClassIdentifier: CameraGame::CameraGame.World.TownBoundsConfig
+  playableArea:
+  - {x: -680, y: 269.5}
+  - {x: 210, y: 269.5}
+  - {x: 210, y: 215}
+  - {x: 260, y: 165}
+  - {x: 260, y: -320}
+  - {x: 215, y: -340}
+  - {x: 200, y: -400}
+  - {x: -680, y: -400}
+  noGoAreas:
+  - name: the dark pond (Plane.010)
+    points:
+    - {x: -590.0, y: -64.0}
+    - {x: -583.6, y: -87.1}
+    - {x: -564.8, y: -99.9}
+    - {x: -545.8, y: -100.0}
+    - {x: -524.7, y: -91.5}
+    - {x: -516.2, y: -80.9}
+    - {x: -512.0, y: -57.7}
+    - {x: -512.1, y: -53.5}
+    - {x: -533.1, y: -30.2}
+    - {x: -545.7, y: -30.0}
+    - {x: -569.1, y: -36.4}
+    - {x: -583.9, y: -53.4}
+  belowWorldY: -15
+  maxAirborneSeconds: 3
+  nothingBeneathSeconds: 0.15
+  safeSampleInterval: 0.25
+  minRestoreAge: 0.5
+  groundProbeDistance: 0.3
+  navMeshProbeDistance: 0.5
+  buriedTopY: -1
+  barrierClearance: 6
+  barrierThickness: 1
+  bakeYMin: -8
+  bakeYMax: 110

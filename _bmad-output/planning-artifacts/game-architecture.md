@@ -4,7 +4,7 @@ project: 'Camera Game'
 date: '2026-05-27'
 author: 'Alexv'
 version: '1.1'
-updated: '2026-11-11'  # ADR-5 accepted by Story 2.1 (world scale: characters scaled to the town, F = 5.0; Alexv may veto). Before: '2026-11-10'  # ADR-4 proposed by Story 1.14 (replay + export-time encode), awaiting Alexv; Clip Recording — sprint-change-proposal-2026-11-10.md
+updated: '2026-11-11'  # Story 2.2: World bounds and traversal (row 11). Before: '2026-11-11'  # ADR-5 accepted by Story 2.1 (world scale: characters scaled to the town, F = 5.0; Alexv may veto). Before: '2026-11-10'  # ADR-4 proposed by Story 1.14 (replay + export-time encode), awaiting Alexv; Clip Recording — sprint-change-proposal-2026-11-10.md
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 status: 'complete'
 engine: 'Unity 6.3 LTS (6000.3.8f1)'
@@ -186,6 +186,7 @@ These are NOT provided by the engine and must be decided in the next steps:
 | 8 | Audio / pooling | 3D AudioSource per actor (25 m rolloff in world metres, 1 mixer); generic ObjectPool<T> | Sufficient for the slice; satisfies no-leak metric. *(Revised 2026-11-11 by ADR-5: the 25 m is now 25 world metres. It was 100 units, converted at 4×, which measured as 20 person-metres.)* |
 | 9 | Clip recording | **ADR-4 — Proposed 2026-11-10, awaiting Alexv:** (B) replay recording; MP4 (H.264 via Media Foundation + AAC) only at export | Measured in a Windows build (Story 1.14): (B) costs +0.8 ms/frame over 3 rounds (not distinguishable from 0) and ~195 KB/s as 16-bit, (A) dropped 86–89% of its captures to a starved encoder, (C) needs ~250 MB/s of RAM. *(Added 2026-11-10; revised 2026-11-10 by Story 1.14 and its code review.)* |
 | 10 | World scale | **ADR-5 — Accepted 2026-11-11 (Story 2.1; Alexv may veto):** (A) the characters are scaled to the town. People are 1.77 m with the eye at 1.65 m; the town keeps its modelled, roughly real-metre size; F = 5.0 | Photographed and measured from the player's eye at four spots under all three options. Keeping 8.86 m giants puts the eye above every pine and eave. Scaling the town ×5 gives the same pictures for 30+ moved values and a 25×-area NavMesh. *(Added 2026-11-11.)* |
+| 11 | World bounds | **Decided 2026-11-11 (Story 2.2; Alexv may veto):** the playable area is the plain plus the ring's inner slopes (one polygon in `TownBoundsConfig`). Invisible `WorldBounds` barriers stand at the water's edge and on the slopes. The oil rig is out of bounds. `FallRecovery` puts a fallen player back. A whole-town NavMesh (15.5 MB) is crossed by chains of waypoints | Every edge walk stayed inside (28/28). Every provoked fall was restored in ≤ 0.16 s. 18/18 parts are reachable from the pub through complete legs (one query reaches 7/18: the search budget). See §World bounds and traversal. *(Added 2026-11-11.)* |
 
 ### Camera & State
 
@@ -269,6 +270,70 @@ remains the record of the photo-era model; its disk-ready rules carry over uncha
 held in an in-memory `List` inside `GalleryService`. No disk/economy in the slice
 (per GDD). Designed so PNG (`EncodeToPNG` → `persistentDataPath`) + JSON metadata can be
 added later without reshaping the model.
+
+### World bounds and traversal (Story 2.2)
+
+*Added 2026-11-11 by Story 2.2 (loop DEV phase). Evidence: `_bmad-output/verification/2-2-walk-the-whole-town/`.*
+
+- **The playable area** is the central plain plus the ring's inner slopes: one polygon in
+  `Assets/Data/World/TownBoundsConfig.asset` (x −680…260, z −400…269.5, with the north-east and south-east corners cut
+  to keep out a gully and a valley that leaves the ring). It is the single source for the barriers, the NavMesh bake
+  volume and FallRecovery's off-world check. Every part is open: no gating (the GDD's reputation-gated districts are
+  Epic 4) and no markers (FR10).
+- **The edges.** Invisible `BoxCollider`s under the scene root `TownBounds`, on the `WorldBounds` layer (9), built by
+  `Tools/Town/Build Town Bounds` from the polygon: 8 on the edges (the north edge is the water's edge, z 269.5) and 12
+  round the dark pond, each from 2 m under the lowest ground on its edge to 6 m over the highest, with no renderer, and
+  not in `GradingConfig.occluderMask`. Where the ring is steeper than the controller's 45° the terrain stops the player
+  before the barrier. A barrier is not a "wall in the town": the camera's wall cast ignores the layer.
+- **The water** has no collider (the collider rule removes it), so nobody can stand on it. The bake volume ends at the
+  shore, so the lake bed is never baked; the pond carries a `NavMeshModifierVolume` (Not Walkable).
+- **The oil rig is deliberately out of bounds** (decision 1d). It stands ~220 m off the shore on legs, decks 45–88 m
+  up, and nothing walkable reaches it (the grey strip at x ≈ −548 ends 113 m short). From the shore nothing on it
+  passes the 0.20 subject-size gate (≈ 27.6 m at FOV 18). Epic 3's smoke-break event is staged where the player can
+  get within ~27 m of the worker: the industrial yard (the farm) or the shore.
+- **FallRecovery** (`Scripts/World/FallRecovery.cs`, on the player). It keeps a ring buffer of the last 16 safe spots,
+  sampled every 0.25 s while the player stands on ground no steeper than 45°, inside the area and on the NavMesh. It puts
+  the player back on the newest spot at least 0.5 s old when the feet go below `belowWorldY` (−15), when the body
+  leaves the area, after 0.15 s airborne with nothing beneath, or after 3 s airborne. The restore goes through
+  `ThirdPersonController.Teleport`, which zeroes the falling speed. It logs one `[World]` warning per recovery and
+  shows nothing on screen. It allocates nothing per frame. World → Player is the only dependency. A teleport is a
+  transform change, so the replay (ADR-4) records it with nothing added.
+- **The collider rule** (`Scripts/World/ColliderRule.cs`, one pure function used by `Tools/Town/Apply Collider Rule to
+  the Map` and by `Tools/Add MeshColliders to World`, so a re-run never re-adds what was removed). It gives no collider
+  to grass (whatever its height), scatter no taller than the 0.35 m step, the water, or anything buried below y −1. It
+  gives pines a 3 m trunk capsule, because a whole-mesh pine collider is a chest-high 4 m-radius wall. Everything else
+  keeps its MeshCollider. The colliders stay scene-level components keyed to the FBX children. An EditMode guard checks
+  that every one resolves to a mesh the FBX holds, because 15,020 of them silently did not before this story.
+- **The whole-town NavMesh** (`Tools/Town/Bake Town NavMesh`). The surface on `game map` collects a Volume equal to
+  the playable area's bounding box, y −8…110 (far above the buried block at y ≈ −60). It uses Default + WorldBounds and
+  physics colliders, a 0.1 m voxel set explicitly, and excludes the player root (`NavMeshModifier.ignoreFromBuild`).
+  The agent is type 0 (0.30 / 1.77 / 0.35 / 45). Result: 1,026 tiles, 132k triangles, **15.5 MB**, persisted into the
+  existing asset so its GUID is kept (an EditMode guard keeps it and the scene under 50 MB).
+- **⚠️ One `NavMesh.CalculatePath` does not cross the whole town.** Measured (Task 8.2): from the pub, one query
+  returns `PathPartial` ~270–430 m out whatever the target. That is the query's search budget on a mesh made dense by
+  ~6,000 pine-trunk holes (without the pines it still stops at ~500–750 m), not an island. A real `NavMeshAgent`
+  given only the far target **does** arrive: it re-plans as it walks (in the measured run, 17 of 18 agents given only a far part reached it; the 18th, corner_nw, was led into a dead end beside the grey strip, while every chain of waypoints, the three longest included (up to 1,332 m), arrived). Event routes are chains of waypoints
+  (ADR-3), so **Epic 3 should keep consecutive waypoints within ~250 m** and check `pathStatus` (deferred :48–49), never
+  trust one long query.
+  *Cross-review FIX (2026-11-11):* `pathStatus` alone is not enough, because the lone corner_nw agent read PathComplete with
+  remaining 0 while 400 m short. `EventActor` now measures arrival at the waypoint itself. A path that ends short is re-planned
+  from where it stopped, as long as each re-plan gets ≥ 1 m closer; a dead end warns once and the route moves on. Measured: a
+  waypoint 162 m beyond one query's reach is now reached. The ~250 m spacing stays the guidance for authoring.
+  A request the agent never gets back (measured at a dead end: still pending after 25 s) counts, after `PendingTimeout`
+  (10 s), as a path that ended where the actor stands. The actor gives up on that waypoint and the route never freezes.
+  The re-plan stays the agent's own request: `NavMesh.CalculatePath`'s shorter search gave up where the agent's request
+  found a detour.
+- **The map check and the re-export.** `Tools/Town/Check Map Against .blend` runs headless Blender on the shared
+  folder's `.blend` and reports `MATCH`, `DIFFERS (n names)` or `CANNOT CHECK (reason)`. It compares groups by base
+  name (count, triangles, bounds) across the evaluated `.blend`, the FBX and Unity's import. `Tools/Town/Re-export Map
+  from .blend` writes the proven export settings over the same file, keeping the GUID and the child names. It refuses
+  unless the check says DIFFERS. The model imports with `importCameras` and `importLights` off (AR8/AR9), and EditMode
+  guards keep both off.
+- **The camera against walls.** The eye nudge follows the body's yaw only, and a sphere cast of the near plane's reach
+  (`PlayerConfig.NearPlaneReach` + `cameraWallMargin`) cuts it short at a surface. In the open the pose is exactly
+  1.650 m up and 0.316 m forward.
+- **`EventActor.Begin` checks `Warp`.** A spawn point off the NavMesh stands the actor down (it performs its lifecycle
+  in place) with one warning, never a replay from the last despawn point.
 
 ### Code Organization
 
@@ -685,13 +750,15 @@ My project/
 │   │   ├── Events/          # EventActor, EventManager, EventDefinition (SO), lifecycle states, ISubject
 │   │   ├── Gallery/         # GalleryService → MemoryCardService, CapturedShot (2026-11-10)
 │   │   ├── Recording/       # ClipRecorder, ClipGrader, CapturedClip, ClipRecordedChannel (added 2026-11-10)
-│   │   ├── Editor/          # AddMeshColliders, ColorCharacter (existing)
+│   │   ├── World/           # TownBoundsConfig (SO), FallRecovery, ColliderRule; TownRigRunner rigs (#if UNITY_EDITOR) (added 2026-11-11, Story 2.2)
+│   │   ├── Editor/          # AddMeshColliders, ColorCharacter (existing); MapCheck, TownNavMeshBaker, TownBoundsBuilder, TownRig (Story 2.2)
 │   │   └── CameraGame.asmdef
 │   ├── Data/                # ScriptableObject *instances*
 │   │   ├── Events/          #   TownDrunk.asset (EventDefinition)
 │   │   ├── Grading/         #   GradingConfig.asset
 │   │   ├── Camera/          #   CameraConfig.asset
 │   │   ├── Recording/       #   MemoryCardConfig.asset (added 2026-11-10)
+│   │   ├── World/           #   TownBoundsConfig.asset (added 2026-11-11, Story 2.2)
 │   │   └── Channels/        #   ShotCapturedChannel.asset, EventPeakedChannel.asset, ClipRecordedChannel.asset
 │   ├── Models/              # FBX (existing: game scneen.fbx, main characters.fbx)
 │   ├── Materials/           # existing
@@ -723,7 +790,8 @@ My project/
 | Gallery → Memory card | `Scripts/Gallery/` | Hold recorded clips + grades, capped in seconds of footage (2026-11-10: was captured shots) |
 | Clip recording | `Scripts/Recording/` | Record start/stop, clip grading, the clip data model (added 2026-11-10) |
 | Shared infra | `Scripts/Core/` | Logging, constants, pooling, event-channel base |
-| Tunable data | `Data/` | EventDefinition, GradingConfig, CameraConfig, channels |
+| World bounds | `Scripts/World/` | Playable area, barriers' source polygon, FallRecovery, the collider rule (added 2026-11-11, Story 2.2) |
+| Tunable data | `Data/` | EventDefinition, GradingConfig, CameraConfig, TownBoundsConfig, channels |
 | Editor tools | `Scripts/Editor/` | Mesh colliders, character color (existing) |
 
 ### Naming Conventions

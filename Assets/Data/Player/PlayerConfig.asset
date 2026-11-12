@@ -21,3 +21,4 @@ MonoBehaviour:
   eyeHeight: 1.65
   cameraForwardNudge: 0.316
   cameraNearClip: 0.095
+  cameraWallMargin: 0.03
