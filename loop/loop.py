@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import datetime as dt
+import hashlib
 import itertools
 import json
 import os
@@ -61,6 +62,16 @@ GATE_POLL_S = 600                            # idle re-check of approvals.txt wh
 MERGE_TRIES = 3                              # a merge with no conflicts that still fails is retried...
 MERGE_RETRY_S = 20                           # ...after this long (a file held by Unity/OneDrive/a scan)
 PID_FILE = RUNTIME / "current.pid"
+# The loop runs from the working tree, which is usually a unit's branch, and that branch only picks up
+# master's loop fixes when the loop brings master in, AFTER this file was loaded. On 2026-11-11 a restart
+# meant to load a fix ran the old code for 14 hours. So between phases, if this file changed on disk,
+# the loop saves its state and restarts itself on the new code (RELOAD).
+CODE_FILE = Path(__file__).resolve()
+RELOAD = 3
+# A session's time limit counts only time the PC was awake. A 10 s poll that took longer than this
+# means Windows slept (lid closed, battery): on 2026-11-11 a session frozen by standby at 13:32 was
+# killed for "running 2 h" the moment the PC woke at 23:31, after 82 min of real work.
+SLEEP_GAP_S = 120
 DEPS_FILE = LOOP / "dependencies.yaml"
 LESSONS_FILE = LOOP / "lessons.md"
 IMPL = ROOT / "_bmad-output" / "implementation-artifacts"
@@ -157,6 +168,22 @@ def write_json(path: Path, data) -> None:
 
 def rel(p: Path) -> str:
     return p.relative_to(ROOT).as_posix()
+
+
+def code_digest(path: Path) -> str:
+    try:
+        return hashlib.sha1(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+CODE_DIGEST = code_digest(CODE_FILE)
+
+
+def code_changed() -> bool:
+    """Has loop.py on disk changed since this process loaded it (a merge or checkout brought new code)?"""
+    now_digest = code_digest(CODE_FILE)
+    return bool(now_digest) and now_digest != CODE_DIGEST
 
 
 def keep_awake(on: bool = True) -> None:
@@ -544,13 +571,21 @@ def run_process(cmd: list[str], prompt: str, logfile: Path, timeout_s: float, en
             p.stdin.close()
         except Exception:
             pass
-        deadline = time.time() + timeout_s
+        awake = 0.0
+        last = time.time()
         while p.poll() is None:
-            if time.time() > deadline:
-                log(f"timeout after {timeout_s / 3600:.1f} h: killing pid {p.pid}")
+            time.sleep(10)
+            now_s = time.time()
+            gap, last = now_s - last, now_s
+            if gap > SLEEP_GAP_S:
+                log(f"Windows was asleep for {gap / 60:.0f} min during this session; that time does not count "
+                    f"against its {timeout_s / 3600:.1f} h")
+                continue
+            awake += gap
+            if awake > timeout_s:
+                log(f"timeout after {timeout_s / 3600:.1f} h awake: killing pid {p.pid}")
                 kill_tree(p.pid)
                 break
-            time.sleep(10)
         code = p.wait()
     PID_FILE.unlink(missing_ok=True)
     data = logfile.read_bytes()[-20000:].decode("utf-8", errors="replace")
@@ -1071,6 +1106,9 @@ def run_unit(u: Unit, state: dict) -> str:
     report(f"start {u.kind} **{u.id}** at `{us['phase']}` on `{u.branch}`")
 
     while us["phase"] != "merge":
+        if code_changed():   # e.g. start_branch just brought master's loop fixes into this branch
+            save_state(state)
+            return "reload"
         if stop_requested() or budget_pause(state):
             return "stopped"
         phase = us["phase"]
@@ -1215,6 +1253,9 @@ def main() -> int:
                 log("STOP file found: stopping cleanly")
                 report("stopped on request")
                 return 0
+            if code_changed():   # a merge to master, or a checkout of it, brought new loop code
+                log("loop code changed on disk: restarting on the new code")
+                return RELOAD
             sprint, deps = load_sprint(), load_deps()
             gated: list = []
             u = unit_from_id(args.only) if args.only else pick_next(sprint, deps, state, gated=gated)
@@ -1256,6 +1297,9 @@ def main() -> int:
                 report(f"**STOPPED — machine problem**: {e}")
                 notify(f"loop stopped: {e}"[:200], urgent=True)
                 return 2
+            if outcome == "reload":
+                log(f"{u.id}: loop code changed on disk (master brought in): restarting on the new code")
+                return RELOAD
             log(f"{u.id}: {outcome}")
             if outcome == "infra-stop":
                 return 2
@@ -1276,5 +1320,14 @@ def main() -> int:
         save_state(state)
 
 
+def relaunch(argv: list[str]) -> int:
+    """Run the loop again in a fresh process, so it loads the loop.py now on disk, and wait for it.
+    A child process rather than os.execv: on Windows exec ends this process, and the 'Game loop' window
+    would print 'Loop exited' while the new loop is still running in it."""
+    keep_awake(False)   # the new process keeps the PC awake itself; this one only waits
+    return subprocess.call([sys.executable, str(CODE_FILE), *argv], cwd=ROOT)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    sys.exit(relaunch(sys.argv[1:]) if code == RELOAD else code)
