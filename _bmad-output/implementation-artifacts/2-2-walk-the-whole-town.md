@@ -999,6 +999,88 @@ The close gate ran every check itself. Five of the six pass. The sixth fails on 
   `next_hint`: a re-runnable `Tools/Town/Build Town Edge` that places the map's own boulders along those 1,642 m
   under a new `TownEdge` root. Then the rock, not the air, is what the player touches.
 
+#### CLOSE gate, attempt 2 (2026-11-12): the edge is built; FAILED on a hole under the mountains
+
+This attempt built the fix attempt 1 asked for, verified it by measurement, and then found a second,
+older defect that the edge cannot fix. Both are recorded here.
+
+**What was found on arrival.** Two earlier sessions of this attempt had been killed (Windows standby on
+2026-11-11, then a loop restart on 2026-11-12 at 15:10). They committed nothing. They left
+`TownEdgeBuilder.cs` (untracked) and an unsaved `TownEdge` in the open scene. The unsaved scene was
+discarded by reopening SampleScene from disk, and the builder was recompiled and re-run from a clean
+scene. Their material choice was re-checked on their photographs: the white faceted rock
+(`close-a2/candidates/white/b180_along.jpg`, `high_south.jpg`) reads as one continuous wall, while
+the dark rock (`…/dark/…`) reads as scattered slabs with gaps. White was kept.
+
+**The edge: `Tools/Town/Build Town Edge` (`Assets/Scripts/Editor/TownEdgeBuilder.cs`).**
+- It reads the ring from `TownBoundsConfig.playableArea` and skips the shore edge. It measures each
+  metre with downward rays and needs a rock wherever the ground just inside and just outside is ≤ 45°.
+  That is 1,900 m, laid as 2,218 m of runs.
+- It places 864 copies of the map's white boulder (`Plane.008|Icosphere.002_M3_0|Dupli|128.3`, its mesh,
+  material and tilt) plus 917 fillers stacked under them on steep ground, under a new scene root
+  `TownEdge`. Each one is half-buried, with varied yaw and scale, overlapping by half, its top 2.4–3.2 m
+  above the highest standable ground within 8 m inside. All are static, on the Default layer, with a
+  MeshCollider each. The `TownBounds` boxes stay as the backstop.
+- **Idempotent:** two runs give 1,781 objects with the same position, yaw and scale hash, under one root.
+- **It checks itself** on every half-metre of run (4,447 stations): **walk gaps 0**, **1.8 m-margin
+  gaps 0**, and **jump gaps 18 stations (9 m)** after three deterministic patch rounds (`edge-build/build.txt`).
+  - The jump check walks AND jumps the controller's own moves over the surface profile, rock tops
+    included: a step of 0.35 m or a ≤ 45° slope, and the real jump arc (apex 1.26 m at mid-jump, 5.74 m
+    long, from PlayerConfig).
+  - The 9 m are: 2 m at (210, 229.5–231), where a sprinting jump clears the foot of rock `1-014` by 3 cm
+    and lands on a 37° facet; 7 m within 3.5 m of the south-west corner, where each side's profile runs
+    inside the other side's rock band; and 0.5 m at (−606.5, −400).
+  - Three earlier models of the jump were wrong and were replaced, each disproven on a probed station.
+    The apex held flat for the whole jump made 269 false gaps. A capped carry counted short landings as
+    gaps (2,084). "Touches a standable facet" counted the 10 cm foot of a rock (614).
+- **One real flaw found and fixed by that check:** growing a rock to reach low ground flattens its
+  exposed cap into a 24–33° ramp. A jump from the higher ground behind landed on it, at (−550.5, −400).
+  Rocks are no longer grown; fillers bury the base instead (first-pass jump gaps 186 → 33).
+- Re-baked with `Tools/Town/Bake Town NavMesh`: 32.4 s, 1,026 tiles, **16.25 MB**, same GUID, agent type
+  0 unchanged (0.3 / 1.77 / 0.35 / 45°).
+- **SampleScene saved with only the edge:** compared block by block with HEAD, 0 blocks removed, 0 changed
+  except the scene-roots list, and 8,921 blocks added, which are exactly 1,789 GameObjects (1,781
+  `Boulder …`, 7 `Ring side …` groups, the `TownEdge` root) and their components. No rig objects.
+
+**The ring contact, re-measured on the new bake** (`Tools/Town/Measure Ring Contact (NavMesh)`,
+`edge-build/contact-after/contact.txt`). The brief's figure, barrier contact with no boulder across the
+line, is **0 m** (attempt 1: 1,642 m). Then every contact bin was opened up (`contact_points.csv`), because
+"a boulder across the line" only means a rock stands somewhere in that column:
+- 543 of 597 bins are NavMesh **on top of an edge rock**. None of them continues 20 m straight inward.
+- 54 bins are on **bare ground 20–30 m BELOW the mountain surface**, and in 31 of them the walkable surface
+  runs 20 m straight in from the barrier. The rocks above them are where they should be.
+
+**The new defect: the town's walkable ground continues under the mountain meshes.**
+- The mountain tiles (`Landscape.0xx`) are shells whose edges hover more than a body height above the
+  plain. The plain continues beneath them. Their undersides are back-faces, so they are invisible from
+  below, and the census only ever sees the top surface.
+- **45,716 m² of the pub's NavMesh island (8%) lies more than 1.77 m under the census surface**
+  (`edge-build/under-surface/under_tris.csv`, `under_surface_topdown.png`). Some of it is building
+  interiors under roofs, which is expected. Most of it is a band along the entire foot of the mountains,
+  plus two channels that reach the ring barrier under the mountain: south at x ≈ −330, and the east side
+  at z −250…−330.
+- **Reproduced with the controller's own capsule.** A CharacterController (0.30 / 1.77, step 0.35, 45°)
+  driven by `Move` in edit mode walked from the open plain at (150, −296) **8 m under the mountain at
+  (174, −296)**, with the surface 2.1–2.4 m overhead. A NavMesh path completes from (219, 15.8, −250) under
+  the mountain to the barrier at (259.2, 10.7, −250), 267 m, entering at about (167, −297).
+- This predates this attempt. The DEV phase's walks and attempt 1's census flood both measured the top
+  surface only. It breaks AC3 ("never … off the world") and AC2's "without falling through", and from
+  under a mountain the view passes through its invisible underside, which is AC4's concern. It is not a
+  small fix, so this close FAILS and hands it on (result file `next_hint`).
+
+**The real controller at the ring** (`Tools/Town/Edge Walks (Play)`, `edges/log.txt`, `edges/photos/`; the
+previous run is kept in `edges-before-townedge/`). All 28 cases stay inside on every frame. **No ring case
+stops on a TownBounds barrier any more.** b180, b225 and b270, which attempt 1 recorded as barrier stops, now
+stop on `Boulder 6-149a`, `Boulder 6-269b` and `Boulder 7-113`, at walk and at sprint. The eye photos at those
+stops show the rock face filling the view. The only barrier stops left are two shoreline cases
+(x −560 and −250), where the water is the edge. One new oddity for the feel check: pressed against the rock at
+b225 and b270, the jump gives an apex of 0 m (the player cannot jump there). From further back, the current
+edge reads as one continuous white wall (`edge-build/photos/b180_along.jpg`, `high_south.jpg`).
+EditMode **253/253**. The console holds only the baseline head-bone warning. SampleScene open and not dirty.
+
+**Not run in this attempt** (left to the next close, which must re-verify this attempt's game changes
+anyway): the frame-time tour ×3, and the six close checks beyond the console and the scene diff.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -1705,6 +1787,7 @@ Queued in the result file, none self-certified:
 - New: `Assets/Scripts/Editor/MapCheck.cs`
 - Modified: `Assets/Scripts/Editor/RouteTraceRig.cs`
 - New: `Assets/Scripts/Editor/TownBoundsBuilder.cs`
+- New (CLOSE attempt 2): `Assets/Scripts/Editor/TownEdgeBuilder.cs` (`Tools/Town/Build Town Edge`, `Tools/Town/Measure Ring Contact (NavMesh)`); the `TownEdge` root in `Assets/Scenes/SampleScene.unity` and the re-bake in `Assets/Scenes/SampleScene/NavMesh-game map.asset`
 - New: `Assets/Scripts/Editor/TownCensus.cs`
 - New: `Assets/Scripts/Editor/TownNavMeshBaker.cs`
 - New: `Assets/Scripts/Editor/TownPhotos.cs`
@@ -1760,3 +1843,4 @@ Queued in the result file, none self-certified:
 - 2026-11-11: Cross-review FIX phase (Claude Opus 5.5): findings 1 (the event actor's arrival at a partial path's end) and 3 (the camera skipping a surface inside its cast, reproduced on sloping overhangs and a boulder wedge) fixed and re-verified by running; finding 2 (AC4 evidence) closed by re-measuring 20 walls with a near-plane instrument (0 see-through on the fixed camera); 1 hypothesis deferred. EditMode 250/250. Status stays review.
 - 2026-11-11: Cross-review FIX phase, second session (Claude Opus 5.5). Re-ran every cross-review rig on the committed code. Found and fixed a hang in finding 1's re-plan: a path request that never came back froze the actor at a dead end with no warning. Now a 10 s watchdog moves on, and it is verified with a forced stall. Findings 2 and 3 hold on HEAD. Measured the east-hill stop: the whole ring is walkable to the map's edge, so it is a decision for Alexv, not a barrier placement. EditMode 253/253. Status stays review.
 - 2026-11-11: CLOSE gate, attempt 1 (Claude Opus 5.5): FAILED on AC3. The mountain ring stops the player with invisible barriers on walkable ground along 1,642 of its 2,271 m (measured). The other five close checks pass (console clean, EditMode 253/253, evidence real, story file complete, nothing uncommitted, editor restored). The fix (a visible edge) is handed to the next attempt. Status stays review.
+- 2026-11-12: CLOSE gate, attempt 2 (Claude Opus 5.5). Built the visible ring edge (`Tools/Town/Build Town Edge`: 864 white boulders and 917 fillers under `TownEdge`, idempotent; walk gaps 0, 1.8 m gaps 0, jump-only gaps 9 m; re-baked at 16.25 MB). The real controller is now stopped by a rock at every ring bearing, and the barrier contact with no boulder across the line is 0 m (was 1,642 m). Then FAILED on a pre-existing hole: the walkable ground continues under the mountain meshes (45,716 m² of the pub's NavMesh island, entered on foot, reproduced with the controller's capsule), and two channels reach the ring barrier there. Handed to the next attempt. Status stays review.
