@@ -117,6 +117,18 @@ namespace CameraGame.EditorTools
         /// <summary>Mutates the open (unsaved) town for a fail-soft scenario. Discarded when play mode ends.</summary>
         private static void Stage(TownRigRunner runner, string staging)
         {
+            // CLOSE attempt 3: the frame-time baseline of the SAME session without the ring's edge rocks and the mountain-foot
+            // seal, interleaved with runs that show them (lesson 28: compare by difference, never against another day's heat)
+            if (staging == "hideedge")
+            {
+                foreach (string n in new[] { "TownEdge", "TownSeal" })
+                {
+                    GameObject g = GameObject.Find(n);
+                    if (g != null) g.SetActive(false);
+                    Debug.Log($"[TownRig] staging hideedge: '{n}' {(g != null ? "hidden" : "not found")}");
+                }
+                return;
+            }
             if (staging == "noconfig" || staging == "badconfig" || staging == "highfloor")
             {
                 var fr = Object.FindFirstObjectByType<FallRecovery>(FindObjectsInactive.Include);

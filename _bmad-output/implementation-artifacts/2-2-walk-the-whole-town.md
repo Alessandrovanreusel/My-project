@@ -1081,6 +1081,103 @@ EditMode **253/253**. The console holds only the baseline head-bone warning. Sam
 **Not run in this attempt** (left to the next close, which must re-verify this attempt's game changes
 anyway): the frame-time tour ×3, and the six close checks beyond the console and the scene diff.
 
+#### CLOSE gate, attempt 3 (2026-11-12): the mountain foot sealed; every close check run
+
+Evidence: `_bmad-output/verification/2-2-walk-the-whole-town/seal/` (unless another folder is named).
+
+**What the hole really is.** The terrain is a patchwork of single-sided tiles at different heights. The plain is
+`Plane`, `Plane.006/.008/.009`; the mountains are `Landscape.0xx`. They overlap, and wherever a tile's edge (its *lip*)
+hovers over the tile beneath it, the ground runs on underneath. Two kinds of lip were found:
+- **A mountain tile over a lower tile.** For example, `Landscape.015` hovers 15–36 m over `Landscape.006` at the
+  south channel, and `Landscape.029` hovers 2–9 m over `Landscape` at the east entrance.
+- **The plain's own edge over the mountain tiles that dive under it.** Its south edge hovers 1.8–12 m over
+  `Landscape.006`, and its east and west edges hover over `Landscape.005/.009/.030`.
+
+From under any lip the tile above is a culled back-face. `photos-before/e1_ditch_north_wall.jpg` shows it: the forest
+stands on invisible ground. Measured on the committed bake (`measure-before/measure.txt`, polygon-centroid heights),
+**54,319 m² of the pub's NavMesh island lay under the terrain** (29,707 m² under a Landscape tile, 24,612 m² under the
+plain). This figure includes the centroid artefact described below, so the true area was smaller. The player's own capsule went in at **21 of the 404 entrances** (`probe-before/probes.csv`).
+
+**The fix: `Tools/Town/Seal Mountain Foot` (`Assets/Scripts/Editor/TownSealBuilder.cs`).** It is re-runnable and
+idempotent, and the mesh asset keeps its GUID.
+- **What it finds.** Every boundary edge of every terrain tile, welded by position, inside the playable area plus 3 m.
+- **What it seals.** Where the lip stands ≥ 0.3 m over the first map surface beneath it, it hangs a vertical skirt from
+  the lip to 0.6 m under that floor. The skirt is double-sided, collidable and static, on the Default layer, in the lip
+  tile's own material.
+- **What it skips.**
+  - Seams: another surface continues within 0.5 m of the lip's height just outside it. That is 12.8 km, mostly the
+    plain's abutting pieces. Without this test the first build put 6.6 km of skirt down the plain's internal cracks.
+  - The pond's no-go area (291 m).
+- **Result** (`build/build.txt`): **3,124 m of lip in one mesh** (30,616 vertices, 5 materials,
+  `Assets/Data/World/TownSeal.asset`, 2.1 MB), under a new scene root `TownSeal`.
+  - Some sealed lips are buried under the plain (`Landscape.029`'s west edge at −0.2) or deep below the bake volume.
+    They are invisible and harmless.
+- **Skirt or boulders, decided by measurement and photograph** (`seal_decision_sheet.jpg`: before | white edge boulders
+  with the top 3.0 m over the floor | skirt, at 8 eye positions).
+  - 2,510 of the 3,124 m of lip stand higher than any edge boulder's 2.4–3.2 m top.
+  - In the ditch at the east entrance the boulders leave the see-through view unchanged. The skirt closes it.
+  - From the plain, all three look the same at the other six positions.
+  - **Skirt chosen.**
+- **Re-baked** (`Tools/Town/Bake Town NavMesh`): 19.9 s, 1,026 tiles, **16.27 MB**, same GUID, agent type 0 unchanged.
+
+**Verified by running:**
+- **Under the terrain, after** (`measure-after/measure.txt`, `under_after.png`): **216 m² in 2 pockets, under the plain
+  0 m²**.
+  - With the same centroid method as "before", the figure was 16,596 m². Of that, 16,380 m² were artefacts: a big NavMesh
+    polygon spans a convex slope as a flat chord, so its centroid sits 1–3.7 m under the ground (measured at (−631, 34):
+    centroid 8.0, ground 10.1). The measure now takes each centroid's height from the detail mesh (`SamplePosition`,
+    4 m).
+  - **The 2 pockets, both unreachable:**
+    1. 211 m² under `Landscape.007` at (−597, −221), which rises like a ramp out of the plain with 2.4–8 m beneath it. A
+       NavMesh path to it is `PathPartial`: it ends on top of the ramp. 0 of 27 capsule runs from the open plain got
+       under it (3 targets × 12 bearings; the other 9 started inside and walked out through the back-face). The 5 cm
+       vertex weld had joined it to the pub's island at a flush lip.
+    2. 5 m² at (−655, −308), covered by 1.3 m, which is too low for a 1.77 m body.
+- **Cave islands a player could drop into:** every NavMesh island that is not the pub's, has floor under a terrain tile,
+  and has any open-sky NavMesh inside the playable area. 1 found: its 8 m² "open" patch at (−593, −198) is solid plain
+  (`Plane.008` at 0.9 across the 8 × 8 m around it), a height-sampling artefact. The old south channel is now a closed
+  cave, 2,286 m² with 0 m² of open sky. The ditch south of the plain at the east entrance walks out both ways (path
+  corners up onto the plain at x 76, and over `Landscape.029` to the east).
+- **The controller's capsule at all 404 old entrances** (`probe-after/probes.txt`): **4 entered (was 21). 17 of the 21
+  now stop on `TownSeal`.** The 4 all start on islands no longer joined to the pub's: three caves under the road and the
+  plain at the east foot, and one point beyond the north-east corner of the ring.
+  - CLOSE a2's own proof, re-run (`probe-after/attempt2_proof_rerun.txt`): from (150, −296) heading +x, the capsule
+    stops on `TownSeal` at x 166.0. It used to reach x 174.3, 2.1 m under the surface. The two parallel lines stop at
+    x 165.9 and 165.7.
+- **Ring contact** (`edge-build/contact-after/contact.txt`, `contact_points.csv`, `nearest_pub_vertex.txt`): **0 m**
+  (attempt 2: 298 m, 54 bins on bare ground under the mountain). `contact_points.csv` therefore has no row, so there is
+  no bare-ground contact.
+  - Control: the pub's island stops 2.2–3.5 m inside every ring side, at the edge rocks' inner faces, while other
+    islands touch the line. On the shore side, which this measure skips, it comes to 0.9 m.
+  - The rock tops it reached in attempt 2 were joined to it through the caves the seal closes.
+- **The real controller at the ring** (`edges-close-a3/log.txt`, `Tools/Town/Edge Walks (Play)`): **28/28 inside on
+  every frame, and inside after every jump.**
+  - No ring case stops on a TownBounds barrier. b180, b225 and b270 stop on boulders, b135 on terrain, and the rest on
+    rocks or slope.
+  - The only barrier stops are the shoreline at x −560 and −250. Same as attempt 2.
+  - The jump apex is still 0 m pressed against the rock at b225 and b270.
+- **Frame time.** One tour (`fps/close-a3/`) read 1.4–5.8× slower than `fps/before` in its first round, and the
+  street block was higher beyond the spread. This session's machine state was poor: 0.9 GB of 16 GB RAM free, and
+  OneDrive syncing the project folder at the top of the CPU list.
+  - So the content was measured by difference, interleaved in the same session (lesson 28): `fps/close-a3-ab/`, runs
+    A1 B1 A2 B2, with `TownEdge` + `TownSeal` hidden (A, the rig's new `hideedge` staging) or shown (B).
+  - **Showing them costs nothing beyond the noise at any of the 7 viewpoints** (`compare_ab.txt`). The largest
+    difference is plain_from_east_hill: +13.7 ms over rounds 1–2, against 75 ms of noise. Round 0 is slow in A as well
+    as B.
+  - The absolute comparison with the story's start (AC5) cannot be made in this session. It is queued: re-run
+    `Tools/Town/FPS Tour - after (Play)` on a freshly started editor.
+- **EditMode 254/254.** That is 253 plus `TownMapGuardTests.SampleScene_KeepsTheMountainFootSeal`, which checks that
+  exactly one MeshCollider in SampleScene uses the seal mesh, and that the mesh is not empty.
+- **Console:** only the baseline "POV Camera: Head bone not found!".
+- **SampleScene, compared block by block with HEAD before the seal commit:** 0 removed, 0 changed except the
+  scene-roots list, 5 added (the `TownSeal` GameObject, Transform, MeshFilter, MeshRenderer and MeshCollider). No rig
+  objects.
+- **The editor afterwards:** SampleScene open and not dirty, timeScale 1, runInBackground as the project sets it,
+  quality PC, no rig objects, camera and light import off.
+
+**Left open:** the optional 9 m of jump-only reach from attempt 2 (rock 1-014 at (210, 230); the south-west corner).
+It was not touched.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -1787,6 +1884,8 @@ Queued in the result file, none self-certified:
 - New: `Assets/Scripts/Editor/MapCheck.cs`
 - Modified: `Assets/Scripts/Editor/RouteTraceRig.cs`
 - New: `Assets/Scripts/Editor/TownBoundsBuilder.cs`
+- New (CLOSE attempt 3): `Assets/Scripts/Editor/TownSealBuilder.cs` (`Tools/Town/Seal Mountain Foot`, `Tools/Town/Measure Under Mountain (NavMesh)`, `ProbeEntrances`), `Assets/Data/World/TownSeal.asset` (the skirt mesh), with their `.meta` files; the `TownSeal` root in `Assets/Scenes/SampleScene.unity` and the re-bake in `Assets/Scenes/SampleScene/NavMesh-game map.asset`
+- Modified (CLOSE attempt 3): `Assets/Scripts/Editor/TownEdgeBuilder.cs` (`MeasureContact` writes `contact_points.csv`), `Assets/Scripts/Editor/TownRig.cs` (the `hideedge` staging for the interleaved frame-time runs), `Assets/Tests/EditMode/TownMapGuardTests.cs` (+1 guard: the seal stays in SampleScene)
 - New (CLOSE attempt 2): `Assets/Scripts/Editor/TownEdgeBuilder.cs` (`Tools/Town/Build Town Edge`, `Tools/Town/Measure Ring Contact (NavMesh)`); the `TownEdge` root in `Assets/Scenes/SampleScene.unity` and the re-bake in `Assets/Scenes/SampleScene/NavMesh-game map.asset`
 - New: `Assets/Scripts/Editor/TownCensus.cs`
 - New: `Assets/Scripts/Editor/TownNavMeshBaker.cs`
@@ -1844,3 +1943,4 @@ Queued in the result file, none self-certified:
 - 2026-11-11: Cross-review FIX phase, second session (Claude Opus 5.5). Re-ran every cross-review rig on the committed code. Found and fixed a hang in finding 1's re-plan: a path request that never came back froze the actor at a dead end with no warning. Now a 10 s watchdog moves on, and it is verified with a forced stall. Findings 2 and 3 hold on HEAD. Measured the east-hill stop: the whole ring is walkable to the map's edge, so it is a decision for Alexv, not a barrier placement. EditMode 253/253. Status stays review.
 - 2026-11-11: CLOSE gate, attempt 1 (Claude Opus 5.5): FAILED on AC3. The mountain ring stops the player with invisible barriers on walkable ground along 1,642 of its 2,271 m (measured). The other five close checks pass (console clean, EditMode 253/253, evidence real, story file complete, nothing uncommitted, editor restored). The fix (a visible edge) is handed to the next attempt. Status stays review.
 - 2026-11-12: CLOSE gate, attempt 2 (Claude Opus 5.5). Built the visible ring edge (`Tools/Town/Build Town Edge`: 864 white boulders and 917 fillers under `TownEdge`, idempotent; walk gaps 0, 1.8 m gaps 0, jump-only gaps 9 m; re-baked at 16.25 MB). The real controller is now stopped by a rock at every ring bearing, and the barrier contact with no boulder across the line is 0 m (was 1,642 m). Then FAILED on a pre-existing hole: the walkable ground continues under the mountain meshes (45,716 m² of the pub's NavMesh island, entered on foot, reproduced with the controller's capsule), and two channels reach the ring barrier there. Handed to the next attempt. Status stays review.
+- 2026-11-12: CLOSE gate, attempt 3 (Claude Opus 5.5). Sealed the mountain foot: `Tools/Town/Seal Mountain Foot` hangs a collidable skirt in the tile's own material from 3,124 m of hovering terrain lip under a `TownSeal` root, chosen over edge boulders by measurement and photograph. Re-baked (16.27 MB). The pub's island under the terrain went from 54,319 m² to 216 m² (2 pockets, both unreachable). Capsule entries at the 404 old entrances went from 21 to 4 (all 4 on islands no longer joined to the pub's). Ring contact 0 m. Edge walks 28/28 with no ring barrier stop. The edge and seal cost nothing beyond the noise in an interleaved frame-time A/B. EditMode 254/254, console clean, scene diff clean, editor restored. Status stays review: perceptual checks are queued, and the absolute frame-time comparison needs a fresh editor.
