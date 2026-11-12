@@ -66,7 +66,11 @@ namespace CameraGame.World
             var trace = new StringBuilder("case,cycle,t,x,y,z,grounded,inside\n");
             TownBoundsConfig cfg = _fall.Config;
             GameObject edge07 = GameObject.Find("TownBounds/Edge 07");
-            _log.AppendLine($"TownBounds/Edge 07 found: {edge07 != null}; belowWorldY {(cfg != null ? cfg.SafeBelowWorldY : TownBoundsConfig.DefaultBelowWorldY)}");
+            // CLOSE attempt 4: since CLOSE attempt 2 the ring's edge rocks (TownEdge) stop the player before the line, so
+            // the backstop case walked into Boulder 7-113 and never left the area (5/5 "NOT RESTORED"). The case tests the
+            // BACKSTOP, so the rocks go too, for that case only, and come back after it.
+            GameObject townEdge = GameObject.Find("TownEdge");
+            _log.AppendLine($"TownBounds/Edge 07 found: {edge07 != null}; TownEdge found: {townEdge != null} (both hidden for the edge case only); belowWorldY {(cfg != null ? cfg.SafeBelowWorldY : TownBoundsConfig.DefaultBelowWorldY)}");
             string[] cases = { "under_plain", "hole", "buried", "edge" };
             float worst = 0f; int failures = 0;
             foreach (string cs in cases)
@@ -77,6 +81,7 @@ namespace CameraGame.World
                               : new Vector3(-655f, 0f, -65f);
                 float yaw = cs == "hole" ? 0f : cs == "edge" ? 270f : 90f;
                 if (cs == "edge" && edge07 != null) edge07.SetActive(false);
+                if (cs == "edge" && townEdge != null) { townEdge.SetActive(false); Physics.SyncTransforms(); }
                 Place(start, yaw);
                 Keys();
                 yield return Settle(0.8f);
@@ -130,6 +135,30 @@ namespace CameraGame.World
                     // FallRecovery's own record of where it was taken from (outside the area).
                     if (cs == "edge" && belowAt < 0f && restoredAt >= 0f && cfg != null && !cfg.IsAllowed(new Vector2(_fall.LastFrom.x, _fall.LastFrom.z)))
                         belowAt = restoredAt;
+                    // The hole (CLOSE attempt 4): since the mountain-foot seal walls the hole's rim, FallRecovery finds nothing
+                    // beneath the body sooner (0.09-0.12 s after it leaves the rim, was 0.14-0.18 s) and puts it back in the SAME
+                    // Update in which the feet first pass the lip's 0.3 m mark, so the rig (which reads after Update, like the edge
+                    // case above) never sees them below. FallRecovery's own record says where it took the body from:
+                    //   • below the mark: it went below after the rig's last look, so the clock starts at that last look (an upper
+                    //     bound of at most one frame);
+                    //   • at or above the mark: it was put back before going below, so the clock starts when it left the ground
+                    //     (going below would come later), or at the restore if no airborne frame was seen either.
+                    // Labelled in the log; never silently.
+                    string holeNote = null;
+                    if (cs == "hole" && belowAt < 0f && restoredAt >= 0f && !float.IsNaN(lipY))
+                    {
+                        float lastLook = hist.Count >= 2 ? hist[hist.Count - 2].Key : restoredAt;
+                        if (_fall.LastFrom.y < lipY - 0.3f)
+                        {
+                            belowAt = lastLook;
+                            holeNote = $"[SAME-FRAME: taken from y {F(_fall.LastFrom.y, "0.00")}, {F(lipY - _fall.LastFrom.y, "0.00")} m under the lip {F(lipY, "0.00")}, between the rig's last look and the restore; clock from that last look]";
+                        }
+                        else
+                        {
+                            belowAt = airAt >= 0f ? airAt : restoredAt;
+                            holeNote = $"[PREEMPTED: put back from y {F(_fall.LastFrom.y, "0.00")}, lip {F(lipY, "0.00")}, before the feet were 0.3 m under it; clock from {(airAt >= 0f ? "leaving the ground" : "the restore frame (no airborne frame seen)")}]";
+                        }
+                    }
                     Vector3 rp = _player.transform.position;
                     if (clip) File.WriteAllText(Path.Combine(outputDir, "clip", "times.csv"), clipTimes.ToString());
                     // how old the restore spot is: the last time the player stood within 0.1 m of it before the fall
@@ -165,11 +194,12 @@ namespace CameraGame.World
                     csv.AppendLine($"{cs},{cycle},{F(belowAt)},{F(airAt)},{F(restoredAt)},{F(secs, "0.000")},{F(secsAir, "0.000")},{(_fall.LastReason ?? "").Replace(",", ";")}," +
                                    $"{F(_fall.LastFrom.x)},{F(_fall.LastFrom.y)},{F(_fall.LastFrom.z)},{F(rp.x)},{F(rp.y)},{F(rp.z)},{F(age)},{F(groundedAfter)},{(onMesh ? 1 : 0)}," +
                                    $"{(overlaps == 0 ? 1 : 0)},{overlapNames.Replace(",", " ")},{F(vyAfter)},{F(vyBefore)},{(insideAfter ? 1 : 0)},{F(std, "0.0")},{uiAfter - uiBefore}");
-                    _log.AppendLine($"{cs} cycle {cycle}: {(restoredAt >= 0f ? $"restored {F(secs, "0.000")} s after going below/out ({F(secsAir, "0.000")} s after leaving the ground), reason '{_fall.LastReason}'" : "NOT RESTORED")}; " +
+                    _log.AppendLine($"{cs} cycle {cycle}: {(restoredAt >= 0f ? $"restored {F(secs, "0.000")} s after going below/out{(holeNote != null ? " " + holeNote : "")} ({F(secsAir, "0.000")} s after leaving the ground), reason '{_fall.LastReason}'" : "NOT RESTORED")}; " +
                                     $"to {V(rp)} (spot {F(age)} s old), grounded after {F(groundedAfter)} s, on mesh {onMesh}, overlaps {overlaps} {overlapNames}, vy after {F(vyAfter)} (before {F(vyBefore)}) m/s, " +
                                     $"new UI canvases {uiAfter - uiBefore}{(ok ? "" : "  ← FAIL")}");
                 }
                 if (cs == "edge" && edge07 != null) edge07.SetActive(true);
+                if (cs == "edge" && townEdge != null) { townEdge.SetActive(true); Physics.SyncTransforms(); }
             }
             Application.logMessageReceived -= CountLogs;
             _log.AppendLine($"FALL: worst below→restore {F(worst, "0.000")} s; cycles failing a check {failures}/20; console during the cases: {_warnWorld} provoked [World] warning(s) (20 expected), " +

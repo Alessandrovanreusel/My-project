@@ -285,6 +285,11 @@ namespace CameraGame.World
             walls.Add(new WallSpec { name = "boulder_rock007_overhang", stand = new[] { 86.71f, -339.04f }, aim = new[] { 82.95f, -332.0f, 1.2f } });
             walls.Add(new WallSpec { name = "boulder_rock023_overhang", stand = new[] { 86.06f, -327.88f }, aim = new[] { 90.46f, -334.6f, 1.2f } });
             walls.Add(new WallSpec { name = "tyre_line_overhang", stand = new[] { -239.8f, 234.0f }, aim = new[] { -240.2f, 226.0f, 1.2f } });
+            // CLOSE attempt 4: the walls the close gates added. The TownSeal skirt is ONE double-sided quad with no thickness
+            // (the plain's south lip at z −295.78, 0.91 over a ditch floor at −4.26), and the TownEdge rock where ring_b225 stops
+            walls.Add(new WallSpec { name = "seal_ditch_north_wall", stand = new[] { 150f, -299.5f }, aim = new[] { 150f, -295.0f, 1.2f } });
+            walls.Add(new WallSpec { name = "edge_rock_b225", stand = new[] { -541.5f, -391.8f }, aim = new[] { -547.5f, -398.0f, 1.2f } });
+            walls.Add(new WallSpec { name = "edge_rock_b180", stand = new[] { -216.85f, -389.0f }, aim = new[] { -216.85f, -398.0f, 1.2f } });
             // optional subset (SessionState "TownRig.XWallsOnly", comma-separated names): a quick before/after on chosen walls
             string only = UnityEditor.SessionState.GetString("TownRig.XWallsOnly", "");
             if (only.Length > 0)

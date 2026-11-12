@@ -1178,6 +1178,92 @@ idempotent, and the mesh asset keeps its GUID.
 **Left open:** the optional 9 m of jump-only reach from attempt 2 (rock 1-014 at (210, 230); the south-west corner).
 It was not touched.
 
+#### CLOSE gate, attempt 4 (2026-11-12): attempts 2–3's world changes verified independently; every close check passes
+
+Evidence: `_bmad-output/verification/2-2-walk-the-whole-town/close-a4/` (unless another folder is named). This attempt
+changed **no game file**. It changed two rig files only (below).
+
+**Why these runs.** Attempts 2 and 3 added 1,781 edge rocks and the seal skirt, and re-baked the NavMesh twice. After that,
+neither attempt re-ran AC5's paths from the pub, AC2's tour of the town, AC3's put-back or AC6's drunk route. All four
+were run here on HEAD (`d478020`), each into its own folder, so no earlier evidence was overwritten.
+- **AC5, paths from the pub** (`navmesh/log.txt`, `paths.csv`, `grid.csv`):
+  - **Parts: 18/18** by a chain of complete legs, and 7/18 in one query. Every chain length is unchanged from the DEV
+    phase. `corner_ne`'s target sampled 0.1 m away, beside a new rock.
+  - **Real agents: 17/18 arrived**, the same as DEV once its rig defect is corrected. `corner_nw` still stops in the known
+    dead end, 70.8 m short. That is AC5's chain reading and needs no change.
+  - **25 m grid:** 81 points unreached, up from 54. All 27 new ones are explained:
+    - 25 are grid points 2.5 m inside the ring whose top surface is now an edge boulder (`Boulder 1-…`, `2-…`, `3-…`,
+      `5-010`).
+    - 2 are a 35–46 m ledge of `Landscape.006` at (−417.5/−392.5, −387.5). Its only walkable link ran along the ring band
+      at z −394…−400, where the rocks now stand. Every other side is steeper than 45° (sampled profile: 58–62°). The
+      player has the same slope limit, so they could not reach it either.
+- **AC2, the real controller sprints the whole town** (`walk/sprint/log.txt`, `walk/trace_small.jpg`):
+  - 18/18 legs reached their part: 4,496 m in 643 s, mean 7.00 m/s against 7 commanded.
+  - **Sticks 0** (DEV had 1), fall-through frames 0, FallRecovery fired 0 times.
+  - The walk-speed tour was not re-run. It follows the same planned legs at a lower speed.
+- **AC3, the put-back** (`fall-rigfix2/log.txt`, `fall.csv`): **20/20 cycles pass, worst 0.162 s.** The console holds the
+  20 provoked warnings and nothing else. The first run (`fall/`) read 10/20 failing. Both causes were the rig, not the
+  game, and were fixed in `TownRigRunner.Fall.cs`:
+  - **The backstop case could no longer reach the line.** Edge 07 was switched off, but `Boulder 7-113` stopped the player
+    first, so all 5 cycles read "NOT RESTORED". The edge rocks are now hidden for that case only, and the backstop fires
+    (5/5, restored the frame the player left the area).
+  - **The seal now walls the rim of the hole at (−379, −229).** The skirt hangs 0.91 → −5.15 m. FallRecovery finds
+    nothing beneath the body 0.08–0.12 s after it leaves the rim (DEV: 0.14–0.18 s). It then puts the body back in the
+    same Update in which the feet first pass the lip's 0.3 m mark, so the rig, which reads after Update, never saw them
+    below.
+  - The rig now takes FallRecovery's own record of where it took the body from (0.40–0.46 m under the lip), and starts
+    the clock at its own last look. That clock is labelled `SAME-FRAME` in the log. Settled frames after each restore
+    show an ordinary standing view at the rim (`frames/hole_c1_after.jpg`).
+- **AC6, the drunk** (`route/arrival.txt`, `route/analysis.txt`): 3 full pooled cycles plus a 4th cut by the run's end.
+  - One instance, on the NavMesh every frame.
+  - He arrives by the agent's own test **0.62–0.65 s before despawn** (DEV after: 0.72–0.77; 2.1: 0.52–0.57).
+  - The peak lasts **1.49–1.50 s at x 26.31–26.33**.
+
+**AC4, the walls the close gates added** (`cross-review/walls/close-a4-new-walls/`, `…/close-a4-edge-rock-b180/`). The
+cross-review's near-plane instrument now has the extra cases in its rig list (`TownRigRunner.CrossReviewWalls.cs`).
+- **The seal skirt (`seal_ditch_north_wall`)** is one double-sided quad with no thickness. It was pressed at 0/±30/±60°,
+  5 pitches and 3 camera modes: **75 poses, 66 valid, 0 see-through, 0 geometric hits.** The camera stays at least
+  0.131 m from the surface.
+- **The edge rocks** (`edge_rock_b225`, `edge_rock_b180`): **0 valid poses**, an instrument limit. The body is stopped by
+  neighbouring rocks, or the slope (`Landscape.003`) is found as the wall, so the marker test cannot be set up. 0
+  see-through and 0 geometric hits were recorded.
+  - They are the same white boulder mesh as `scatter_rock` (`Icosphere.002`), which measured 0 see-through in
+    `head-recheck`.
+  - The ring photos at b180, b225 and b270 show rock filling the view.
+  - Added to the AC4 human check.
+
+**AC5, the frame rate against the story's start, settled by measurement rather than queued again**
+(`render-ab/render_ab.txt`, `ac5_chain.txt`). The editor has been up since 2026-11-10, with 0.8 GB of RAM free, so an
+absolute tour would repeat attempt 3's noise. Instead, the edge rocks and the seal were measured on their own, in one
+session:
+- **How.** At the 7 tour viewpoints, the camera's own `Render()` went into a 953×476 RT, each render synced by a 1-pixel
+  readback. The 1,782 renderers were hidden with `forceRenderingOff` or shown, in 10 ABBA blocks of 4 renders per state.
+- **Result: +0.09 to +1.02 ms per frame.** For comparison:
+  - the frames themselves take 6.8–39 ms;
+  - the hidden state's own block noise is 0.36–7.3 ms;
+  - attempt 3's play-mode A/B noise was 17–75 ms.
+- **Control.** Showing them changed 4–2,264 pixels at every viewpoint, so the switch was live.
+- **Chained onto the DEV phase's measured after-vs-before**, every viewpoint stays within AC5's own tolerance, the
+  before-spread. The largest is shore_to_oil_rig: +4.49 ms against a 5.3 ms spread.
+- The absolute 60 FPS verdict stays Story 2.3's (lesson 19).
+
+**The six close checks:**
+1. `refresh_unity` (forced, with a compile), then `read_console`: 0 errors. The only warning is the baseline
+   "POV Camera: Head bone not found!", in play mode. The rig edits compiled clean, and the assembly was confirmed newer
+   than the source and to contain the new strings.
+2. EditMode **254/254**. The project has no PlayMode tests.
+3. Every AC has evidence or a queued human check. Captures opened: the seal decision sheet, `under_after.png`,
+   `ring_b225.jpg` (rock face), `hole_c1_after.jpg`, `trace_small.jpg` and `vp_plain_from_east_hill_shown.jpg`. All
+   show real content.
+   - The queued checks' own reads were re-read. None says an AC is likely not met: the seal reads "solid … plain but not
+     wrong", and the edge reads "28/28 … no invisible barrier".
+   - The AC5 item that attempt 3 left open is now measured (above).
+4. The story file is complete: this section, the File List and the Change Log.
+5. `git status`: only `.codex/` and `AGENTS.md` are untracked, and neither belongs to this story.
+6. The editor afterwards: SampleScene open and not dirty, one scene, timeScale 1, quality PC, `runInBackground` as the
+   project sets it, camera and light import off. `TownEdge`, `TownSeal` and `TownBounds` are present. No rig objects
+   remain, and the `TownRig.XWallsOnly`, `XLabel` and `ReturnScene` session flags are cleared.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -1886,6 +1972,7 @@ Queued in the result file, none self-certified:
 - New: `Assets/Scripts/Editor/TownBoundsBuilder.cs`
 - New (CLOSE attempt 3): `Assets/Scripts/Editor/TownSealBuilder.cs` (`Tools/Town/Seal Mountain Foot`, `Tools/Town/Measure Under Mountain (NavMesh)`, `ProbeEntrances`), `Assets/Data/World/TownSeal.asset` (the skirt mesh), with their `.meta` files; the `TownSeal` root in `Assets/Scenes/SampleScene.unity` and the re-bake in `Assets/Scenes/SampleScene/NavMesh-game map.asset`
 - Modified (CLOSE attempt 3): `Assets/Scripts/Editor/TownEdgeBuilder.cs` (`MeasureContact` writes `contact_points.csv`), `Assets/Scripts/Editor/TownRig.cs` (the `hideedge` staging for the interleaved frame-time runs), `Assets/Tests/EditMode/TownMapGuardTests.cs` (+1 guard: the seal stays in SampleScene)
+- Modified (CLOSE attempt 4, rigs only): `Assets/Scripts/World/TownRigRunner.Fall.cs` (the backstop case hides the edge rocks too; the hole case reads FallRecovery's own record when the restore happens in the frame the feet pass the lip's mark), `Assets/Scripts/World/TownRigRunner.CrossReviewWalls.cs` (+3 wall cases: the seal skirt and two edge rocks)
 - New (CLOSE attempt 2): `Assets/Scripts/Editor/TownEdgeBuilder.cs` (`Tools/Town/Build Town Edge`, `Tools/Town/Measure Ring Contact (NavMesh)`); the `TownEdge` root in `Assets/Scenes/SampleScene.unity` and the re-bake in `Assets/Scenes/SampleScene/NavMesh-game map.asset`
 - New: `Assets/Scripts/Editor/TownCensus.cs`
 - New: `Assets/Scripts/Editor/TownNavMeshBaker.cs`
@@ -1944,3 +2031,11 @@ Queued in the result file, none self-certified:
 - 2026-11-11: CLOSE gate, attempt 1 (Claude Opus 5.5): FAILED on AC3. The mountain ring stops the player with invisible barriers on walkable ground along 1,642 of its 2,271 m (measured). The other five close checks pass (console clean, EditMode 253/253, evidence real, story file complete, nothing uncommitted, editor restored). The fix (a visible edge) is handed to the next attempt. Status stays review.
 - 2026-11-12: CLOSE gate, attempt 2 (Claude Opus 5.5). Built the visible ring edge (`Tools/Town/Build Town Edge`: 864 white boulders and 917 fillers under `TownEdge`, idempotent; walk gaps 0, 1.8 m gaps 0, jump-only gaps 9 m; re-baked at 16.25 MB). The real controller is now stopped by a rock at every ring bearing, and the barrier contact with no boulder across the line is 0 m (was 1,642 m). Then FAILED on a pre-existing hole: the walkable ground continues under the mountain meshes (45,716 m² of the pub's NavMesh island, entered on foot, reproduced with the controller's capsule), and two channels reach the ring barrier there. Handed to the next attempt. Status stays review.
 - 2026-11-12: CLOSE gate, attempt 3 (Claude Opus 5.5). Sealed the mountain foot: `Tools/Town/Seal Mountain Foot` hangs a collidable skirt in the tile's own material from 3,124 m of hovering terrain lip under a `TownSeal` root, chosen over edge boulders by measurement and photograph. Re-baked (16.27 MB). The pub's island under the terrain went from 54,319 m² to 216 m² (2 pockets, both unreachable). Capsule entries at the 404 old entrances went from 21 to 4 (all 4 on islands no longer joined to the pub's). Ring contact 0 m. Edge walks 28/28 with no ring barrier stop. The edge and seal cost nothing beyond the noise in an interleaved frame-time A/B. EditMode 254/254, console clean, scene diff clean, editor restored. Status stays review: perceptual checks are queued, and the absolute frame-time comparison needs a fresh editor.
+- 2026-11-12: CLOSE gate, attempt 4 (Claude Opus 5.5). Independently verified attempts 2–3's world changes by running what they had not re-run on the sealed, re-baked town:
+  - AC5 paths: parts 18/18 by chain; real agents 17/18; the 27 new unreached grid points are explained (25 on edge rocks, and a ledge whose only link the rocks now cover).
+  - AC2 sprint tour: 18/18, 0 sticks, 0 falls.
+  - AC3 put-back: 20/20, worst 0.162 s, after two rig fixes the new edge and the seal made necessary.
+  - AC6: the drunk's route is unchanged.
+  - AC4: the seal skirt was pressed against, 66 valid poses, 0 see-through.
+  - AC5 frame rate: the edge rocks and seal cost +0.09 to +1.02 ms per frame in an ABBA render A/B, which keeps every viewpoint within AC5's own spread.
+  - Console clean, EditMode 254/254, editor restored. No game file changed. Status stays review: perceptual checks are queued for Alexv.
