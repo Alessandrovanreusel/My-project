@@ -23,6 +23,11 @@ Check, by running things rather than reading:
 If a check fails and the fix is small, fix it and re-check. If it is not small, write `failed` with
 a precise `next_hint`.
 
+**A close never certifies its own build.** If this attempt changes the game itself (anything under
+`Assets/`, `ProjectSettings/` or `Packages/` other than a rig), the loop runs one more fresh close
+after you, to verify those changes independently. So fix what you find, and say exactly what you
+changed and how you verified it, but do not hold back a needed fix to avoid that extra session.
+
 Then set sprint-status for this story: `done` if no perceptual check is pending, otherwise `review`
 (and repeat every pending perceptual check in `human_checks`, so the queue is complete). Commit.
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import datetime as dt
+import hashlib
 import itertools
 import json
 import os
@@ -61,6 +62,16 @@ GATE_POLL_S = 600                            # idle re-check of approvals.txt wh
 MERGE_TRIES = 3                              # a merge with no conflicts that still fails is retried...
 MERGE_RETRY_S = 20                           # ...after this long (a file held by Unity/OneDrive/a scan)
 PID_FILE = RUNTIME / "current.pid"
+# The loop runs from the working tree, which is usually a unit's branch, and that branch only picks up
+# master's loop fixes when the loop brings master in, AFTER this file was loaded. On 2026-11-11 a restart
+# meant to load a fix ran the old code for 14 hours. So between phases, if this file changed on disk,
+# the loop saves its state and restarts itself on the new code (RELOAD).
+CODE_FILE = Path(__file__).resolve()
+RELOAD = 3
+# A session's time limit counts only time the PC was awake. A 10 s poll that took longer than this
+# means Windows slept (lid closed, battery): on 2026-11-11 a session frozen by standby at 13:32 was
+# killed for "running 2 h" the moment the PC woke at 23:31, after 82 min of real work.
+SLEEP_GAP_S = 120
 DEPS_FILE = LOOP / "dependencies.yaml"
 LESSONS_FILE = LOOP / "lessons.md"
 IMPL = ROOT / "_bmad-output" / "implementation-artifacts"
@@ -157,6 +168,22 @@ def write_json(path: Path, data) -> None:
 
 def rel(p: Path) -> str:
     return p.relative_to(ROOT).as_posix()
+
+
+def code_digest(path: Path) -> str:
+    try:
+        return hashlib.sha1(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+CODE_DIGEST = code_digest(CODE_FILE)
+
+
+def code_changed() -> bool:
+    """Has loop.py on disk changed since this process loaded it (a merge or checkout brought new code)?"""
+    now_digest = code_digest(CODE_FILE)
+    return bool(now_digest) and now_digest != CODE_DIGEST
 
 
 def keep_awake(on: bool = True) -> None:
@@ -544,13 +571,21 @@ def run_process(cmd: list[str], prompt: str, logfile: Path, timeout_s: float, en
             p.stdin.close()
         except Exception:
             pass
-        deadline = time.time() + timeout_s
+        awake = 0.0
+        last = time.time()
         while p.poll() is None:
-            if time.time() > deadline:
-                log(f"timeout after {timeout_s / 3600:.1f} h: killing pid {p.pid}")
+            time.sleep(10)
+            now_s = time.time()
+            gap, last = now_s - last, now_s
+            if gap > SLEEP_GAP_S:
+                log(f"Windows was asleep for {gap / 60:.0f} min during this session; that time does not count "
+                    f"against its {timeout_s / 3600:.1f} h")
+                continue
+            awake += gap
+            if awake > timeout_s:
+                log(f"timeout after {timeout_s / 3600:.1f} h awake: killing pid {p.pid}")
                 kill_tree(p.pid)
                 break
-            time.sleep(10)
         code = p.wait()
     PID_FILE.unlink(missing_ok=True)
     data = logfile.read_bytes()[-20000:].decode("utf-8", errors="replace")
@@ -690,7 +725,8 @@ def run_phase(u: Unit, us: dict, phase: str, state: dict) -> dict:
         "unit": u.id, "epic": u.epic, "attempt": attempt, "branch": u.branch, "story_file": story_file,
         "base_ref": us.get("base_ref") or "master", "result_path": rel(result_path),
         "findings_path": us.get("findings") or "",
-        "previous_failure": (f"### The previous attempt did not finish\n\n{hint}\n\nCheck what it committed "
+        "previous_failure": (("" if hint.startswith("### ") else "### The previous attempt did not finish\n\n") +
+                             f"{hint}\n\nCheck what it committed "
                              f"(`git log {us.get('base_ref') or 'master'}..HEAD`) before redoing anything.") if hint else "",
     }
     if phase in NEEDS_UNITY:
@@ -774,6 +810,25 @@ def review_sources(base_ref: str, branch: str) -> dict[str, str]:
     names = git("diff", "--name-only", "--diff-filter=d", f"{base_ref}..{branch}", check=False).stdout.splitlines()
     files = {p: git("show", f"{branch}:{p}", check=False).stdout for p in names if REVIEW_SOURCE_RE.search(p)}
     return {p: t for p, t in files.items() if not is_rig(p, t)}
+
+
+GAME_PATH_RE = re.compile(r"^(?:Assets|ProjectSettings|Packages)/")
+
+
+def game_changes(old: str, new: str) -> list[str]:
+    """The files a commit range changed in the game itself (Assets, ProjectSettings, Packages), rigs and
+    their .meta left out: what a player would get, as opposed to docs, evidence and verification tools."""
+    if not old or not new or old == new:
+        return []
+    out = []
+    for p in git("diff", "--name-only", f"{old}..{new}", check=False).stdout.splitlines():
+        if not GAME_PATH_RE.search(p):
+            continue
+        src = p[:-5] if p.endswith(".meta") else p
+        text = git("show", f"{new}:{src}", check=False).stdout if REVIEW_RIG_RUNTIME_RE.search(src) else ""
+        if not is_rig(src, text):
+            out.append(p)
+    return out
 
 
 def _distinctive(lines) -> set[str]:
@@ -1051,6 +1106,9 @@ def run_unit(u: Unit, state: dict) -> str:
     report(f"start {u.kind} **{u.id}** at `{us['phase']}` on `{u.branch}`")
 
     while us["phase"] != "merge":
+        if code_changed():   # e.g. start_branch just brought master's loop fixes into this branch
+            save_state(state)
+            return "reload"
         if stop_requested() or budget_pause(state):
             return "stopped"
         phase = us["phase"]
@@ -1069,12 +1127,37 @@ def run_unit(u: Unit, state: dict) -> str:
         if res["status"] == "stopped":
             return "stopped"
         finish_phase_git(u, phase)
-        progressed = git("rev-parse", u.branch, check=False).stdout.strip() != tip
+        new_tip = git("rev-parse", u.branch, check=False).stdout.strip()
+        progressed = new_tip != tip
         us["history"].append({"phase": phase, "status": res["status"], "summary": res.get("summary", ""),
                               "minutes": res.get("_minutes"), "log": res.get("_log"), "at": now()})
         absorb_result(us, res)
         report(f"{u.id} {phase} a{res.get('_attempt')} → **{res['status']}** ({res.get('_minutes')} min): "
                f"{res.get('summary', '')[:300]}")
+
+        built = game_changes(tip, new_tip) if res["status"] == "ok" and phase == "close" and progressed else []
+        if built:
+            # A close never certifies its own build. Story 2.2's first close failed AC3 and handed its
+            # retry a plan to build a rock edge round the whole ring: that retry would have built it,
+            # judged it and merged it, with no other session ever looking at it.
+            us["attempts"][phase] = runs = us["attempts"].get(phase, 0) + 1
+            if runs >= MAX_RUNS:
+                park(u, us, state, phase, f"close passed its own changes to the game {runs} times running "
+                                          f"instead of only verifying them; last: {', '.join(built[:3])}")
+                git("checkout", "master")
+                return "parked"
+            us["hint"] = (
+                "### Verify what the previous close built\n\n"
+                f"The previous close attempt passed, but it changed the game itself ({len(built)} file(s): "
+                f"{', '.join(built[:12])}{' …' if len(built) > 12 else ''}). A close never certifies its "
+                "own build, so you are that work's independent check. Read those changes as a reviewer "
+                "would, run what exercises them (the story's rigs, the scene, the tests) and look at the "
+                "evidence yourself, not at its summary. Then run the six checks. Its result said: "
+                f"{res.get('summary', '')[:600]}")
+            log(f"{u.id}: close attempt {res.get('_attempt')} passed its own changes to the game "
+                f"({len(built)} file(s)); a fresh close verifies them")
+            save_state(state)
+            continue
 
         if res["status"] == "ok":
             state["unity_restarts"] = 0
@@ -1170,6 +1253,9 @@ def main() -> int:
                 log("STOP file found: stopping cleanly")
                 report("stopped on request")
                 return 0
+            if code_changed():   # a merge to master, or a checkout of it, brought new loop code
+                log("loop code changed on disk: restarting on the new code")
+                return RELOAD
             sprint, deps = load_sprint(), load_deps()
             gated: list = []
             u = unit_from_id(args.only) if args.only else pick_next(sprint, deps, state, gated=gated)
@@ -1211,6 +1297,9 @@ def main() -> int:
                 report(f"**STOPPED — machine problem**: {e}")
                 notify(f"loop stopped: {e}"[:200], urgent=True)
                 return 2
+            if outcome == "reload":
+                log(f"{u.id}: loop code changed on disk (master brought in): restarting on the new code")
+                return RELOAD
             log(f"{u.id}: {outcome}")
             if outcome == "infra-stop":
                 return 2
@@ -1231,5 +1320,14 @@ def main() -> int:
         save_state(state)
 
 
+def relaunch(argv: list[str]) -> int:
+    """Run the loop again in a fresh process, so it loads the loop.py now on disk, and wait for it.
+    A child process rather than os.execv: on Windows exec ends this process, and the 'Game loop' window
+    would print 'Loop exited' while the new loop is still running in it."""
+    keep_awake(False)   # the new process keeps the PC awake itself; this one only waits
+    return subprocess.call([sys.executable, str(CODE_FILE), *argv], cwd=ROOT)
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    code = main()
+    sys.exit(relaunch(sys.argv[1:]) if code == RELOAD else code)

@@ -71,10 +71,13 @@ seconds, having seen 5 of 10 files.)
 | An AC says you must approve something before a later story starts | Never starts that story; does other work, pings your phone once, and starts it the moment you approve |
 | Compile errors, failing tests, review findings | Fixes them itself |
 | A phase fails | Retries in a fresh session with a hint. Parks the unit after 3 failures that committed nothing, or 6 of any kind (a session that runs out of context on a big story commits its work and hands over; that is progress, not a failure) |
+| The final check (close) changes the game itself to make a story pass | Runs one more fresh close to verify that change before merging: a session never certifies its own build. Rigs and docs don't count |
 | A real blocker (login, purchase, licence, missing asset) | Parks the unit, pings your phone, moves to work that doesn't depend on it |
 | Unity unreachable | Restarts Unity; after 2 failed restarts in a row it stops everything and pings you |
 | Claude usage limit | Waits until the reset time the limit names (or 20 minutes if it names none), then starts a fresh session that is told it was cut off and checks git first. Pings you only for waits over 3 hours |
 | Your weekly Claude allowance is 90% used | Pauses before its next phase and pings you once, leaving you the rest; resumes when the week resets. To change the share, put `"weekly_budget": 0.95` (or `1.0` for all of it) in `loop/runtime/config.local.json`. It takes effect within a minute, even mid-pause |
+| The laptop sleeps (lid closed, on battery) | Nothing runs while Windows is asleep: the session freezes and carries on when it wakes. Asleep time does not count against a session's time limit. **To let it work while you're away, leave the lid open and the charger in** (or set "When I close the lid: Do nothing" for "Plugged in") |
+| A fix to the loop itself lands on master while it runs | The working tree gets it when the loop next starts a unit or resumes a branch (it brings master in then); the loop notices its own code changed and restarts itself on the new code, after saving its state. To apply a fix sooner, stop and start the loop: that resume brings it in |
 | Nothing left that it can do | Stops and pings you |
 
 **Approve something the loop is waiting for** (section 0 of the queue, e.g. ADR-4): tell Claude
