@@ -64,6 +64,29 @@ namespace CameraGame.Tests
             Assert.AreEqual(0, broken, $"{broken} of {refs} map MeshColliders in SampleScene reference a mesh the FBX does not contain (they load with no mesh and collide with nothing): re-run Tools/Town/Apply Collider Rule to the Map");
         }
 
+        /// <summary>
+        /// Story 2.2 (CLOSE attempt 3): the terrain tiles overlap at different heights, and where a tile's edge hovers over
+        /// the ground beneath it a person walks underneath (54,319 m² of the pub's NavMesh island, entered on foot). The
+        /// <c>TownSeal</c> skirt closes those lips. This reads the scene FILE and checks that a MeshCollider there still uses
+        /// the seal mesh, and that the mesh holds geometry, so a scene edit or a failed rebuild cannot drop it silently.
+        /// </summary>
+        [Test]
+        public void SampleScene_KeepsTheMountainFootSeal()
+        {
+            const string sealPath = "Assets/Data/World/TownSeal.asset";
+            var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(sealPath);
+            Assert.IsNotNull(mesh, sealPath + " is missing: re-run Tools/Town/Seal Mountain Foot");
+            Assert.Greater(mesh.vertexCount, 0, "the seal mesh is empty: re-run Tools/Town/Seal Mountain Foot");
+            string guid = AssetDatabase.AssetPathToGUID(sealPath);
+            bool inCollider = false; int refs = 0;
+            foreach (string line in File.ReadLines("Assets/Scenes/SampleScene.unity"))
+            {
+                if (line.StartsWith("--- !u!")) inCollider = line.StartsWith("--- !u!64 ");
+                if (inCollider && line.Contains("m_Mesh:") && line.Contains("guid: " + guid)) refs++;
+            }
+            Assert.AreEqual(1, refs, "SampleScene must hold exactly one MeshCollider on the seal mesh (the TownSeal root)");
+        }
+
         [TestCase("Assets/Scenes/SampleScene.unity")]
         [TestCase("Assets/Scenes/SampleScene/NavMesh-game map.asset")]
         public void CommittedFile_IsUnderFiftyMegabytes(string path)

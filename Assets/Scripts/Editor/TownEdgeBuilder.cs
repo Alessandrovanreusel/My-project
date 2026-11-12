@@ -554,7 +554,10 @@ namespace CameraGame.EditorTools
         /// <summary>Where can the player still reach a ring barrier? Takes the baked NavMesh's triangles, welds them, keeps
         /// the island connected to the pub, and marks every half-metre of ring line that island comes within
         /// <see cref="ContactDistance"/> of (measured inward from the line). Each contact is classified by the ground just
-        /// beyond the line: walkable there means nothing visible stops the player — only the barrier.</summary>
+        /// beyond the line: walkable there means nothing visible stops the player — only the barrier.
+        /// contact_points.csv (CLOSE attempt 3) opens every contact up: the NavMesh height(s) there, what it stands on (an edge
+        /// boulder, or BARE ground), whether a terrain tile covers it (under the mountain or the plain) and how far the walkable
+        /// surface runs straight in from the barrier.</summary>
         public static string MeasureContact(string outSub)
         {
             var cfg = AssetDatabase.LoadAssetAtPath<TownBoundsConfig>(AddMeshColliders.TownBoundsConfigPath);
@@ -599,7 +602,12 @@ namespace CameraGame.EditorTools
             }
             // bins along each side
             var bins = new Dictionary<int, bool[]>();
-            foreach (Side s in sides) bins[s.index] = new bool[Mathf.RoundToInt(s.length / 0.5f) + 1];
+            var binYs = new Dictionary<int, List<float>[]>();   // the NavMesh heights met in each bin (several floors can stack)
+            foreach (Side s in sides)
+            {
+                bins[s.index] = new bool[Mathf.RoundToInt(s.length / 0.5f) + 1];
+                binYs[s.index] = new List<float>[bins[s.index].Length];
+            }
             int mainTris = 0;
             for (int t = 0; t < idx.Length; t += 3)
             {
@@ -623,7 +631,13 @@ namespace CameraGame.EditorTools
                             float along = Vector2.Dot(rel, s.dir), inward = Vector2.Dot(rel, s.inward);
                             if (inward < -0.5f || inward > ContactDistance || along < 0f || along > s.length) continue;
                             if (!InTriangle(q, a2, b2, c2)) continue;
-                            bins[s.index][Mathf.Clamp(Mathf.RoundToInt(along / 0.5f), 0, bins[s.index].Length - 1)] = true;
+                            int bi = Mathf.Clamp(Mathf.RoundToInt(along / 0.5f), 0, bins[s.index].Length - 1);
+                            bins[s.index][bi] = true;
+                            float qy = HeightOn(q, A, B, C);
+                            List<float> ys = binYs[s.index][bi] ?? (binYs[s.index][bi] = new List<float>());
+                            bool known = false;
+                            foreach (float y in ys) if (Mathf.Abs(y - qy) < 0.5f) { known = true; break; }
+                            if (!known) ys.Add(qy);
                         }
                 }
             }
@@ -664,12 +678,69 @@ namespace CameraGame.EditorTools
                 log.AppendLine($"{s.name}: {F(s.length, "0")} m; barrier reached on {F(sc, "0")} m; of which walkable beyond {F(so, "0")} m, and of that with no boulder across the line (an invisible stop) {F(sn, "0.#")} m{(runs.Length > 0 ? ";" + runs : "")}");
             }
             log.AppendLine($"RING TOTAL: {F(ringM, "0")} m of barrier; reached {F(contactM, "0")} m; reached with walkable ground beyond {F(openM, "0.#")} m; of that with NO BOULDER across the line (an invisible stop) {F(bareM, "0.#")} m");
+            // every contact point opened up (CLOSE attempt 3): what the NavMesh there stands on, whether a terrain tile covers
+            // it (under the mountain or the plain), and how far the walkable surface runs straight in from the barrier
+            var pts = new StringBuilder("side,u,x,z,nav_y,under,covered_m,cover,straight_in_m\n");
+            int nPts = 0, onRock = 0, bare = 0, bareCovered = 0, bareOpen = 0;
+            var bareList = new StringBuilder();
+            foreach (Side s in sides)
+            {
+                List<float>[] ysAll = binYs[s.index];
+                for (int k = 0; k < ysAll.Length; k++)
+                {
+                    if (ysAll[k] == null) continue;
+                    Vector2 p = s.a + s.dir * Mathf.Min(s.length, k * 0.5f) + s.inward * 0.8f;
+                    foreach (float ny in ysAll[k])
+                    {
+                        nPts++;
+                        Collider uc = null; float uy = float.MinValue;
+                        foreach (RaycastHit h in Physics.RaycastAll(new Vector3(p.x, ny + 0.5f, p.y), Vector3.down, 1.5f, ~0, QueryTriggerInteraction.Ignore))
+                        {
+                            if (kinds.TryGetValue(h.collider, out int kk) && kk == 2) continue;
+                            if (h.point.y > uy) { uc = h.collider; uy = h.point.y; }
+                        }
+                        string under = uc != null ? uc.name : "";
+                        TownCensus.Column(kinds, p.x, p.y, out float sy, out _, out _, out _, out Collider sc);
+                        float cov = float.IsNaN(sy) ? 0f : sy - ny;
+                        bool covered = cov > 1f && TownSealBuilder.IsTerrain(sc);
+                        float straight = 20f;
+                        Vector3 from = new Vector3(p.x, ny, p.y);
+                        if (NavMesh.SamplePosition(from, out NavMeshHit nh, 0.6f, NavMesh.AllAreas))
+                        {
+                            Vector3 to = nh.position + new Vector3(s.inward.x, 0f, s.inward.y) * 20f;
+                            if (NavMesh.Raycast(nh.position, to, out NavMeshHit rh, NavMesh.AllAreas)) straight = rh.distance;
+                        }
+                        bool rock = uc != null && mine.Contains(uc);
+                        if (rock) onRock++;
+                        else
+                        {
+                            bare++;
+                            if (covered) bareCovered++; else bareOpen++;
+                            bareList.AppendLine($"    bare: {s.name} at ({F(p.x, "0.#")}, {F(ny, "0.#")}, {F(p.y, "0.#")}) on '{under}', {(covered ? "UNDER " + sc.name + " by " + F(cov, "0.#") + " m" : "open sky")}, straight in {F(straight, "0.#")} m");
+                        }
+                        pts.AppendLine($"{s.index},{F(k * 0.5f, "0.#")},{F(p.x, "0.#")},{F(p.y, "0.#")},{F(ny, "0.#")},{under},{F(cov, "0.#")},{(covered ? sc.name : "")},{F(straight, "0.#")}");
+                    }
+                }
+            }
+            log.AppendLine($"CONTACT POINTS: {nPts} (a bin can hold several floors); on an edge boulder {onRock}; on BARE GROUND {bare} (of which under a terrain tile {bareCovered}, under open sky {bareOpen})");
+            log.Append(bareList);
             string dir = TownCensus.Root + "/" + outSub;
             Directory.CreateDirectory(dir);
             File.WriteAllText(Path.Combine(dir, "contact.txt"), log.ToString());
             File.WriteAllText(Path.Combine(dir, "contact.csv"), csv.ToString());
+            File.WriteAllText(Path.Combine(dir, "contact_points.csv"), pts.ToString());
             Debug.Log("[TownEdge] " + log.ToString().Replace("\n", " | "));
             return log.ToString();
+        }
+
+        /// <summary>The height of triangle ABC above the point (x, z) (barycentric).</summary>
+        private static float HeightOn(Vector2 q, Vector3 A, Vector3 B, Vector3 C)
+        {
+            float d = (B.z - C.z) * (A.x - C.x) + (C.x - B.x) * (A.z - C.z);
+            if (Mathf.Abs(d) < 1e-8f) return (A.y + B.y + C.y) / 3f;
+            float wa = ((B.z - C.z) * (q.x - C.x) + (C.x - B.x) * (q.y - C.z)) / d;
+            float wb = ((C.z - A.z) * (q.x - C.x) + (A.x - C.x) * (q.y - C.z)) / d;
+            return wa * A.y + wb * B.y + (1f - wa - wb) * C.y;
         }
 
         private static float SegBoxDistance(Vector2 a, Vector2 b, Vector2 mn, Vector2 mx)
