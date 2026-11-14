@@ -17,6 +17,13 @@
       },
       "hash": "aa5fc638d623f56178d50329d9ad8c541a57fe66"
     },
+    "com.inspiaaa.unityhfsm": {
+      "version": "https://github.com/Inspiaaa/UnityHFSM.git#v2.3.0",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "f8fdc2efb862522acd26fab6cd940886c84cde37"
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.10",
       "depth": 0,
@@ -42,6 +49,16 @@
       "dependencies": {
         "com.unity.mathematics": "1.2.1",
         "com.unity.modules.jsonserialize": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.cinemachine": {
+      "version": "3.1.7",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.splines": "2.0.0",
+        "com.unity.modules.imgui": "1.0.0"
       },
       "url": "https://packages.unity.com"
     },
@@ -120,6 +137,13 @@
       "dependencies": {},
       "url": "https://packages.unity.com"
     },
+    "com.unity.performance.profile-analyzer": {
+      "version": "1.4.2",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
     "com.unity.recorder": {
       "version": "5.1.7",
       "depth": 0,
@@ -193,6 +217,13 @@
       },
       "url": "https://packages.unity.com"
     },
+    "com.unity.settings-manager": {
+      "version": "2.1.1",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
     "com.unity.shadergraph": {
       "version": "17.3.0",
       "depth": 1,
@@ -201,6 +232,17 @@
         "com.unity.render-pipelines.core": "17.3.0",
         "com.unity.searcher": "4.9.3"
       }
+    },
+    "com.unity.splines": {
+      "version": "2.8.2",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.mathematics": "1.2.1",
+        "com.unity.modules.imgui": "1.0.0",
+        "com.unity.settings-manager": "1.0.3"
+      },
+      "url": "https://packages.unity.com"
     },
     "com.unity.test-framework": {
       "version": "1.6.0",
@@ -213,8 +255,8 @@
       }
     },
     "com.unity.test-framework.performance": {
-      "version": "3.2.0",
-      "depth": 2,
+      "version": "3.7.0",
+      "depth": 0,
       "source": "registry",
       "dependencies": {
         "com.unity.test-framework": "1.1.33",
@@ -252,6 +294,111 @@
         "com.unity.modules.jsonserialize": "1.0.0"
       },
       "url": "https://packages.unity.com"
+    },
+    "jp.co.cyberagent.instant-replay": {
+      "version": "https://github.com/CyberAgentGameEntertainment/InstantReplay.git?path=Packages/jp.co.cyberagent.instant-replay#v1.7.1",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "00170cf8b5d542921e609428ab64a110a3d36e73"
+    },
+    "jp.co.cyberagent.instant-replay.dependencies": {
+      "version": "https://github.com/CyberAgentGameEntertainment/InstantReplay.git?path=Packages/jp.co.cyberagent.instant-replay.dependencies#v1.7.1",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "org.nuget.system.io.pipelines": "9.0.3",
+        "org.nuget.system.threading.channels": "9.0.2"
+      },
+      "hash": "00170cf8b5d542921e609428ab64a110a3d36e73"
+    },
+    "jp.keijiro.kino-glitch.universal": {
+      "version": "1.0.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.render-pipelines.universal": "17.0.0",
+        "jp.keijiro.noiseshader": "3.0.1"
+      },
+      "url": "https://registry.npmjs.com"
+    },
+    "jp.keijiro.noiseshader": {
+      "version": "3.0.1",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://registry.npmjs.com"
+    },
+    "org.nuget.microsoft.bcl.asyncinterfaces": {
+      "version": "9.0.2",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.threading.tasks.extensions": "4.5.4"
+      },
+      "url": "https://unitynuget-registry.openupm.com"
+    },
+    "org.nuget.system.buffers": {
+      "version": "4.5.1",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://unitynuget-registry.openupm.com"
+    },
+    "org.nuget.system.io.pipelines": {
+      "version": "9.0.3",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.buffers": "4.5.1",
+        "org.nuget.system.memory": "4.5.5",
+        "org.nuget.system.threading.tasks.extensions": "4.5.4"
+      },
+      "url": "https://unitynuget-registry.openupm.com"
+    },
+    "org.nuget.system.memory": {
+      "version": "4.5.5",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.buffers": "4.5.1",
+        "org.nuget.system.numerics.vectors": "4.4.0",
+        "org.nuget.system.runtime.compilerservices.unsafe": "4.5.3"
+      },
+      "url": "https://unitynuget-registry.openupm.com"
+    },
+    "org.nuget.system.numerics.vectors": {
+      "version": "4.4.0",
+      "depth": 3,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://unitynuget-registry.openupm.com"
+    },
+    "org.nuget.system.runtime.compilerservices.unsafe": {
+      "version": "4.5.3",
+      "depth": 3,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://unitynuget-registry.openupm.com"
+    },
+    "org.nuget.system.threading.channels": {
+      "version": "9.0.2",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.microsoft.bcl.asyncinterfaces": "9.0.2",
+        "org.nuget.system.threading.tasks.extensions": "4.5.4"
+      },
+      "url": "https://unitynuget-registry.openupm.com"
+    },
+    "org.nuget.system.threading.tasks.extensions": {
+      "version": "4.5.4",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.runtime.compilerservices.unsafe": "4.5.3"
+      },
+      "url": "https://unitynuget-registry.openupm.com"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
