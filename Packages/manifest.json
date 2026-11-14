@@ -2,6 +2,8 @@
   "dependencies": {
     "com.coplaydev.unity-mcp": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#v10.3.0",
     "com.inspiaaa.unityhfsm": "https://github.com/Inspiaaa/UnityHFSM.git#v2.3.0",
+    "com.nowsprinting.test-helper": "https://github.com/nowsprinting/test-helper.git#v1.6.4",
+    "com.tayx.graphy": "https://github.com/Tayx94/graphy.git#v4.0.0",
     "com.unity.ai.navigation": "2.0.10",
     "com.unity.cinemachine": "3.1.7",
     "com.unity.ide.rider": "3.0.39",

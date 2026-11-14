@@ -24,6 +24,22 @@
       "dependencies": {},
       "hash": "f8fdc2efb862522acd26fab6cd940886c84cde37"
     },
+    "com.nowsprinting.test-helper": {
+      "version": "https://github.com/nowsprinting/test-helper.git#v1.6.4",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.test-framework": "1.3.4"
+      },
+      "hash": "949a279d2435572da9193276e969495861ac48bc"
+    },
+    "com.tayx.graphy": {
+      "version": "https://github.com/Tayx94/graphy.git#v4.0.0",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "1068f3de2bc9f1e4a905150abd59f31e6dead679"
+    },
     "com.unity.ai.navigation": {
       "version": "2.0.10",
       "depth": 0,

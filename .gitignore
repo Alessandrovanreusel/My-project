@@ -105,3 +105,7 @@ Desktop.ini
 /Builds/
 # Python bytecode (loop/ tooling)
 __pycache__/
+
+# nowsprinting/test-helper copies a Resources folder here for player tests and deletes it after;
+# it is only left behind if the editor crashes mid-run (test-helper README).
+/Assets/com.nowsprinting.test-helper*
