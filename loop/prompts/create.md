@@ -11,6 +11,9 @@ dev notes, references, verification plan).
   Records, review findings, `deferred-work.md` items that touch this area, `loop/lessons.md`.
 - Plan the verification up front: which rig, which captures, what would convince a sceptic, and
   which ACs are perceptual (those become `human_checks` later, not self-certified passes).
+- **Name the tools.** For each task, check CLAUDE.md *Toolbox* and write which skill or installed
+  package it should use, or why none fits, so the dev session builds on them instead of reinventing
+  them. Adopting a package in shipped code is a decision: make it a gating task.
 - sprint-status: this story → `ready-for-dev`.
 
 {previous_failure}

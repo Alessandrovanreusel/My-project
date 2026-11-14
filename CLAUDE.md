@@ -17,6 +17,61 @@ This project is configured with **MCP for Unity** (`com.coplaydev.unity-mcp`), e
 - Script creation/editing and compilation monitoring
 - Play mode control, asset management, and test execution
 - Always check `read_console` after script changes to verify compilation
+- **Version 10.3.0** (2026-11-14). It is pinned in four places that must move together:
+  `Packages/manifest.json`, `.mcp.json`, `~/.claude.json` and `.codex/config.toml` (project memory has the traps).
+- Since 10.3.0, `read_console` returns plain `Debug.Log` lines too (verified 2026-11-14). `Editor.log`
+  (`%LOCALAPPDATA%\Unity\Editor\Editor.log`) is still the complete record: it survives Console clears, so
+  grep it to count events across a whole session.
+
+## Toolbox — check it before building something by hand
+
+Installed on 2026-11-14 at Alexv's request, so that sessions use proven tools instead of reinventing them.
+The research behind every choice (links, licences, alternatives, what was rejected and why) is in
+`_bmad-output/planning-artifacts/research/unity-tooling-2026-11-14.md`.
+
+**Installed is not adopted.** Nothing in the game uses these packages yet. Wiring one into shipped code is a
+design decision: make it inside a story, record it (the story's decisions, and `game-architecture.md` when it
+shapes the architecture), and verify it like any other change. ADR-4 still decides how the game records video.
+
+**Skills** (the Claude Code plugins `unity` and `unity-perf`, user scope). Invoke the one that matches the
+area you are working in, before writing code there:
+
+| Area | Skill |
+|---|---|
+| URP post-processing, Volumes | `unity:urp-postprocessing` |
+| Any `ScriptableRendererFeature` / Render Graph pass | `unity:validate-urp-render-graph-renderer-feature` |
+| Audio mixers, routing, import settings | `unity:audio-setup-mixers`, `unity:optimize-audio` |
+| NavMesh surfaces, agents, links | `unity:initialize-ai-navigation` |
+| HUD and menus (this project uses uGUI) | `unity:ui`, then `unity:ui-ugui` |
+| Collisions, triggers, raycasts | `unity:physics-3d-collision` |
+| Finding assets or objects in the editor | `unity:generate-editor-search-query` |
+| Frame rate, stutter, GC, allocations | `unity-perf:unity-performance`, `unity-perf:csharp-zero-gc` |
+| Design and standards review | `unity-perf:code-standards` |
+
+⚠️ **MCP for Unity is the only way to drive the editor.** Do not use `unity:unity-cli`, or the
+Pipeline-command path in `unity:unity-package-management`, to edit scenes, run code or run tests. Every rig,
+trap and memory in this project assumes MCP for Unity, and a second control channel would bypass them all.
+Read those two skills for knowledge only.
+
+**Packages** (pinned in `Packages/manifest.json`):
+
+| Package (assembly) | Use it for | Watch out |
+|---|---|---|
+| Performance Testing 3.7.0 (`Unity.PerformanceTesting`) | Frame-time and marker samples in play-mode tests and builds (`Measure.Frames()`, `Measure.Method()`) | Record the numbers as evidence. Never turn them into pass/fail thresholds (*Do not encode expected results*) |
+| Profile Analyzer 1.4.2 | *Window > Analysis > Profile Analyzer*: compare two Profiler captures, A against B | |
+| Cinemachine 3.1.7 (`Unity.Cinemachine`) | Handheld noise presets (`Handheld_tele_*`, `Handheld_wideangle_*`, `Handheld_normal_*`) for camcorder shake | The player camera is the project's own. A `CinemachineBrain` on Main Camera replaces it: a story decision, never a drive-by |
+| UnityHFSM 2.3.0 (`UnityHFSM`) | Hierarchical state machines for new event actors | Event actors already have a lifecycle engine (Story 1.6). Do not rewrite it unasked |
+| KinoGlitch URP 1.0.0 (`KinoGlitch.Runtime`) | Tape glitch and signal loss: `AnalogGlitchRendererFeature`, `DigitalGlitchRendererFeature` | Does nothing until it is added to the URP renderer asset. Measure its frame cost |
+| InstantReplay 1.7.1 (`InstantReplay`) | MP4 capture inside a build (Windows Media Foundation, no FFmpeg, no GPL) | Only within ADR-4. Use `RendererFeatureFrameProvider`, not the default `ScreenshotFrameProvider` (the backbuffer trap below). Never use its Discord sharing module or anything else that uploads. Compiles on 6000.3; not yet run here |
+| Graphy 4.0.0 | `[Graphy].prefab`: FPS, 1%-low and memory overlay, including in a standalone build | A bench tool. Never ship it switched on |
+| test-helper 1.6.4 (`TestHelper`) | `[LoadScene]`, `[CreateScene]`, `[TimeScale]`, `[GameViewResolution]`, `[RecordVideo]` | Reference `TestHelper` from the test asmdef. `[TakeScreenshot]` reads the Game View backbuffer (the trap below), so keep the project's capture technique for evidence |
+
+Scoped registries in the manifest: `Keijiro` (scope `jp.keijiro`) and `Unity NuGet` (scope `org.nuget`, for
+InstantReplay's .NET dependencies).
+
+**Reference project, outside this repository:** `..\References\PaddleGameSO` is Unity's official
+ScriptableObject architecture demo (event channels and runtime sets, the pattern this project uses), on Unity
+2021.3. It has no licence file: read it and learn from it, never copy its code into the game.
 
 ## Verifying Your Own Work — REQUIRED
 
@@ -160,6 +215,9 @@ the difference between findings and fiction, and each was measured. The short ve
 - **Disabling a manager does not empty its world.** `manager.enabled = false` stops the manager's `Update`;
   it despawns nothing. A rig scenario captioned "nobody there" photographed a live subject and graded it
   94%. If a scenario needs an empty street, deactivate the live actors and put them back.
+- **Adding a scoped registry opens a modal notice** ("Importing N scoped registries", with Learn More and
+  Close) that blocks the editor's main thread, so every MCP call times out until it is closed. It is only
+  information: close it (2026-11-14).
 
 ## Unattended Loop
 
@@ -191,8 +249,9 @@ Read `loop/README.md` before touching it. In an interactive session:
 
 - **Render Pipeline**: URP 17.3.0 with dual renderer configs (`PC_RPAsset`, `Mobile_RPAsset`)
 - **Input System**: New Input System (1.18.0) with Player action map (Move, Look, Attack, Interact, Crouch, Jump, Sprint, Previous/Next)
-- **Packages**: AI Navigation, Visual Scripting, Timeline, Authentication Services
-- **Version Control**: Plastic SCM (see `ignore.conf`)
+- **Packages**: AI Navigation, Timeline, Recorder (rig videos only: it does not run in builds), Visual Scripting,
+  Authentication Services, and everything in *Toolbox* above
+- **Version Control**: git, on GitHub (a public repository). Plastic SCM was dropped on 2026-07-31
 - **IDE**: VS Code with Unity debugger attached via `vstuc`
 
 ## Development Commands

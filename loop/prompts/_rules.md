@@ -105,6 +105,18 @@ by measuring.
 - **Unity MCP** for everything in the editor. Before any rig: `refresh_unity`, wait for the
   compile, and read the values back through the editor (CLAUDE.md trap: a stale assembly runs with
   a clean console). `read_console` after every script change. `run_tests` for EditMode tests.
+  Since MCP for Unity 10.3.0, `read_console` also shows plain `Debug.Log` lines; `Editor.log` is still
+  the complete record (it survives Console clears), so grep it to count events across a whole run.
+- **The toolbox (CLAUDE.md, *Toolbox*)**: skills and packages installed on 2026-11-14 so that you build
+  on them instead of reinventing them. Before you build a system by hand, check whether one already
+  covers it, and invoke the matching skill whenever you work in its area: renderer features and
+  post-processing, audio mixers, NavMesh, uGUI, performance. Adopting a package in shipped code is a
+  design decision, so record it in `decisions`. Never drive the editor through `unity:unity-cli` or
+  Pipeline commands (MCP for Unity is the only editor channel), never use InstantReplay outside the
+  scope of ADR-4, and never use anything that uploads or shares (InstantReplay's Discord module included).
+- **Performance evidence**: `Unity.PerformanceTesting` (`Measure.Frames()`) in play-mode tests or a
+  build, Profile Analyzer to compare two captures, Graphy for an on-screen read inside a built game.
+  Numbers are evidence, never thresholds that bake in what you expected.
 - **Rigs**: an editor `[MenuItem]` that builds an isolated world, runs the real code path in play
   mode, saves captures, and restores the project. Follow `Assets/Scripts/Editor/PhotoShootRunner`
   and `Assets/Scripts/PhotoMode/PhotoShootRunner.cs`.

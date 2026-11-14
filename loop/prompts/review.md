@@ -13,6 +13,11 @@ You did not write this code and you have no memory of writing it. Review it as a
   review (project memory).
 - Apply the fixes for confirmed findings, re-verify by running, and record deferred and dismissed
   findings with reasons in the story file's review section and `deferred-work.md`.
+- **Use the review skills that fit the change**: `unity-perf:code-standards` for design and standards,
+  `unity-perf:unity-performance` and `unity-perf:csharp-zero-gc` for per-frame code,
+  `unity:validate-urp-render-graph-renderer-feature` for renderer features. Their findings follow the
+  same reproduce-before-reporting rule. Hand-rolling what an installed package already does (CLAUDE.md,
+  *Toolbox*) is worth a finding: ask whether the package was considered.
 - The skill's interactive triage questions follow the decide-and-flag rule.
 
 {previous_failure}
