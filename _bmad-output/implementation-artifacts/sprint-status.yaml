@@ -76,6 +76,8 @@ development_status:
   1-16-grade-a-clip: backlog                                          # carries 1-13's intent
   1-17-the-memory-card: backlog
   1-18-watch-your-clips: backlog
+  1-19-a-shot-that-earns-nothing-reads-red: backlog                 # added 2026-11-14 from Alexv's 1.12 answer;
+  #   independent of the video stories (not gated by ADR-4), so the loop can build it now
   epic-1-retrospective: optional
 
   # ----- Epic 9: The Edit Suite (stories TBD just-in-time) -----

@@ -638,6 +638,69 @@ suppression seam); and closing returns me exactly where I was
 **Then** he confirms it reads as "I caught it". This is a **human** check and stays open until he has done it.
 (The uninstructed first-time-player playtest of the whole slice remains Epic 1's exit check.)
 
+### Story 1.19: A shot that earns nothing reads red
+
+*Added 2026-11-14 from Alexv's answer to Story 1.12's look check (question 4, asked 2026-09-28): "I think
+missed and 0% should be red", plus his choice of a dark text outline to keep red readable. The change was
+never built, and when 1.12 closed on 2026-11-10 question 4 was recorded as fine. On 2026-11-14 Alexv
+confirmed he still wants it. Independent of the video stories: it changes the grade readout's colours,
+which Story 1.16 reuses for clips, so 1.16 inherits it.*
+
+As a player,
+I want a miss and a shot that scored 0 % to both show in red, and the readout to stay easy to read on any
+background,
+So that "this earned me nothing" is obvious at a glance, while a weak shot that earned something still
+looks different from it.
+
+*Measured 2026-09-27/28, so the starting point is known. A true red is a dark colour: over the brightest
+background a red readout appears on (the 0 % shot over sunny grass, panel at 78 %), a clear red reaches
+about 2.7–3.0:1 and pure red 2.0:1, against the 4.5:1 floor Alexv set in Story 1.12. Today's salmon MISSED
+already measures only about 3.5–3.7:1 on bright ground (`e_too_far`, `g_out_of_frame`); it was only ever
+measured on the dark `f_blocked` background (5.6:1), so this is a pre-existing gap the story also closes.
+Alexv chose a dark outline on the readout text over a much darker (~90 %) panel or a lighter red that
+stays faint.*
+
+**Acceptance Criteria:**
+
+**Given** a missed shot,
+**When** the grade readout shows,
+**Then** it is drawn in a clearly red hue, not today's salmon (`GradeHudConfig.missColor`).
+
+**Given** a counted shot whose readout prints "0 %",
+**When** the grade readout shows,
+**Then** it uses the same red as a miss
+**And** the choice follows the printed text, not the raw number: the label rounds, so 0.4 % prints "0 %" and
+is red, while a shot printing "1 %" keeps its grade band
+**And** the words still say which it was: a miss prints MISSED and dashes, a 0 % shot prints its breakdown
+and the timing advice.
+
+**Given** a counted shot that earned something (it prints "1 %" or more),
+**When** the grade readout shows,
+**Then** its grade band is unchanged: 4–5★ green, 3★ cream, 1–2★ amber (Alexv confirmed a weak shot keeps
+amber).
+
+**Given** every readout colour (green, cream, amber, red and the not-graded grey),
+**When** it is drawn over the brightest real backgrounds the game shows behind the HUD,
+**Then** it stays readable because all readout text (rating, breakdown and hint lines) carries a thin dark
+outline
+**And** this is measured off real captures, as rendered rather than as authored, including the bright-ground
+miss scenarios that were never measured, and reported both as text against its outline and as text
+against the panel background.
+
+**Given** the grade-HUD config validator (`TryGetConfigProblem`) and its tests,
+**When** the colours change,
+**Then** red stays clearly apart from amber, cream and green (the ΔE floor of 25), the shipped asset passes
+its own validator, and the "prints 0 %" rule is pinned by tests at 0, 0.4 %, 0.6 % and −0.
+
+**Given** the change is complete,
+**When** the existing rigs and the EditMode suite run,
+**Then** nothing else regresses and the editor is restored.
+
+**Given** the new captures,
+**When** Alexv looks at them,
+**Then** he confirms red reads as "this earned nothing" and the outline still looks like a camcorder overlay
+rather than a heavy box. This is a **human** check and stays open until he has done it.
+
 ---
 
 ## Epic 2: The Living Town
