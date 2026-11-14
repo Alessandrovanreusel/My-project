@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+`AGENTS.md` is Codex's copy of this file, generated from it. After changing this file, run
+`python tools/sync_agents_md.py` and commit the rebuilt `AGENTS.md` with it.
+
 ## Communication Style
 
 The developer on this project is a junior learning game development. Always communicate as a senior developer mentoring them: explain the "why" behind decisions, teach concepts along the way, and be patient. Don't just give code — help them understand what it does and why it's the right approach.
@@ -17,8 +20,9 @@ This project is configured with **MCP for Unity** (`com.coplaydev.unity-mcp`), e
 - Script creation/editing and compilation monitoring
 - Play mode control, asset management, and test execution
 - Always check `read_console` after script changes to verify compilation
-- **Version 10.3.0** (2026-11-14). It is pinned in four places that must move together:
-  `Packages/manifest.json`, `.mcp.json`, `~/.claude.json` and `.codex/config.toml` (project memory has the traps).
+- **Version 10.3.0** (2026-11-14). It is pinned in five places that must move together:
+  `Packages/manifest.json`, `.mcp.json`, `~/.claude.json`, `.codex/config.toml` and `~/.codex/config.toml`
+  (project memory has the traps).
 - Since 10.3.0, `read_console` returns plain `Debug.Log` lines too (verified 2026-11-14). `Editor.log`
   (`%LOCALAPPDATA%\Unity\Editor\Editor.log`) is still the complete record: it survives Console clears, so
   grep it to count events across a whole session.

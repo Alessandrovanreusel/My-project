@@ -1,0 +1,297 @@
+# AGENTS.md
+
+This file provides guidance to Codex when working with code in this repository.
+
+**It is generated from `CLAUDE.md` by `tools/sync_agents_md.py`, so do not edit it by hand.** `CLAUDE.md` is
+the source of truth: to change an instruction, change `CLAUDE.md`, run the script and commit both files.
+Everything below matches `CLAUDE.md` except where Codex works differently from Claude Code: how you reach
+the skills, the project memory, one MCP tip and the loop's hook.
+
+## Communication Style
+
+The developer on this project is a junior learning game development. Always communicate as a senior developer mentoring them: explain the "why" behind decisions, teach concepts along the way, and be patient. Don't just give code — help them understand what it does and why it's the right approach.
+
+## Project Overview
+
+Unity 6 (6000.3.8f1) game project using the **Universal Render Pipeline (URP)**. Early-stage development with character models and environment assets imported, but minimal custom game code. Target platform is Windows 64-bit (StandaloneWindows64).
+
+## Unity MCP Integration
+
+This project is configured with **MCP for Unity** (`com.coplaydev.unity-mcp`), enabling direct Unity Editor interaction from Codex. Use MCP tools for:
+- Scene hierarchy queries and GameObject management
+- Script creation/editing and compilation monitoring
+- Play mode control, asset management, and test execution
+- Always check `read_console` after script changes to verify compilation
+- **Version 10.3.0** (2026-11-14). It is pinned in five places that must move together:
+  `Packages/manifest.json`, `.mcp.json`, `~/.claude.json`, `.codex/config.toml` and `~/.codex/config.toml`
+  (project memory has the traps).
+- Since 10.3.0, `read_console` returns plain `Debug.Log` lines too (verified 2026-11-14). `Editor.log`
+  (`%LOCALAPPDATA%\Unity\Editor\Editor.log`) is still the complete record: it survives Console clears, so
+  grep it to count events across a whole session.
+- If reading an `mcpforunity://` resource fails with an unknown-server error, list the resources first and
+  use the server key exactly as it comes back (MCP for Unity's own instructions give this rule for Codex).
+
+## Project memory — Codex does not load it for you
+
+Claude Code sessions keep what they have learned outside the repository, in
+`~/.claude/projects/C--Users-alexv-OneDrive-Bureau-Unity-My-project/memory/`: the "project memory" this file
+mentions. You never see it unless you open it. Read `MEMORY.md` there (one line per memory), then every file
+that touches your task, and before any editor work at least `unity-mcp-update-traps.md` and
+`mcp-playmode-verification-gotchas.md`. Treat it as read-only and tell Alexv what you learned instead. Some
+entries are permissions Alexv gave Claude sessions (pushing after every change, for example), so ask him
+before assuming one covers you.
+
+## Toolbox — check it before building something by hand
+
+Installed on 2026-11-14 at Alexv's request, so that sessions use proven tools instead of reinventing them.
+The research behind every choice (links, licences, alternatives, what was rejected and why) is in
+`_bmad-output/planning-artifacts/research/unity-tooling-2026-11-14.md`.
+
+**Installed is not adopted.** Nothing in the game uses these packages yet. Wiring one into shipped code is a
+design decision: make it inside a story, record it (the story's decisions, and `game-architecture.md` when it
+shapes the architecture), and verify it like any other change. ADR-4 still decides how the game records video.
+
+**Skills** (the Claude Code plugins `unity` and `unity-perf`, user scope). Codex cannot invoke them, but each
+skill is a Markdown file you can read: `unity:urp-postprocessing` is
+`~/.claude/plugins/cache/anthropic-plugin-directory/unity/<version>/skills/urp-postprocessing/SKILL.md`, and
+the `unity-perf:` skills sit under `.../unity-perf/<version>/skills/` the same way. Each plugin has one
+version folder, renamed when the plugin updates. Read the skill that matches the area you are working in,
+and the files it points to, before writing code there:
+
+| Area | Skill |
+|---|---|
+| URP post-processing, Volumes | `unity:urp-postprocessing` |
+| Any `ScriptableRendererFeature` / Render Graph pass | `unity:validate-urp-render-graph-renderer-feature` |
+| Audio mixers, routing, import settings | `unity:audio-setup-mixers`, `unity:optimize-audio` |
+| NavMesh surfaces, agents, links | `unity:initialize-ai-navigation` |
+| HUD and menus (this project uses uGUI) | `unity:ui`, then `unity:ui-ugui` |
+| Collisions, triggers, raycasts | `unity:physics-3d-collision` |
+| Finding assets or objects in the editor | `unity:generate-editor-search-query` |
+| Frame rate, stutter, GC, allocations | `unity-perf:unity-performance`, `unity-perf:csharp-zero-gc` |
+| Design and standards review | `unity-perf:code-standards` |
+
+⚠️ **MCP for Unity is the only way to drive the editor.** Do not use `unity:unity-cli`, or the
+Pipeline-command path in `unity:unity-package-management`, to edit scenes, run code or run tests. Every rig,
+trap and memory in this project assumes MCP for Unity, and a second control channel would bypass them all.
+Read those two skills for knowledge only.
+
+**Packages** (pinned in `Packages/manifest.json`):
+
+| Package (assembly) | Use it for | Watch out |
+|---|---|---|
+| Performance Testing 3.7.0 (`Unity.PerformanceTesting`) | Frame-time and marker samples in play-mode tests and builds (`Measure.Frames()`, `Measure.Method()`) | Record the numbers as evidence. Never turn them into pass/fail thresholds (*Do not encode expected results*) |
+| Profile Analyzer 1.4.2 | *Window > Analysis > Profile Analyzer*: compare two Profiler captures, A against B | |
+| Cinemachine 3.1.7 (`Unity.Cinemachine`) | Handheld noise presets (`Handheld_tele_*`, `Handheld_wideangle_*`, `Handheld_normal_*`) for camcorder shake | The player camera is the project's own. A `CinemachineBrain` on Main Camera replaces it: a story decision, never a drive-by |
+| UnityHFSM 2.3.0 (`UnityHFSM`) | Hierarchical state machines for new event actors | Event actors already have a lifecycle engine (Story 1.6). Do not rewrite it unasked |
+| KinoGlitch URP 1.0.0 (`KinoGlitch.Runtime`) | Tape glitch and signal loss: `AnalogGlitchRendererFeature`, `DigitalGlitchRendererFeature` | Does nothing until it is added to the URP renderer asset. Measure its frame cost |
+| InstantReplay 1.7.1 (`InstantReplay`) | MP4 capture inside a build (Windows Media Foundation, no FFmpeg, no GPL) | Only within ADR-4. Use `RendererFeatureFrameProvider`, not the default `ScreenshotFrameProvider` (the backbuffer trap below). Never use its Discord sharing module or anything else that uploads. Compiles on 6000.3; not yet run here |
+| Graphy 4.0.0 | `[Graphy].prefab`: FPS, 1%-low and memory overlay, including in a standalone build | A bench tool. Never ship it switched on |
+| test-helper 1.6.4 (`TestHelper`) | `[LoadScene]`, `[CreateScene]`, `[TimeScale]`, `[GameViewResolution]`, `[RecordVideo]` | Reference `TestHelper` from the test asmdef. `[TakeScreenshot]` reads the Game View backbuffer (the trap below), so keep the project's capture technique for evidence |
+
+Scoped registries in the manifest: `Keijiro` (scope `jp.keijiro`) and `Unity NuGet` (scope `org.nuget`, for
+InstantReplay's .NET dependencies).
+
+**Reference project, outside this repository:** `..\References\PaddleGameSO` is Unity's official
+ScriptableObject architecture demo (event channels and runtime sets, the pattern this project uses), on Unity
+2021.3. It has no licence file: read it and learn from it, never copy its code into the game.
+
+## Verifying Your Own Work — REQUIRED
+
+Before telling the developer that something works, **see it working**. A clean compile proves only
+that the code parses; a check you wrote yourself proves only that the code agrees with your own
+assumptions. Neither is evidence.
+
+**You have full creative freedom in how you test.** Invent whatever rig the feature deserves —
+screenshots are one technique, not the method. Sample an `AudioSource` over distance to prove a
+sound really fades; log a transform every frame to prove something moved; draw gizmos; replay
+recorded input; diff two renders; script a whole scenario world. Nobody is going to hand you a
+procedure. Look at the feature, decide what would actually convince you it works, and build that.
+
+**Observe the running game and capture what it produced.**
+- Build a small, isolated world containing just the thing under test, script the actors and camera
+  into exact positions, trigger the real behaviour, and save the result.
+- Read the captures back and look at them. Where a system computes something invisible (a score, a
+  hitbox, a range), **draw that value onto the captured image** — it turns "does this number look
+  right?" into "is the box on him?", which you can actually answer.
+- Prefer an editor `[MenuItem]` so a run is one `execute_menu_item` call and repeatable.
+
+**Read the working example before building your own:** `Tools > Grading > Photo Shoot (Play)` —
+`Assets/Scripts/Editor/PhotoShootRig.cs` builds an isolated world and enters play mode;
+`Assets/Scripts/PhotoMode/PhotoShootRunner.cs` walks the camera to scripted positions, pulls the real
+shutter, and saves each frame with the grader's own box drawn on it.
+
+**Drive the real path, never a re-implementation.** Call the same method the player's input calls. A
+bench that re-creates the logic tests your copy of it, not the game. Play mode over edit mode wherever
+behaviour differs — Animators, physics, and pooling do not run in edit mode, and a subject frozen in
+bind pose measures nothing like the animated one.
+
+**Do not encode expected results.** Assertions bake in what you already believed and go green while
+the feature is wrong. Produce evidence, then judge it. Ask: is this what a player would see? Is this
+what the story asked for? If the answer is no, change the code and run it again.
+
+**Suspect the rig before the code.** A bench fails in ways that look exactly like findings. Every case
+failing identically, every case passing, a suspiciously round number, an empty or blank capture — treat
+all of these as "the rig is broken" until proven otherwise. Real examples from one evening: ten
+screenshots of a UI overlay on blank white (the camera never rendered); every scenario reporting "no
+config" from a config whose values printed perfectly (its native half had been unloaded); a bench
+measuring a T-pose because Animators do not run in edit mode, which made every number roughly double
+the truth and produced a confident, wrong design conclusion.
+
+**When something genuinely needs a human, stop and say so.** Whether audio is locatable, whether
+movement *feels* right, whether a shot reads as a good photograph — these need ears and eyes. Do not
+quietly mark them verified and do not bury the gap in a paragraph. Name the exact thing you need Alexv
+to do, keep the story open until he has done it, and state which ACs remain unproven. Twice now the
+perceptual check has found what every structural check missed.
+
+**This applies to code review too — reviewing is not only reading.** When reviewing a change, build a
+world that exercises it and see what actually happens. Reading finds what a change *says* it does;
+running finds what it does. Use the freedom above to design the scenarios the change deserves:
+- **Stress it.** Many actors at once instead of one, long runs instead of a single cycle, rapid or
+  repeated input, pooled objects reused several times over. Bugs in this project have hidden almost
+  exclusively in reuse and in the second cycle onward, never in the first.
+- **Push the boundaries.** Zero, negative, huge and absent values for every tunable a change touches;
+  a missing reference; a config nobody has authored yet; the path no existing asset exercises.
+- **Reproduce before reporting.** A finding you can trigger and capture is worth ten you reasoned your
+  way to. If you cannot reproduce it, say so and label it a hypothesis rather than a defect.
+- **Use it to disprove, not just to confirm.** Reviewers — human or model — generate plausible findings
+  that turn out to be wrong. Running the scenario settles it in seconds and stops confident,
+  well-argued fiction from reaching Alexv as fact.
+
+**Put the project back exactly as you found it — every time, automatically.** A test world is
+scaffolding, not a destination. Anything the rig swaps out or mutates must be restored when the run
+ends, without Alexv having to ask: the open scene, project settings, layers, time scale, physics or
+quality settings, a config asset's values. Record the previous state *before* you change it and restore
+it on the way out — the photo-shoot rig stores the scene path in `SessionState` (which survives the
+domain reloads that entering and leaving play mode cause) and reopens it when play mode ends. **Never
+leave the editor sitting in the test world or on test settings:** the next story would be developed
+inside it, against values nobody chose, and the damage would not be obvious until much later.
+
+**Write test output to `_bmad-output/verification/` — NOT to `Temp/`.** It must stay out of `Assets/`
+(or Unity imports it as game content) and out of git (it is evidence, not source), and `_bmad-output/`
+is both. **`Temp/` is not, despite being the obvious choice: Unity DELETES the entire folder when the
+editor shuts down.** That cost a real handover on 2026-07-27 — a set of photographs Alexv had been asked
+to review was simply gone by the time he opened the folder, and the run had to be repeated. Anything a
+human is asked to look at must outlive the editor session that produced it.
+
+**Alexv is the second opinion, not the first.** Do not hand him a list of things to go and try. Bring
+him a conclusion and the evidence behind it. Say plainly which parts you verified and which you could
+not — never present a structural check as though it were a played one. Ask him at the **end**, once
+you have already found and fixed what the tooling can find.
+
+**For anything a still frame cannot settle, use `tools/verification/` — frame analysis first, then
+video.** Motion smoothness, foot sliding, loop seams and timing are invisible in a screenshot. Read
+`tools/verification/README.md` before using it; the rules there are not style preferences, they are
+the difference between findings and fiction, and each was measured. The short version:
+
+- **Frame analysis first** — free, local, and it settles most questions. Find the segment by
+  *measuring*, never by guessing a timestamp. Verify the subject is genuinely on screen before
+  concluding anything: a motion mask also fires on camera moves and on a horizon line dithering.
+  Build one labelled contact sheet rather than reading N frames separately.
+- **Then Gemini** (`tools/verification/gemini_motion_review.py`), only for the temporal questions.
+  Send a **short clip with the subject present in every frame**, verified programmatically. Supply
+  **no timestamps** and never name the defect you expect — it anchors on both and manufactures
+  findings to fit. Say explicitly that "nothing" and "I cannot tell" are correct answers.
+- **Verify every claim it makes before repeating it to Alexv.** Extract the cited frame and look.
+  Given the full 219s rig recording, it reported an `[OBSERVED]` hyperextending knee in frames
+  containing only sky and ground; on a clean clip its headline finding was disproven by measurement
+  in minutes. A control test showed perception is sound — asked to *describe* that same timestamp it
+  correctly said the frame was empty. Leading prompts are what break it.
+
+**Traps already paid for — do not rediscover these:**
+- A MonoBehaviour in an **Editor-only assembly** cannot be resolved on a scene object when entering
+  play mode ("referenced script (Unknown) is missing"), and the rig silently does nothing while the
+  scene runs on around it. Put runners in the runtime assembly behind `#if UNITY_EDITOR`.
+- `ScreenCapture.CaptureScreenshot` grabs the Game View backbuffer, which does not repaint its 3D
+  content while the editor runs unattended. Render the camera to a `RenderTexture` instead.
+- Assets loaded **before** `EditorSceneManager.NewScene(..., Single)` have their native half unloaded:
+  fields still read fine from managed memory while `== null` is simultaneously true.
+- Editing `ProjectSettings/*.asset` on disk does not take effect while the editor is running — use the
+  editor API.
+- **Anything you edit on disk — a script OR an `Assets/**/*.asset` — is invisible to a rig run until Unity
+  has actually reimported it, and `execute_menu_item` will happily run on the stale version with a clean
+  console.** This cost the 2026-09-12 code review two full rig runs. First a new scenario was added to a
+  runner and the run produced no such capture (source 11:59, assembly 11:55 — never recompiled). Then a
+  config colour was restored on disk and the run photographed the *previous* value, which looked exactly
+  like a banding regression and was nearly written up as one. Neither failure said anything: no error, no
+  warning, a complete-looking run. **Before triggering a rig: call `refresh_unity`, wait for the rebuild,
+  and read the value back through the editor** (`AssetDatabase.LoadAssetAtPath` + `execute_code`) so you
+  are verifying what Unity holds, not what the file says. `mcpforunity://editor/state` reports
+  `assets.external_changes_dirty: true` when edits are pending — check it.
+- A debug readout that outlives the instant it describes will be read against a later frame. Bound its
+  lifetime and label it a snapshot — a 4-second overlay produced a confident, wrong bug diagnosis from a
+  screenshot taken two seconds after the shot.
+- A rig that logs its own errors trains you to ignore errors — keep its console clean too. When a rig must
+  provoke errors on purpose (fail-soft scenarios), say so at the top of its output and name them, so a
+  clean-console check can tell them from findings.
+- **A Screen Space – Overlay canvas is invisible to `cam.Render()`, so this project's standard verification
+  technique cannot see it.** Use `ScreenCapture.CaptureScreenshotAsTexture()` after
+  `yield return new WaitForEndOfFrame()` — and **leave the camera rendering to the screen** (no
+  `targetTexture` bound, which is what both older rigs do for the whole run, and which leaves the
+  backbuffer empty). Prove it with control shots before trusting one image: a frame with known 3D content
+  (must not be uniform or near-white) and a full-screen marker on an Overlay canvas (must dominate, then
+  return to zero when switched off). Story 1.12 measured 100.00% / 0.00% on that pair.
+- **Capture feedback is photographed at the wrong instant by default.** Grabbing one frame after
+  `Capture()` catches the shutter flash at full white, and it shines through anything translucent — every
+  photograph comes back bleached and reads as a legibility defect that is not there. Capture the settled
+  frame (~0.5 s later) for legibility and keep the flash frame separately if the moment matters.
+- **Disabling a manager does not empty its world.** `manager.enabled = false` stops the manager's `Update`;
+  it despawns nothing. A rig scenario captioned "nobody there" photographed a live subject and graded it
+  94%. If a scenario needs an empty street, deactivate the live actors and put them back.
+- **Adding a scoped registry opens a modal notice** ("Importing N scoped registries", with Learn More and
+  Close) that blocks the editor's main thread, so every MCP call times out until it is closed. It is only
+  information: close it (2026-11-14).
+
+## Unattended Loop
+
+`loop/` builds the backlog unattended: `loop/loop.py` runs each phase of each story in a fresh
+`claude -p` session on its own `loop/<unit>` branch, merges when the unit passes, and parks blockers.
+The loop runs Claude Code sessions, never Codex. Read `loop/README.md` before touching it. In an interactive
+session, yours included:
+- **Do not edit `loop/runtime/`** (state, queue, reports, the private ntfy topic) while the loop is
+  running. Check with `Get-Process python` or `python loop/loop.py --dry-run`.
+  **One exception, `loop/runtime/approvals.txt`:** when Alexv says "approve <id>" (an id from section 0
+  of `loop/runtime/human-queue.md`, e.g. ADR-4), append the line `APPROVED <id> <date> — <his words>`.
+  The loop re-reads it before every pick, so the gated work starts without a restart. A veto is not a
+  line in that file: it means changing the plan with him (correct course), then removing the gate.
+- `.claude/hooks/loop_guard.py` is a Claude Code hook that only acts when `CAMERA_LOOP=1`: it never affects you.
+- Loop sessions get their rules from `loop/prompts/_rules.md`. They decide and flag instead of asking
+  Alexv, and they queue perceptual checks instead of certifying them. That is Alexv's standing
+  choice for the loop, not a licence for interactive sessions.
+
+## Project Structure
+
+- `Assets/Scenes/` - Scene files (SampleScene.unity, Video Camera Game 2.0.unity)
+- `Assets/Models/` - FBX models (game scneen.fbx, main characters.fbx)
+- `Assets/Scripts/` - Game scripts (ThirdPersonController.cs, ThirdPersonCamera.cs)
+- `Assets/Scripts/Editor/` - Editor utilities (AddMeshColliders.cs, ColorCharacter.cs)
+- `Assets/Input/` - Input configuration (InputSystem_Actions.inputactions)
+- `Assets/Materials/` - Materials
+- `Assets/Settings/` - URP render pipeline assets (separate Mobile and PC configurations)
+
+## Key Technical Details
+
+- **Render Pipeline**: URP 17.3.0 with dual renderer configs (`PC_RPAsset`, `Mobile_RPAsset`)
+- **Input System**: New Input System (1.18.0) with Player action map (Move, Look, Attack, Interact, Crouch, Jump, Sprint, Previous/Next)
+- **Packages**: AI Navigation, Timeline, Recorder (rig videos only: it does not run in builds), Visual Scripting,
+  Authentication Services, and everything in *Toolbox* above
+- **Version Control**: git, on GitHub (a public repository). Plastic SCM was dropped on 2026-07-31
+- **IDE**: VS Code with Unity debugger attached via `vstuc`
+
+## Development Commands
+
+No custom build scripts exist. Standard Unity workflows apply:
+- **Build**: File > Build Settings in Unity Editor, or use `manage_editor` MCP tool for play mode
+- **Tests**: Use `run_tests` MCP tool (test framework 1.6.0 is installed) or Unity Test Runner window
+- **Script compilation**: Automatic on save; verify via `read_console` MCP tool
+
+## Architecture Notes
+
+- **Character movement**: `ThirdPersonController.cs` uses CharacterController + PlayerInput (SendMessages mode) for WASD movement, jumping, sprinting
+- **Camera**: `ThirdPersonCamera.cs` is a chase camera that follows behind the character with smooth lerp
+- **Input**: PlayerInput component on "Main Characters" uses the "Player" action map from InputSystem_Actions
+- **World colliders**: 16,321 MeshColliders added via editor tool (`Tools > Add MeshColliders to World`)
+- **Important**: The World FBX has an embedded Blender camera that must stay disabled (it overrides Main Camera due to higher depth)
+- URP shaders must be used (Standard shader will not work with this pipeline)
+- Two render pipeline assets exist for quality tiers: use `PC_RPAsset` for desktop, `Mobile_RPAsset` for mobile
+
+
