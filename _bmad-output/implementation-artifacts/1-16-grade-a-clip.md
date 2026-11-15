@@ -940,6 +940,34 @@ Queue these at the **end of dev**, after every automated part, each with exact f
 
 ### Decisions
 
+#### Task 1d — the decision criteria, WRITTEN BEFORE ANY CLIP WAS RECORDED (committed 2026-11-15, before the rig existed)
+
+Applied, as written here, to the Phase W sweep table. The table does not exist yet when this is committed; the git
+history is the proof of the order.
+
+- **Scenarios the criteria read:** S1 (whole window, centred, prominent), S2 (same framing, stopped ~1 s before the
+  window opens), S3 (same framing, started after it closes), S4a/S4b' (started / stopped 0.75 s into the window), S5
+  (off-centre, cut off by the edge, small but past the gate), S6 (S1 preceded by ~5 s and ~20 s of aiming away).
+- **C1 (AC3, "above zero").** S2 and S3 each print at least "1 %", are not red (`GradeHudConfig.ColorFor`), and earn
+  **2★ or more**.
+- **C2 (AC3, "wins by a wide margin").** S1's stars minus S2's stars ≥ 2, and the same for S3. Across the set,
+  coverage moves the grade more than two GOOD framings differ: |S1 − S2| > |S1 − S5 off-centre| (percent points).
+- **C3 (FR7).** S1 reaches 5★. S4a and S4b' land strictly between S2 and S1. Within one framing, the grade rises with
+  coverage (S2 or S3 < S4 < S1, ordered by measured coverage).
+- **C4 (footage without him).** S6-5 (~5 s away first) loses **at most one star** against S1; S6-20 (~20 s away, about
+  a quarter of the clip in shot) loses **at least one star and at most two**. The reasoning: the story's "so that"
+  (not "pressing record and walking away") says a mostly empty clip must not score like a tight one, and the memory
+  card (1.17) already charges every second against capacity, so the cost should be visible but not crushing.
+- **Choosing among the candidates that pass C1–C4:**
+  1. the shape `FloorTimesCoverage` over `Additive` (framing then scales the peak's credit too);
+  2. framing over `GatedTicks` over `PeakTicksWhenCovered` (simpler, and smooths the walk-cycle breathing, Story 1.10);
+  3. the floor closest to Story 1.13's 0.3;
+  4. the smallest absence weight that passes C4.
+
+  The runner-up is the next candidate in this order, and is recorded with why it lost.
+- **If no candidate passes**, the failing criterion is reported with its numbers. I fix the rig or the scenario
+  before touching a criterion. A criterion changes only with a written reason, and Alexv sees it in the decisions batch.
+
 ### Completion Notes List
 
 ### File List

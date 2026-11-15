@@ -75,6 +75,10 @@ namespace CameraGame.Recording
 
         /// <summary>Raised for every graded sample (editor only; the Grade Clip rig logs ticks with it).</summary>
         public event Action<TickRecord> TickGraded;
+
+        /// <summary>Raised once per graded tick after it closes, with (tick number, repeats, samples on it), so a
+        /// rig also sees the ticks on which nobody was live (editor only).</summary>
+        public event Action<int, int, int> TickClosed;
 #endif
 
         public ClipGrader(Camera camera, EventManager events, GradingConfig config, int maxActorsPerTick)
@@ -103,13 +107,13 @@ namespace CameraGame.Recording
             try
             {
                 _builder.BeginTick(repeats / (double)FootageFormat.TickRate);
+                int graded = 0;
 
                 // Read LIVE every tick and never cached: actors are pooled (ISubject's liveness contract). `_events
                 // != null` is Unity's check, so a manager destroyed first at a scene unload grades nobody.
                 if (_events != null)
                 {
                     IReadOnlyList<EventActor> actors = _events.ActiveActors;
-                    int graded = 0;
                     for (int i = 0; i < actors.Count; i++)
                     {
                         EventActor actor = actors[i];
@@ -163,6 +167,9 @@ namespace CameraGame.Recording
                 }
 
                 _builder.EndTick();
+#if UNITY_EDITOR
+                TickClosed?.Invoke(_builder.TicksGraded, repeats, graded);
+#endif
 
                 if (_builder.Overflowed && !_overflowWarned)
                 {
