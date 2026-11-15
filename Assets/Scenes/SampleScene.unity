@@ -212186,6 +212186,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: CameraGame::CameraGame.UI.GradeHud
   shotCapturedChannel: {fileID: 11400000, guid: 9268f315641b98c49a5c47b8dab45345, type: 2}
+  clipRecordedChannel: {fileID: 11400000, guid: 8a80c0adfd0c1c44e931571d46b48aa1, type: 2}
   config: {fileID: 11400000, guid: 42f14ad8952c0b844bedf25a1707a78e, type: 2}
   fadeGroup: {fileID: 1159654722}
   photoMode: {fileID: 1871784535}
@@ -344673,6 +344674,7 @@ MonoBehaviour:
   recordCamera: {fileID: 330585545}
   eventManager: {fileID: 661196451}
   listenerTap: {fileID: 330585549}
+  gradingConfig: {fileID: 11400000, guid: ff7e69b78a3599949b64f3aba4e8f922, type: 2}
 --- !u!136 &1872158970
 CapsuleCollider:
   m_ObjectHideFlags: 0

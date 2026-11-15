@@ -1508,6 +1508,9 @@ namespace CameraGame.UI
 
             var probe = go.AddComponent<GradeHud>();
             SetPrivate(probe, "shotCapturedChannel", ch);
+            // Story 1.16: the HUD now also listens for clips, and a missing clip channel is an Error. Wire the
+            // shipped one (it is never raised during this rig: nothing records), so the probe adds no error line.
+            SetPrivate(probe, "clipRecordedChannel", ShippedClipChannel());
             SetPrivate(probe, "config", cfg);
 
             if (!noLabels)
@@ -2041,6 +2044,11 @@ namespace CameraGame.UI
         // the running instance rather than simply setting the field.
 
         private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+
+        /// <summary>The shipped clip channel (Story 1.16), loaded when needed rather than cached across a scene
+        /// load (CLAUDE.md trap: assets loaded before NewScene lose their native half).</summary>
+        private static CameraGame.Recording.ClipRecordedChannel ShippedClipChannel() =>
+            AssetDatabase.LoadAssetAtPath<CameraGame.Recording.ClipRecordedChannel>("Assets/Data/Channels/ClipRecordedChannel.asset");
 
         private static void SetPrivate(object target, string field, object value)
         {

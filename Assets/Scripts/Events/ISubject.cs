@@ -41,6 +41,19 @@ namespace CameraGame.Events
         /// </summary>
         float PeakOffset { get; }
 
+        /// <summary>
+        /// How long the peak WINDOW lasts, in seconds of the subject's own clock (the same clock
+        /// <see cref="TimeToPeak"/> counts down on): the interval during which <see cref="IsAtPeak"/> is true and
+        /// <see cref="PeakOffset"/> reads 0. Added by Story 1.16, because a clip's PEAK COVERAGE is "how much of
+        /// this window the clip holds with the subject framed" (FR7), and that needs the window's length, which
+        /// nothing on this interface said before.
+        ///
+        /// ⚠️ 0 MEANS "THIS SUBJECT HAS NO PEAK TO COVER", never "a peak of zero length that a clip covers in
+        /// full". Implementations return 0 for a missing, non-finite or non-positive length, and a clip grader
+        /// then scores no coverage at all rather than dividing by zero. Read live, like every member here.
+        /// </summary>
+        float PeakDuration { get; }
+
         /// <summary>Stable identifier for this kind of subject (e.g. "TownDrunk"), used by grading.</summary>
         string SubjectId { get; }
     }

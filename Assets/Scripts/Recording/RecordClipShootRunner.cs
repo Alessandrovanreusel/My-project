@@ -1298,6 +1298,9 @@ namespace CameraGame.Recording
             Set(r, "recordCamera", cam);
             Set(r, "eventManager", em);
             Set(r, "listenerTap", tap);
+            // Story 1.16: the shipped recorder's grading config, so a throwaway grades like the real one and adds
+            // no "GradingConfig unassigned" error line to the provoked set.
+            Set(r, "gradingConfig", recorder != null ? recorder.GradingConfig : null);
             go.SetActive(true);
             return r;
         }

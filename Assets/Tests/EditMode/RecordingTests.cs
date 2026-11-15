@@ -296,7 +296,8 @@ namespace CameraGame.Tests
         [Test]
         public void Claim_FirstOwnerWins_SecondIsRefused()
         {
-            var clip = new RecordedClip("clip_0001", new FakeFootage(), DateTime.UtcNow, 1f, StopReason.PlayerPressed);
+            var clip = new RecordedClip("clip_0001", new FakeFootage(), DateTime.UtcNow, 1f, StopReason.PlayerPressed,
+                                        CameraGame.Grading.ClipGrade.NotGraded());
             var a = new object();
             var b = new object();
             Assert.IsFalse(clip.IsClaimed);

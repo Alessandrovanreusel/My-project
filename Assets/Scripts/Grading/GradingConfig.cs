@@ -174,6 +174,18 @@ namespace CameraGame.Grading
                  "1 star and ShotGrade.MissReason exists to tell them apart.")]
         [Range(0f, 1f)] public float starThreshold2 = DefaultStar2;
 
+        [Header("Clip grading (Story 1.16)")]
+
+        // A clip's percentage is  framing × (floor + (1 − floor) × peak coverage), where framing is the mean
+        // composition while he passed the gate times  1 − absenceWeight × (1 − in-shot share). Decided by
+        // measuring recorded clips (Story 1.16, Dev Agent Record; _bmad-output/verification/1-16-grade-a-clip/).
+
+        [Tooltip("CLIP_FLOOR_TOOLTIP")]
+        [Range(0f, 1f)] public float clipPeakFloor = DefaultClipPeakFloor;
+
+        [Tooltip("CLIP_ABSENCE_TOOLTIP")]
+        [Range(0f, 1f)] public float clipAbsenceWeight = DefaultClipAbsenceWeight;
+
         // --- Design defaults and clamp bounds ---------------------------------------------------------
         //
         // Named rather than repeated as literals inside each Safe* accessor. Story 1.10 shipped eight
@@ -198,6 +210,15 @@ namespace CameraGame.Grading
         private const float DefaultStar4             = 0.70f;
         private const float DefaultStar3             = 0.45f;
         private const float DefaultStar2             = 0.20f;
+        private const float DefaultClipPeakFloor     = 0.30f;
+        private const float DefaultClipAbsenceWeight = 0.50f;
+
+        /// <summary>The blend shape, the framing source and the miss rule a clip is graded with. Code, not
+        /// tunables: they were chosen between candidates by measuring (Story 1.16), and a designer who wants
+        /// another shape needs a new measurement, not a field.</summary>
+        public const ClipBlendShape ClipShape = ClipBlendShape.FloorTimesCoverage;
+        public const ClipFramingSource ClipFraming = ClipFramingSource.GatedTicks;
+        public const ClipMissRule ClipMiss = ClipMissRule.MostTime;
 
         /// <summary>Ceiling for <see cref="prominenceFalloffAbove"/>. Above 1 is normal (the measured box is
         /// clamped to the frame); beyond this the far side of the curve is so flat that prominence stops
@@ -262,6 +283,17 @@ namespace CameraGame.Grading
 
         /// <summary>Two-star boundary, finite and in [0,1].</summary>
         public float SafeStarThreshold2 => Clamp01Finite(starThreshold2, DefaultStar2);
+
+        /// <summary>Share of its framing a clip that missed the peak keeps, finite and in [0,1].</summary>
+        public float SafeClipPeakFloor => Clamp01Finite(clipPeakFloor, DefaultClipPeakFloor);
+
+        /// <summary>How much footage without the subject costs a clip, finite and in [0,1].</summary>
+        public float SafeClipAbsenceWeight => Clamp01Finite(clipAbsenceWeight, DefaultClipAbsenceWeight);
+
+        /// <summary>The resolved clip blend (Story 1.16): the two tunables through their Safe* accessors, plus the
+        /// measured shape, framing source and miss rule.</summary>
+        public ClipBlend SafeClipBlend =>
+            new ClipBlend(SafeClipPeakFloor, SafeClipAbsenceWeight, ClipShape, ClipFraming, ClipMiss);
 
         /// <summary>
         /// The star boundaries as a resolved, guaranteed-DESCENDING set, so the grader can never be handed
@@ -336,159 +368,112 @@ namespace CameraGame.Grading
         /// Reports authoring mistakes that would silently break grading rather than loudly fail it — the
         /// project's standing "fail-soft must not mean invisible" rule, which Story 1.8's review added
         /// after a <c>cueRadius</c> of 0 produced total silence with a completely clean console.
-        /// Called once at Awake by the capture controller; returns false when everything is sane.
+        /// Called once at Awake by the capture controller and the clip recorder; returns false when everything
+        /// is sane.
         ///
         /// The 1.10 additions are the harder category to notice than a missing reference: a sweet spot that
         /// can never be reached does not crash, does not warn and does not look wrong — it just quietly
         /// caps every photograph the player will ever take at three stars.
+        ///
+        /// ⚠️ EVERY PROBLEM, IN ONE WARNING (Story 1.16, deferred-work.md). This used to return the FIRST problem
+        /// only, so a designer fixed one field, pressed Play, and met the next. <see cref="GradeHudConfig"/> already
+        /// reports them all; this now does too, joined by two spaces, in three tiers:
+        ///   1. non-finite fields;
+        ///   2. out-of-range fields, i.e. SILENTLY CLAMPED ones (skipping the non-finite ones, already named);
+        ///   3. structural checks, which compare the values the grader ACTUALLY USES (the Safe* accessors).
+        /// Tier 3 used to compare the RAW fields, which is why it had to run only after tiers 1 and 2 had passed
+        /// (review 2026-07-28): an out-of-range field made it lie both ways. FALSE ALARM: prominenceIdealMax 2.0
+        /// fired "prominenceFalloffAbove (1.15) is not above prominenceIdealMax (2)", for a curve that resolved
+        /// fine once idealMax clamped to 1. MISSED ALARM: timingFullSeconds 70 / timingZeroSeconds 90 passed
+        /// `90 <= 70`, then both clamped to 60 and resolved to the 1 ms cliff the check exists to prevent.
+        /// Comparing the Safe* values keeps that rule's purpose with every tier reported: when tiers 1 and 2 are
+        /// clean, raw and Safe* are the same number, so the messages are exactly what they always were.
         /// </summary>
         public bool TryGetConfigProblem(out string problem)
         {
-            // --- Non-finite first ---------------------------------------------------------------------
+            string all = null;
+
+            // --- Tier 1: non-finite ---------------------------------------------------------------------
             // NaN fails every comparison below, so without these checks a NaN threshold reports "everything
             // is fine" and then disables its gate at runtime.
             // Each fallback is read back from its own Safe* accessor rather than repeated as a literal: for
             // a non-finite input the accessor RETURNS the fallback, so the two cannot drift apart. A warning
             // that names a fallback the code does not actually use is worse than no warning — it sends the
             // reader to check a value that was never applied.
-            if (TryReportNonFinite(nameof(minSubjectHeight), minSubjectHeight,
-                    "the subject-height gate would never reject anything", SafeMinSubjectHeight, out problem))
-                return true;
+            all = ReportNonFinite(all, nameof(minSubjectHeight), minSubjectHeight,
+                    "the subject-height gate would never reject anything", SafeMinSubjectHeight);
 
-            if (TryReportNonFinite(nameof(minVisibleSamples), minVisibleSamples,
-                    "the occlusion gate would never reject anything", SafeMinVisibleSamples, out problem))
-                return true;
+            all = ReportNonFinite(all, nameof(minVisibleSamples), minVisibleSamples,
+                    "the occlusion gate would never reject anything", SafeMinVisibleSamples);
 
             const string CompositionNaN = "composition would score NaN and every shot would read as 0%";
-
-            if (TryReportNonFinite(nameof(prominenceIdealMin), prominenceIdealMin,
-                    CompositionNaN, SafeProminenceIdealMin, out problem))
-                return true;
-
-            if (TryReportNonFinite(nameof(prominenceIdealMax), prominenceIdealMax,
-                    CompositionNaN, SafeProminenceIdealMax, out problem))
-                return true;
-
-            if (TryReportNonFinite(nameof(prominenceFalloffBelow), prominenceFalloffBelow,
-                    CompositionNaN, SafeProminenceFalloffBelow, out problem))
-                return true;
-
-            if (TryReportNonFinite(nameof(prominenceFalloffAbove), prominenceFalloffAbove,
-                    CompositionNaN, SafeProminenceFalloffAbove, out problem))
-                return true;
-
-            if (TryReportNonFinite(nameof(centreWeight), centreWeight,
-                    CompositionNaN, SafeCentreWeight, out problem))
-                return true;
-
-            if (TryReportNonFinite(nameof(cutoffWeight), cutoffWeight,
-                    CompositionNaN, SafeCutoffWeight, out problem))
-                return true;
+            all = ReportNonFinite(all, nameof(prominenceIdealMin), prominenceIdealMin, CompositionNaN, SafeProminenceIdealMin);
+            all = ReportNonFinite(all, nameof(prominenceIdealMax), prominenceIdealMax, CompositionNaN, SafeProminenceIdealMax);
+            all = ReportNonFinite(all, nameof(prominenceFalloffBelow), prominenceFalloffBelow, CompositionNaN, SafeProminenceFalloffBelow);
+            all = ReportNonFinite(all, nameof(prominenceFalloffAbove), prominenceFalloffAbove, CompositionNaN, SafeProminenceFalloffAbove);
+            all = ReportNonFinite(all, nameof(centreWeight), centreWeight, CompositionNaN, SafeCentreWeight);
+            all = ReportNonFinite(all, nameof(cutoffWeight), cutoffWeight, CompositionNaN, SafeCutoffWeight);
 
             const string TimingNaN = "timing would score NaN and every shot would read as 0%";
-
-            if (TryReportNonFinite(nameof(timingFullSeconds), timingFullSeconds,
-                    TimingNaN, SafeTimingFullSeconds, out problem))
-                return true;
-
-            if (TryReportNonFinite(nameof(timingZeroSeconds), timingZeroSeconds,
-                    TimingNaN, SafeTimingZeroSeconds, out problem))
-                return true;
+            all = ReportNonFinite(all, nameof(timingFullSeconds), timingFullSeconds, TimingNaN, SafeTimingFullSeconds);
+            all = ReportNonFinite(all, nameof(timingZeroSeconds), timingZeroSeconds, TimingNaN, SafeTimingZeroSeconds);
 
             const string StarsNaN = "the star rating would fall back to its default boundaries";
+            all = ReportNonFinite(all, nameof(starThreshold5), starThreshold5, StarsNaN, SafeStarThreshold5);
+            all = ReportNonFinite(all, nameof(starThreshold4), starThreshold4, StarsNaN, SafeStarThreshold4);
+            all = ReportNonFinite(all, nameof(starThreshold3), starThreshold3, StarsNaN, SafeStarThreshold3);
+            all = ReportNonFinite(all, nameof(starThreshold2), starThreshold2, StarsNaN, SafeStarThreshold2);
 
-            if (TryReportNonFinite(nameof(starThreshold5), starThreshold5,
-                    StarsNaN, SafeStarThreshold5, out problem))
-                return true;
+            const string ClipNaN = "every clip would be graded with the design default instead";
+            all = ReportNonFinite(all, nameof(clipPeakFloor), clipPeakFloor, ClipNaN, SafeClipPeakFloor);
+            all = ReportNonFinite(all, nameof(clipAbsenceWeight), clipAbsenceWeight, ClipNaN, SafeClipAbsenceWeight);
 
-            if (TryReportNonFinite(nameof(starThreshold4), starThreshold4,
-                    StarsNaN, SafeStarThreshold4, out problem))
-                return true;
-
-            if (TryReportNonFinite(nameof(starThreshold3), starThreshold3,
-                    StarsNaN, SafeStarThreshold3, out problem))
-                return true;
-
-            if (TryReportNonFinite(nameof(starThreshold2), starThreshold2,
-                    StarsNaN, SafeStarThreshold2, out problem))
-                return true;
-
-            // --- Out of range, i.e. SILENTLY CLAMPED --------------------------------------------------
-            //
-            // These run BEFORE every structural check below, and that ordering is load-bearing. The
-            // structural checks compare RAW fields, while the grader runs on the Safe*/resolved values —
-            // so an out-of-range field made them lie in both directions (review 2026-07-28):
-            //
-            //   FALSE ALARM:  prominenceIdealMax: 2.0 fired "prominenceFalloffAbove (1.15) is not above
-            //                 prominenceIdealMax (2)", telling the designer to raise a value that needed no
-            //                 raising — Safe clamps idealMax to 1.0 and the resolved curve was already fine.
-            //   MISSED ALARM: timingFullSeconds: 70 / timingZeroSeconds: 90 passed `90 <= 70` with a clean
-            //                 console, then both clamped to 60 and resolved to 60 / 60.001 — precisely the
-            //                 1 ms cliff the ordering check exists to prevent.
-            //
-            // Returning here first means anything that reaches the structural checks is already in range,
-            // so raw and Safe* are the same number and those checks are honest again. It also closes the
-            // "silently clamped, never warned" hole: [Range]/[Min] are editor-only and this project
-            // hand-authors these assets as YAML, so nothing else would ever have said a word.
-
-            if (TryReportClamped(nameof(minSubjectHeight), minSubjectHeight, SafeMinSubjectHeight,
-                    "0 and 1", out problem)) return true;
-
-            if (TryReportClamped(nameof(minVisibleSamples), minVisibleSamples, SafeMinVisibleSamples,
-                    "0 and 1", out problem)) return true;
+            // --- Tier 2: out of range, i.e. SILENTLY CLAMPED ---------------------------------------------
+            // [Range]/[Min] are editor-only and this project hand-authors these assets as YAML, so nothing
+            // else would ever have said a word.
+            all = ReportClamped(all, nameof(minSubjectHeight), minSubjectHeight, SafeMinSubjectHeight, "0 and 1");
+            all = ReportClamped(all, nameof(minVisibleSamples), minVisibleSamples, SafeMinVisibleSamples, "0 and 1");
 
             if (occlusionSamples != SafeOcclusionSamples)
-            {
-                problem = $"occlusionSamples is {occlusionSamples}, outside the usable range 1 to " +
-                          $"{ShotGrader.MaxOcclusionSamples} — grading will use {SafeOcclusionSamples} instead. " +
-                          $"{ShotGrader.MaxOcclusionSamples} is the number of DISTINCT sample points that " +
-                          "exist, so asking for more cannot buy more precision.";
-                return true;
-            }
+                all = Add(all, $"occlusionSamples is {occlusionSamples}, outside the usable range 1 to " +
+                               $"{ShotGrader.MaxOcclusionSamples} — grading will use {SafeOcclusionSamples} instead. " +
+                               $"{ShotGrader.MaxOcclusionSamples} is the number of DISTINCT sample points that " +
+                               "exist, so asking for more cannot buy more precision.");
 
-            if (TryReportClamped(nameof(prominenceIdealMin), prominenceIdealMin, SafeProminenceIdealMin,
-                    "0 and 1", out problem)) return true;
+            all = ReportClamped(all, nameof(prominenceIdealMin), prominenceIdealMin, SafeProminenceIdealMin, "0 and 1");
+            all = ReportClamped(all, nameof(prominenceIdealMax), prominenceIdealMax, SafeProminenceIdealMax, "0 and 1");
+            all = ReportClamped(all, nameof(prominenceFalloffBelow), prominenceFalloffBelow, SafeProminenceFalloffBelow, "0 and 1");
+            all = ReportClamped(all, nameof(prominenceFalloffAbove), prominenceFalloffAbove, SafeProminenceFalloffAbove,
+                    $"0 and {MaxFalloffAbove:0.###}");
+            all = ReportClamped(all, nameof(centreWeight), centreWeight, SafeCentreWeight, "0 and 1");
+            all = ReportClamped(all, nameof(cutoffWeight), cutoffWeight, SafeCutoffWeight, "0 and 1");
+            all = ReportClamped(all, nameof(timingFullSeconds), timingFullSeconds, SafeTimingFullSeconds,
+                    $"0 and {MaxTimingSeconds:0.###} seconds");
+            all = ReportClamped(all, nameof(timingZeroSeconds), timingZeroSeconds, SafeTimingZeroSeconds,
+                    $"0 and {MaxTimingSeconds:0.###} seconds");
+            all = ReportClamped(all, nameof(starThreshold5), starThreshold5, SafeStarThreshold5, "0 and 1");
+            all = ReportClamped(all, nameof(starThreshold4), starThreshold4, SafeStarThreshold4, "0 and 1");
+            all = ReportClamped(all, nameof(starThreshold3), starThreshold3, SafeStarThreshold3, "0 and 1");
+            all = ReportClamped(all, nameof(starThreshold2), starThreshold2, SafeStarThreshold2, "0 and 1");
+            all = ReportClamped(all, nameof(clipPeakFloor), clipPeakFloor, SafeClipPeakFloor, "0 and 1");
+            all = ReportClamped(all, nameof(clipAbsenceWeight), clipAbsenceWeight, SafeClipAbsenceWeight, "0 and 1");
 
-            if (TryReportClamped(nameof(prominenceIdealMax), prominenceIdealMax, SafeProminenceIdealMax,
-                    "0 and 1", out problem)) return true;
+            // --- Tier 3: structural, on the values the grader actually uses -------------------------------
+            float gate = SafeMinSubjectHeight;
+            float visibleGate = SafeMinVisibleSamples;
+            float idealMin = SafeProminenceIdealMin;
+            float idealMax = SafeProminenceIdealMax;
+            float falloffBelow = SafeProminenceFalloffBelow;
+            float falloffAbove = SafeProminenceFalloffAbove;
+            float timingFull = SafeTimingFullSeconds;
+            float timingZero = SafeTimingZeroSeconds;
+            float star5 = SafeStarThreshold5, star4 = SafeStarThreshold4;
+            float star3 = SafeStarThreshold3, star2 = SafeStarThreshold2;
 
-            if (TryReportClamped(nameof(prominenceFalloffBelow), prominenceFalloffBelow,
-                    SafeProminenceFalloffBelow, "0 and 1", out problem)) return true;
-
-            if (TryReportClamped(nameof(prominenceFalloffAbove), prominenceFalloffAbove,
-                    SafeProminenceFalloffAbove, $"0 and {MaxFalloffAbove:0.###}", out problem)) return true;
-
-            if (TryReportClamped(nameof(centreWeight), centreWeight, SafeCentreWeight,
-                    "0 and 1", out problem)) return true;
-
-            if (TryReportClamped(nameof(cutoffWeight), cutoffWeight, SafeCutoffWeight,
-                    "0 and 1", out problem)) return true;
-
-            if (TryReportClamped(nameof(timingFullSeconds), timingFullSeconds, SafeTimingFullSeconds,
-                    $"0 and {MaxTimingSeconds:0.###} seconds", out problem)) return true;
-
-            if (TryReportClamped(nameof(timingZeroSeconds), timingZeroSeconds, SafeTimingZeroSeconds,
-                    $"0 and {MaxTimingSeconds:0.###} seconds", out problem)) return true;
-
-            if (TryReportClamped(nameof(starThreshold5), starThreshold5, SafeStarThreshold5,
-                    "0 and 1", out problem)) return true;
-
-            if (TryReportClamped(nameof(starThreshold4), starThreshold4, SafeStarThreshold4,
-                    "0 and 1", out problem)) return true;
-
-            if (TryReportClamped(nameof(starThreshold3), starThreshold3, SafeStarThreshold3,
-                    "0 and 1", out problem)) return true;
-
-            if (TryReportClamped(nameof(starThreshold2), starThreshold2, SafeStarThreshold2,
-                    "0 and 1", out problem)) return true;
-
-            // --- Occlusion mask -----------------------------------------------------------------------
+            // Occlusion mask.
             if (occluderMask.value == 0)
-            {
-                problem = "occluderMask is empty (Nothing) — no geometry can ever block the view, so the " +
-                          "occlusion half of the subject gate will pass every shot.";
-                return true;
-            }
+                all = Add(all, "occluderMask is empty (Nothing) — no geometry can ever block the view, so the " +
+                               "occlusion half of the subject gate will pass every shot.");
 
             // The one mistake the occluderMask tooltip warns about IN CAPITALS was the one nothing checked.
             // If the subject's own layer is in the mask, every linecast hits the subject itself, the visible
@@ -497,174 +482,133 @@ namespace CameraGame.Grading
             // one for stealth or interaction, this becomes total and invisible.)
             int subjectLayer = LayerMask.NameToLayer(GameConstants.Layers.Subject);
             if (subjectLayer < 0)
-            {
-                problem = $"there is no '{GameConstants.Layers.Subject}' layer in this project — event actors " +
-                          "cannot be excluded from their own line-of-sight test. Add it in Project Settings > Tags and Layers.";
-                return true;
-            }
+                all = Add(all, $"there is no '{GameConstants.Layers.Subject}' layer in this project — event actors " +
+                               "cannot be excluded from their own line-of-sight test. Add it in Project Settings > Tags and Layers.");
+            else if ((occluderMask.value & (1 << subjectLayer)) != 0)
+                all = Add(all, $"occluderMask includes the '{GameConstants.Layers.Subject}' layer, so the subject " +
+                               "blocks the line of sight to itself — every shot will fail as Occluded no matter " +
+                               "how well framed it is. Remove that layer from the mask.");
 
-            if ((occluderMask.value & (1 << subjectLayer)) != 0)
-            {
-                problem = $"occluderMask includes the '{GameConstants.Layers.Subject}' layer, so the subject " +
-                          "blocks the line of sight to itself — every shot will fail as Occluded no matter " +
-                          "how well framed it is. Remove that layer from the mask.";
-                return true;
-            }
+            // Gate boundaries.
+            if (gate <= 0f)
+                all = Add(all, "minSubjectHeight is 0 — the subject-size gate is disabled, so a figure one pixel " +
+                               "tall counts as captured.");
 
-            // --- Gate boundaries ----------------------------------------------------------------------
-            if (minSubjectHeight <= 0f)
-            {
-                problem = "minSubjectHeight is 0 — the subject-size gate is disabled, so a figure one pixel " +
-                          "tall counts as captured.";
-                return true;
-            }
-
-            if (minSubjectHeight >= 1f)
-            {
-                problem = "minSubjectHeight is 1 — the subject would have to be as tall as the whole frame, " +
-                          "so almost every shot will fail.";
-                return true;
-            }
+            if (gate >= 1f)
+                all = Add(all, "minSubjectHeight is 1 — the subject would have to be as tall as the whole frame, " +
+                               "so almost every shot will fail.");
 
             // Symmetry with the two minSubjectHeight checks above: `visible < 0f` is false even when EVERY
             // sample is blocked, so a zero threshold turns the occlusion gate off entirely.
-            if (minVisibleSamples <= 0f)
-            {
-                problem = "minVisibleSamples is 0 — the occlusion gate is disabled, so a subject completely " +
-                          "hidden behind a wall still counts as captured.";
-                return true;
-            }
+            if (visibleGate <= 0f)
+                all = Add(all, "minVisibleSamples is 0 — the occlusion gate is disabled, so a subject completely " +
+                               "hidden behind a wall still counts as captured.");
 
-            // --- Composition curve shape --------------------------------------------------------------
-            if (prominenceIdealMin > prominenceIdealMax)
-            {
-                problem = $"the prominence sweet spot is inverted (prominenceIdealMin {prominenceIdealMin:0.###} " +
-                          $"is above prominenceIdealMax {prominenceIdealMax:0.###}) — grading will sort them to " +
-                          "keep running, but the band you authored is not the band being scored. Swap them.";
-                return true;
-            }
+            // Composition curve shape.
+            if (idealMin > idealMax)
+                all = Add(all, $"the prominence sweet spot is inverted (prominenceIdealMin {idealMin:0.###} " +
+                               $"is above prominenceIdealMax {idealMax:0.###}) — grading will sort them to " +
+                               "keep running, but the band you authored is not the band being scored. Swap them.");
 
-            if (prominenceFalloffBelow >= prominenceIdealMin)
-            {
-                problem = $"prominenceFalloffBelow ({prominenceFalloffBelow:0.###}) is not below " +
-                          $"prominenceIdealMin ({prominenceIdealMin:0.###}) — the small side of the curve has no " +
-                          "width, so composition drops from full marks straight to zero with nothing in " +
-                          "between. Lower it.";
-                return true;
-            }
+            if (falloffBelow >= idealMin)
+                all = Add(all, $"prominenceFalloffBelow ({falloffBelow:0.###}) is not below " +
+                               $"prominenceIdealMin ({idealMin:0.###}) — the small side of the curve has no " +
+                               "width, so composition drops from full marks straight to zero with nothing in " +
+                               "between. Lower it.");
 
-            if (prominenceFalloffAbove <= prominenceIdealMax)
-            {
-                problem = $"prominenceFalloffAbove ({prominenceFalloffAbove:0.###}) is not above " +
-                          $"prominenceIdealMax ({prominenceIdealMax:0.###}) — the large side of the curve has no " +
-                          "width, so a subject one pixel over the sweet spot scores zero composition. Raise it.";
-                return true;
-            }
+            if (falloffAbove <= idealMax)
+                all = Add(all, $"prominenceFalloffAbove ({falloffAbove:0.###}) is not above " +
+                               $"prominenceIdealMax ({idealMax:0.###}) — the large side of the curve has no " +
+                               "width, so a subject one pixel over the sweet spot scores zero composition. Raise it.");
 
-            // --- "Five stars is unreachable" ----------------------------------------------------------
-            // The silent one. None of these crash, none of them look wrong; they just cap every photograph
-            // the player will ever take, forever, with a clean console.
-            if (minSubjectHeight > prominenceIdealMax)
-            {
-                problem = $"the gate (minSubjectHeight {minSubjectHeight:0.###}) is above the top of the " +
-                          $"prominence sweet spot ({prominenceIdealMax:0.###}), so every shot that passes the " +
-                          "gate is ALREADY past full marks and composition can never reach 1 — five stars " +
-                          "would be unreachable. Lower the gate or raise the sweet spot.";
-                return true;
-            }
+            // "Five stars is unreachable". The silent one. None of these crash, none of them look wrong; they
+            // just cap every photograph the player will ever take, forever, with a clean console.
+            if (gate > idealMax)
+                all = Add(all, $"the gate (minSubjectHeight {gate:0.###}) is above the top of the " +
+                               $"prominence sweet spot ({idealMax:0.###}), so every shot that passes the " +
+                               "gate is ALREADY past full marks and composition can never reach 1 — five stars " +
+                               "would be unreachable. Lower the gate or raise the sweet spot.");
 
-            if (prominenceFalloffBelow >= minSubjectHeight)
-            {
-                problem = $"prominenceFalloffBelow ({prominenceFalloffBelow:0.###}) is at or above the gate " +
-                          $"({minSubjectHeight:0.###}), so shots that just pass the gate score a flat 0% — " +
-                          "indistinguishable to the player from the shutter missing entirely. Lower it below " +
-                          "the gate.";
-                return true;
-            }
+            if (falloffBelow >= gate)
+                all = Add(all, $"prominenceFalloffBelow ({falloffBelow:0.###}) is at or above the gate " +
+                               $"({gate:0.###}), so shots that just pass the gate score a flat 0% — " +
+                               "indistinguishable to the player from the shutter missing entirely. Lower it below " +
+                               "the gate.");
 
-            // --- Timing window ------------------------------------------------------------------------
-            // Symmetric with the two `<= 0` gate checks above, which is where this one was missing: at 0
-            // the GDD's ±0.5 s full-marks band vanishes and `distance <= 0` is true only when PeakOffset is
-            // exactly 0 — i.e. only inside the peak window itself. Every shot either side starts losing
-            // marks from the first frame, which reads to a player as the grader being unreasonably harsh.
-            if (timingFullSeconds <= 0f)
-            {
-                problem = "timingFullSeconds is 0 — there is no full-marks window at all, so only a shutter " +
-                          "pulled inside the peak itself scores full timing and everything either side is " +
-                          "immediately penalised. The GDD asks for ±0.5 s. Raise it.";
-                return true;
-            }
+            // Timing window. Symmetric with the two `<= 0` gate checks above: at 0 the GDD's ±0.5 s
+            // full-marks band vanishes and `distance <= 0` is true only when PeakOffset is exactly 0 — i.e.
+            // only inside the peak window itself.
+            if (timingFull <= 0f)
+                all = Add(all, "timingFullSeconds is 0 — there is no full-marks window at all, so only a shutter " +
+                               "pulled inside the peak itself scores full timing and everything either side is " +
+                               "immediately penalised. The GDD asks for ±0.5 s. Raise it.");
 
-            if (timingZeroSeconds <= timingFullSeconds)
-            {
-                problem = $"timingZeroSeconds ({timingZeroSeconds:0.###}) is not greater than " +
-                          $"timingFullSeconds ({timingFullSeconds:0.###}) — the timing falloff has no width, so " +
-                          "every shot outside the peak window scores zero and the blended grade goes to 0% " +
-                          "with it. Raise timingZeroSeconds.";
-                return true;
-            }
+            if (timingZero <= timingFull)
+                all = Add(all, $"timingZeroSeconds ({timingZero:0.###}) is not greater than " +
+                               $"timingFullSeconds ({timingFull:0.###}) — the timing falloff has no width, so " +
+                               "every shot outside the peak window scores zero and the blended grade goes to 0% " +
+                               "with it. Raise timingZeroSeconds.");
 
-            // --- Star boundaries ----------------------------------------------------------------------
-            // Out of order means a higher grade can earn FEWER stars. SafeStarScale sorts them so grading
-            // keeps working, but the ladder being scored is then not the one that was authored.
-            if (!(starThreshold5 > starThreshold4 && starThreshold4 > starThreshold3
-                  && starThreshold3 > starThreshold2))
-            {
-                problem = $"the star boundaries are not in descending order (5★ {starThreshold5:0.###}, " +
-                          $"4★ {starThreshold4:0.###}, 3★ {starThreshold3:0.###}, 2★ {starThreshold2:0.###}) — " +
-                          "grading will sort them to keep running, but the ladder you authored is not the " +
-                          "one being scored. Each threshold must be strictly above the one below it.";
-                return true;
-            }
+            // Star boundaries. Out of order means a higher grade can earn FEWER stars. SafeStarScale sorts them
+            // so grading keeps working, but the ladder being scored is then not the one that was authored.
+            if (!(star5 > star4 && star4 > star3 && star3 > star2))
+                all = Add(all, $"the star boundaries are not in descending order (5★ {star5:0.###}, " +
+                               $"4★ {star4:0.###}, 3★ {star3:0.###}, 2★ {star2:0.###}) — " +
+                               "grading will sort them to keep running, but the ladder you authored is not the " +
+                               "one being scored. Each threshold must be strictly above the one below it.");
 
-            // The silent one, in the same family as the prominence checks above: a five-star boundary at 1
-            // demands a mathematically perfect photograph on every axis at once, so five stars becomes
-            // unreachable in practice and every shot the player takes caps at four.
-            if (starThreshold5 >= 1f)
-            {
-                problem = "starThreshold5 is 1 — five stars would require a mathematically perfect grade " +
-                          "(composition AND timing both exactly 1.0), so in practice no photograph will " +
-                          "ever earn five stars. Lower it.";
-                return true;
-            }
+            // A five-star boundary at 1 demands a mathematically perfect photograph on every axis at once, so
+            // five stars becomes unreachable in practice and every shot the player takes caps at four.
+            if (star5 >= 1f)
+                all = Add(all, "starThreshold5 is 1 — five stars would require a mathematically perfect grade " +
+                               "(composition AND timing both exactly 1.0), so in practice no photograph will " +
+                               "ever earn five stars. Lower it.");
 
-            problem = null;
-            return false;
+            // Clip grading (Story 1.16). The silent shapes of the floor: both ends break an acceptance criterion
+            // for every clip with a clean console.
+            float floor = SafeClipPeakFloor;
+            if (floor <= 0f)
+                all = Add(all, "clipPeakFloor is 0 — a perfectly framed clip that missed the peak scores 0 %, which " +
+                               "Alexv called 'too extreme' (Story 1.16 AC3). Raise it.");
+            else if (floor >= 1f)
+                all = Add(all, "clipPeakFloor is 1 — peak coverage no longer changes a clip's grade at all, so catching " +
+                               "the moment is worth nothing (Story 1.16 AC3, FR7). Lower it.");
+            else if (floor >= SafeStarScale.Four)
+                all = Add(all, $"clipPeakFloor ({floor:0.###}) is at or above the four-star boundary " +
+                               $"({SafeStarScale.Four:0.###}) — a well-framed clip that MISSED the peak already earns " +
+                               "four stars, so catching it can add at most one (Story 1.16 AC3 asks for a wide margin). " +
+                               "Lower it.");
+
+            problem = all;
+            return all != null;
         }
 
-        /// <summary>Shared body for the ten non-finite checks — same sentence shape every time: name the
-        /// mistake, say what it does to the player's grades, say what we fall back to.</summary>
-        private static bool TryReportNonFinite(string field, float value, string consequence,
-                                               float fallback, out string problem)
-        {
-            if (!float.IsNaN(value) && !float.IsInfinity(value))
-            {
-                problem = null;
-                return false;
-            }
+        /// <summary>Joins a problem onto the report: every problem in one warning (see
+        /// <see cref="TryGetConfigProblem"/>).</summary>
+        private static string Add(string all, string next) =>
+            string.IsNullOrEmpty(all) ? next : all + "  " + next;
 
-            problem = $"{field} is {value}, which is not a usable number — {consequence}. " +
-                      $"Falling back to {fallback:0.###}.";
-            return true;
+        /// <summary>Shared body for the non-finite checks — same sentence shape every time: name the
+        /// mistake, say what it does to the player's grades, say what we fall back to.</summary>
+        private static string ReportNonFinite(string all, string field, float value, string consequence,
+                                              float fallback)
+        {
+            if (!float.IsNaN(value) && !float.IsInfinity(value)) return all;
+            return Add(all, $"{field} is {value}, which is not a usable number — {consequence}. " +
+                            $"Falling back to {fallback:0.###}.");
         }
 
         /// <summary>Shared body for the out-of-range checks. Compares the authored value against what the
         /// grader will actually use, so the message can name both — the designer needs to see that the
-        /// number they typed is not the number being scored. Assumes the non-finite checks have already
-        /// run (a NaN would compare unequal here and produce a confusing message).</summary>
-        private static bool TryReportClamped(string field, float raw, float safe, string range,
-                                             out string problem)
+        /// number they typed is not the number being scored. A non-finite field was already named by tier 1
+        /// and is skipped here (it would compare unequal and produce a confusing second message).</summary>
+        private static string ReportClamped(string all, string field, float raw, float safe, string range)
         {
-            if (Mathf.Approximately(raw, safe))
-            {
-                problem = null;
-                return false;
-            }
-
-            problem = $"{field} is {raw:0.###}, outside the usable range {range} — grading will use " +
-                      $"{safe:0.###} instead. [Range]/[Min] and OnValidate are editor-only and this project " +
-                      "hand-authors these assets as YAML, so nothing would otherwise have told you.";
-            return true;
+            if (float.IsNaN(raw) || float.IsInfinity(raw)) return all;
+            if (Mathf.Approximately(raw, safe)) return all;
+            return Add(all, $"{field} is {raw:0.###}, outside the usable range {range} — grading will use " +
+                            $"{safe:0.###} instead. [Range]/[Min] and OnValidate are editor-only and this project " +
+                            "hand-authors these assets as YAML, so nothing would otherwise have told you.");
         }
 
         private void OnValidate()
