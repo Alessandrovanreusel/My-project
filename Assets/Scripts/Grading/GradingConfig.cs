@@ -180,10 +180,21 @@ namespace CameraGame.Grading
         // composition while he passed the gate times  1 − absenceWeight × (1 − in-shot share). Decided by
         // measuring recorded clips (Story 1.16, Dev Agent Record; _bmad-output/verification/1-16-grade-a-clip/).
 
-        [Tooltip("CLIP_FLOOR_TOOLTIP")]
+        [Tooltip("Share of its FRAMING a clip keeps when it caught none of the peak: percent = framing x (floor + (1 - floor) x " +
+                 "peak coverage). 0.30, decided by measuring recorded clips (Story 1.16; _bmad-output/verification/" +
+                 "1-16-grade-a-clip/run2/decision.md): a well-framed clip that MISSED the peak reads 30 %, 2 stars, " +
+                 "amber, never red (Alexv: 'too extreme to give 0'), while the same framing over the WHOLE peak reads " +
+                 "99 %, 5 stars. Floors of 0.20 and below drop the missed clip to 1 star; at or above the 4-star " +
+                 "boundary catching the peak adds at most one star (both warned at Awake).")]
         [Range(0f, 1f)] public float clipPeakFloor = DefaultClipPeakFloor;
 
-        [Tooltip("CLIP_ABSENCE_TOOLTIP")]
+        [Tooltip("How much footage with NOBODY in shot costs a clip: framing is multiplied by 1 - absenceWeight x " +
+                 "(1 - in-shot share). 0.25, decided by measuring (Story 1.16 run2): the whole-peak clip preceded by " +
+                 "~5 s of aiming away (47 % in shot) reads 86 %, 4 stars, and by ~20 s (19 % in shot) 79 %, 4 stars: one " +
+                 "star under the tight clip, so pressing record and walking away does not score like a tight clip, " +
+                 "while the memory card (Story 1.17) already charges every second against its capacity. 0 made 20 s " +
+                 "of empty footage free; 0.5 (the runner-up) cost it two stars. A tick is in shot when ANY subject " +
+                 "passed the gate, so a clip framed across a respawn is not charged for the earlier lifecycle.")]
         [Range(0f, 1f)] public float clipAbsenceWeight = DefaultClipAbsenceWeight;
 
         // --- Design defaults and clamp bounds ---------------------------------------------------------
@@ -211,7 +222,7 @@ namespace CameraGame.Grading
         private const float DefaultStar3             = 0.45f;
         private const float DefaultStar2             = 0.20f;
         private const float DefaultClipPeakFloor     = 0.30f;
-        private const float DefaultClipAbsenceWeight = 0.50f;
+        private const float DefaultClipAbsenceWeight = 0.25f;
 
         /// <summary>The blend shape, the framing source and the miss rule a clip is graded with. Code, not
         /// tunables: they were chosen between candidates by measuring (Story 1.16), and a designer who wants
