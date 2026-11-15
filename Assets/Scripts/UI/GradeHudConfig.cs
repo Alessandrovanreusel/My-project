@@ -77,7 +77,7 @@ namespace CameraGame.UI
                  "back towards salmon. Chosen by measuring the rendered pixels at 1080p with the outline on " +
                  "the brightest real backgrounds (tools/verification/measure_hud_legibility.py) — re-measure " +
                  "if you retune it.")]
-        public Color missColor = new Color(1f, 0.30f, 0.24f);
+        public Color missColor = new Color(1f, 0.33f, 0.28f);
 
         [Tooltip("Text colour for a shot that was never graded at all (grading unconfigured). Muted, " +
                  "because this is not a verdict on the photograph — it is the game saying it did not score " +
@@ -97,7 +97,8 @@ namespace CameraGame.UI
         [Tooltip("Thickness of the outline in canvas units (1920x1080 reference, so 1 unit is 1 px at 1080p; " +
                  "the CanvasScaler scales it with the screen). Kept THIN on purpose — Alexv asked for an " +
                  "outline, not a box. Below the minimum it is sub-pixel and partly vanishes; above the " +
-                 "maximum it reads as a heavy box and uGUI's four diagonal copies leave notches. 0, negative " +
+                 "maximum uGUI's four diagonal copies separate on small glyphs and it reads as a heavy box " +
+                 "(photographed at 1080p: 1.5 ships, 2 is the limit, 3 is doubled). 0, negative " +
                  "or NaN is repaired and reported, never applied: uGUI's Outline lets NaN straight through.")]
         [Range(MinOutlineDistance, MaxOutlineDistance)] public float outlineDistance = DefaultOutlineDistance;
 
@@ -139,8 +140,11 @@ namespace CameraGame.UI
         public const float MinOutlineDistance = 1f;
 
         /// <summary>Thickest outline before it stops being "thin" (Alexv's word: an outline, not a heavy
-        /// box). Measured, not assumed — see Story 1.19's decision 1b and its candidate sweep.</summary>
-        public const float MaxOutlineDistance = 3f;
+        /// box). Measured, not assumed (Story 1.19, decision 1b): photographed at 1, 1.5, 2 and 3 px at 1080p,
+        /// uGUI's four DIAGONAL copies already separate at 2 on the smallest glyphs (the "·" separator turns
+        /// into four dots) and at 3 every line reads doubled. 2 is the last thickness that is still one
+        /// outline on the text; 1.5 ships.</summary>
+        public const float MaxOutlineDistance = 2f;
 
         /// <summary>Below this outline alpha the "outline" is mostly the world behind it, so it no longer
         /// does its job on bright ground. Warned about, not repaired: a softer outline is a legitimate
@@ -182,8 +186,9 @@ namespace CameraGame.UI
         /// colours (see <see cref="PerceptualDistance"/>). Both are logged in deferred-work.md.
         ///
         /// 25 is the floor, not the target. On the six pairs the validator checks, the shipped palette sits
-        /// at ΔE 50-87 (measured 2026-09-27) and should stay well clear of it. This exists to catch an
-        /// authoring mistake, not to police tuning.
+        /// at ΔE 50-113 (re-measured 2026-11-15 with Story 1.19's red; the miss pairs moved from 57-87 to
+        /// 80-113) and should stay well clear of it. This exists to catch an authoring mistake, not to police
+        /// tuning.
         /// </summary>
         public const float MinBandSeparation = 25f;
 

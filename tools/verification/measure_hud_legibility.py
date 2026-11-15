@@ -86,10 +86,13 @@ def lab_of_srgb01(rgb):
 
 def box_sum(a, r):
     """Sum over a (2r+1)^2 window, zero-padded, via an integral image."""
-    p = np.pad(a, r + 1)
-    s = p.cumsum(0).cumsum(1)
+    p = np.pad(a, r)
+    s = np.zeros((p.shape[0] + 1, p.shape[1] + 1))
+    s[1:, 1:] = p.cumsum(0).cumsum(1)
     k = 2 * r + 1
-    return s[k:, k:] - s[:-k, k:] - s[k:, :-k] + s[:-k, :-k]
+    out = s[k:, k:] - s[:-k, k:] - s[k:, :-k] + s[:-k, :-k]
+    assert out.shape == a.shape, (out.shape, a.shape)
+    return out
 
 
 def load(path):

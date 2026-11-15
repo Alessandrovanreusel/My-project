@@ -544,8 +544,8 @@ namespace CameraGame.Tests
         [Test]
         public void SafeOutlineDistance_LeavesADeliberateValueAlone()
         {
-            _cfg.outlineDistance = 2.25f;
-            Assert.That(_cfg.SafeOutlineDistance, Is.EqualTo(2.25f).Within(1e-5f));
+            _cfg.outlineDistance = 1.75f;
+            Assert.That(_cfg.SafeOutlineDistance, Is.EqualTo(1.75f).Within(1e-5f));
         }
 
         [Test]

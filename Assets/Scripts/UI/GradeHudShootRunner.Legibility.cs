@@ -95,8 +95,10 @@ namespace CameraGame.UI
             public LabelInfo[] labels;
             public float[] alphaAtGrab;      // A, M, P, N
             public bool heldFullAlpha;
-            public int freezeMaxDiff;        // 0..255, A vs P outside the panel rect
+            public int freezeMaxDiff;        // 0..255, A vs P in the world AROUND the panel (FreezeRadius)
             public float freezeFractionDiff; // fraction of those pixels differing by more than 2/255
+            public int fullFrameMaxDiff;     // the same over the WHOLE frame outside the panel, for diagnosis
+            public int[] fullFrameDiffBox;   // x, y (from the bottom), w, h of the pixels that differ there
             public int unfrozenMaxDiff;      // 0..255, the SAME measure between A and a frame grabbed just
             public float unfrozenFractionDiff; // before the freeze: the positive control for the zero above
             public string fileA, fileM, fileP, fileN, fileFull;
@@ -548,7 +550,16 @@ namespace CameraGame.UI
                 // one. So one frame is grabbed BEFORE the world is frozen and measured the same way against
                 // A: where anything moves (the drunk walking, at a real-shutter state) it must read above 0,
                 // proving the measure can see motion. Skipped when the caller already froze the world.
-                if (prevTs > 0f) yield return Grab(t => unfrozen = t);
+                //
+                // ⚠️ ONE MORE LIVE FRAME AFTER THE CONTROL GRAB, BEFORE THE FREEZE. The first version froze
+                // straight after it: the next frame's Update then ran with deltaTime 0, so A showed the very
+                // simulation instant the control had — and the control read 0/255 on all ten states, which
+                // proved nothing. The frame in between is what gives A a different instant to differ from.
+                if (prevTs > 0f)
+                {
+                    yield return Grab(t => unfrozen = t);
+                    yield return null;
+                }
 
                 Time.timeScale = 0f;
                 yield return null;                         // one frozen frame before the first grab
@@ -608,9 +619,11 @@ namespace CameraGame.UI
                 set.captureW = a != null ? a.width : 0;
                 set.captureH = a != null ? a.height : 0;
 
-                FreezeControl(a, p, panel, out set.freezeMaxDiff, out set.freezeFractionDiff);
+                FreezeControl(a, p, panel, FreezeRadius, out set.freezeMaxDiff, out set.freezeFractionDiff, out _);
+                FreezeControl(a, p, panel, 99999, out set.fullFrameMaxDiff, out _, out set.fullFrameDiffBox);
                 if (unfrozen != null)
-                    FreezeControl(a, unfrozen, panel, out set.unfrozenMaxDiff, out set.unfrozenFractionDiff);
+                    FreezeControl(a, unfrozen, panel, 99999, out set.unfrozenMaxDiff, out set.unfrozenFractionDiff,
+                                  out _);
                 else
                     set.unfrozenMaxDiff = -1;   // world already frozen by the caller: no control taken
 
@@ -636,6 +649,10 @@ namespace CameraGame.UI
                                 (set.heldFullAlpha ? "" : "  ⚠ CAUGHT THE FADE") +
                                 $"   freeze max diff {set.freezeMaxDiff}/255 ({set.freezeFractionDiff:P3} px)" +
                                 (set.freezeMaxDiff > 8 ? "  ⚠ THE WORLD MOVED" : "") +
+                                (set.fullFrameMaxDiff > 8
+                                    ? $"   (whole frame: {set.fullFrameMaxDiff}/255 in box x{set.fullFrameDiffBox[0]} " +
+                                      $"y{set.fullFrameDiffBox[1]} {set.fullFrameDiffBox[2]}x{set.fullFrameDiffBox[3]})"
+                                    : "") +
                                 (set.unfrozenMaxDiff >= 0
                                     ? $"   control: unfrozen frame differs by {set.unfrozenMaxDiff}/255 ({set.unfrozenFractionDiff:P3} px)"
                                     : "") +
@@ -678,37 +695,61 @@ namespace CameraGame.UI
             return file;
         }
 
-        /// <summary>A against P outside the panel (and a 4 px skirt for the outline's overhang). Nothing but
-        /// the labels changed between the two grabs, so any difference out there means the world moved and
-        /// the four pictures are not of one frame.</summary>
-        private static void FreezeControl(Texture2D a, Texture2D p, Rect panel, out int maxDiff, out float fraction)
+        /// <summary>How far around the panel the freeze control looks, in pixels. The measurement depends on
+        /// the world BEHIND the panel, so that is what has to be still.
+        ///
+        /// ⚠️ NOT THE WHOLE FRAME. The first version judged every pixel outside the panel, and refused
+        /// a_money_shot for a 185/255 change over 9.9 % of the frame — while the region behind the panel was
+        /// still. The editor-only debug readout (PhotoModeController.OnGUI, top-left, never shown to a
+        /// player) holds for 1.5 s of UNSCALED time, so on slow 1080p frames it can vanish between two grabs
+        /// of a frozen frame. The whole-frame number is still logged, with the box where it differs, so a
+        /// refusal or a near-miss always says where it came from.</summary>
+        private const int FreezeRadius = 160;
+
+        /// <summary>A against P around the panel (excluding the panel and a 4 px skirt for the outline's
+        /// overhang). Nothing but the labels changed between the two grabs, so any difference there means
+        /// the world moved and the four pictures are not of one frame.</summary>
+        private static void FreezeControl(Texture2D a, Texture2D p, Rect panel, int radius, out int maxDiff,
+                                          out float fraction, out int[] box)
         {
             maxDiff = 255;
             fraction = 1f;
+            box = new int[4];
             if (a == null || p == null || a.width != p.width || a.height != p.height) return;
+            int bx0 = int.MaxValue, by0 = int.MaxValue, bx1 = -1, by1 = -1;
+            int rx0 = Mathf.FloorToInt(panel.xMin) - radius, rx1 = Mathf.CeilToInt(panel.xMax) + radius;
+            int ry0 = Mathf.FloorToInt(panel.yMin) - radius, ry1 = Mathf.CeilToInt(panel.yMax) + radius;
 
             Color32[] pa = a.GetPixels32(), pp = p.GetPixels32();
             int px0 = Mathf.FloorToInt(panel.xMin) - 4, px1 = Mathf.CeilToInt(panel.xMax) + 4;
             int py0 = Mathf.FloorToInt(panel.yMin) - 4, py1 = Mathf.CeilToInt(panel.yMax) + 4;
 
             int worst = 0, over = 0, counted = 0;
-            for (int y = 0; y < a.height; y++)
+            for (int y = Mathf.Max(0, ry0); y < Mathf.Min(a.height, ry1); y++)
             {
                 bool rowInside = y >= py0 && y < py1;
-                for (int x = 0; x < a.width; x++)
+                for (int x = Mathf.Max(0, rx0); x < Mathf.Min(a.width, rx1); x++)
                 {
                     if (rowInside && x >= px0 && x < px1) continue;
                     int i = y * a.width + x;
                     int d = Mathf.Max(Mathf.Abs(pa[i].r - pp[i].r),
                                       Mathf.Max(Mathf.Abs(pa[i].g - pp[i].g), Mathf.Abs(pa[i].b - pp[i].b)));
                     if (d > worst) worst = d;
-                    if (d > 2) over++;
+                    if (d > 2)
+                    {
+                        over++;
+                        if (x < bx0) bx0 = x;
+                        if (x > bx1) bx1 = x;
+                        if (y < by0) by0 = y;
+                        if (y > by1) by1 = y;
+                    }
                     counted++;
                 }
             }
 
             maxDiff = worst;
             fraction = counted > 0 ? over / (float)counted : 1f;
+            if (bx1 >= 0) box = new[] { bx0, by0, bx1 - bx0 + 1, by1 - by0 + 1 };
         }
 
         // --- Luminance ----------------------------------------------------------------------------------

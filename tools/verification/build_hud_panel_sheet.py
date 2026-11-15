@@ -40,6 +40,15 @@ on every run, the right fix is for `GradeHudShootRunner` to write the cropped pa
 already computes the HUD's screen rect (`HudRect()`). Until then: look at the sheet, and pass
 `--rect` when a number is needed.
 
+STORY 1.19: THAT FIX NOW EXISTS. `Tools > HUD > Grade HUD - Legibility at 1080p (Play)` has the
+runner write the cropped panel itself, four ways on one frozen frame, with the glyphs painted a
+marker colour by the renderer, and `tools/verification/measure_hud_legibility.py` measures text vs
+outline and text vs panel off those masks. Use that for NUMBERS. This sheet stays what it was: a
+picture to look at. Its labels changed with 1.19: a counted shot that prints 0 % and a MISS both
+read RED now ("anything that earned nothing"), while a shot printing 1 % keeps its band's amber.
+Point --dir at a 1.19-era run (e.g. _bmad-output/verification/1-19-a-shot-that-earns-nothing-reads-red/after)
+- the rig no longer writes into hud/ when a story gives it its own folder.
+
 USAGE
 -----
     python tools/verification/build_hud_panel_sheet.py
@@ -84,8 +93,8 @@ PANELS = [
     ("a_money_shot.png", "5 stars   expect GREEN"),
     ("b1_three_star_cream.png", "3 stars   expect CREAM"),
     ("b_mid_counted.png", "2 stars   expect AMBER"),
-    ("c_counted_but_zero.png", "1 star    expect AMBER"),
-    ("f_blocked.png", "MISS      expect SALMON"),
+    ("c_counted_but_zero.png", "1 star, prints 0 %   expect RED (earned nothing, Story 1.19)"),
+    ("f_blocked.png", "MISS      expect RED (the same red, Story 1.19)"),
 ]
 
 # The readout is bottom-anchored. This strip is deliberately generous: it is for LOOKING at, so a
