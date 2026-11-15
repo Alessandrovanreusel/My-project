@@ -4,7 +4,7 @@ project: 'Camera Game'
 date: '2026-05-27'
 author: 'Alexv'
 version: '1.1'
-updated: '2026-11-11'  # Story 2.2: World bounds and traversal (row 11). Before: '2026-11-11'  # ADR-5 accepted by Story 2.1 (world scale: characters scaled to the town, F = 5.0; Alexv may veto). Before: '2026-11-10'  # ADR-4 proposed by Story 1.14 (replay + export-time encode), awaiting Alexv; Clip Recording — sprint-change-proposal-2026-11-10.md
+updated: '2026-11-15'  # ADR-4 ACCEPTED (Alexv approved 2026-11-15, loop/runtime/approvals.txt line 1; status edited by the Story 1.15 create phase) and the Recordability cross-cutting rule added. Before: '2026-11-11'  # Story 2.2: World bounds and traversal (row 11). Before: '2026-11-11'  # ADR-5 accepted by Story 2.1 (world scale: characters scaled to the town, F = 5.0; Alexv may veto). Before: '2026-11-10'  # ADR-4 proposed by Story 1.14 (replay + export-time encode), awaiting Alexv; Clip Recording — sprint-change-proposal-2026-11-10.md
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 status: 'complete'
 engine: 'Unity 6.3 LTS (6000.3.8f1)'
@@ -36,8 +36,8 @@ existing first-person controller/camera and the Drunk-Pack animations already in
   `EventDefinition` ScriptableObjects + pooled `EventManager`. Future events are *data,
   not code* — ~80% of Epic 3 is unlocked by this single system.
 - **Video recording replaces the shutter** (2026-11-10, `sprint-change-proposal-2026-11-10.md`).
-  *How* a built game records itself was measured in **ADR-4** (Story 1.14): **proposed 2026-11-10,
-  awaiting Alexv: replay recording, with MP4 made only at export**. The Frame-Read grader (ADR-2) becomes the per-frame engine of clip grading.
+  *How* a built game records itself was measured in **ADR-4** (Story 1.14): **accepted 2026-11-15
+  (Alexv approved it): replay recording, with MP4 made only at export**. The Frame-Read grader (ADR-2) becomes the per-frame engine of clip grading.
   See **Clip Recording** below.
 - **World scale** (ADR-5, accepted 2026-11-11 by Story 2.1; Alexv may veto): the characters are people, 1.77 m
   tall with the eye at 1.65 m, in a town modelled in roughly real metres. Every distance in the game is world
@@ -184,7 +184,7 @@ These are NOT provided by the engine and must be decided in the next steps:
 | 6 | Memory card persistence | In-memory `CapturedClip` store capped in seconds of footage (evolves GalleryService); disk-ready seam; cross-session by Epic 9 | Video needs a hard bound; editing needs clips to survive. *(Revised 2026-11-10 — was "Gallery persistence: in-memory List<CapturedShot>; defers disk to Epic 4/5".)* |
 | 7 | Code organization | CameraGame.* namespaces; feature folders; one asmdef; SO event channel for ShotCaptured | Lean for solo dev; clean dependency seams without over-engineering. |
 | 8 | Audio / pooling | 3D AudioSource per actor (25 m rolloff in world metres, 1 mixer); generic ObjectPool<T> | Sufficient for the slice; satisfies no-leak metric. *(Revised 2026-11-11 by ADR-5: the 25 m is now 25 world metres. It was 100 units, converted at 4×, which measured as 20 person-metres.)* |
-| 9 | Clip recording | **ADR-4 — Proposed 2026-11-10, awaiting Alexv:** (B) replay recording; MP4 (H.264 via Media Foundation + AAC) only at export | Measured in a Windows build (Story 1.14): (B) costs +0.8 ms/frame over 3 rounds (not distinguishable from 0) and ~195 KB/s as 16-bit, (A) dropped 86–89% of its captures to a starved encoder, (C) needs ~250 MB/s of RAM. *(Added 2026-11-10; revised 2026-11-10 by Story 1.14 and its code review.)* |
+| 9 | Clip recording | **ADR-4 — Accepted 2026-11-15 (proposed 2026-11-10; Alexv approved, `loop/runtime/approvals.txt`):** (B) replay recording; MP4 (H.264 via Media Foundation + AAC) only at export | Measured in a Windows build (Story 1.14): (B) costs +0.8 ms/frame over 3 rounds (not distinguishable from 0) and ~195 KB/s as 16-bit, (A) dropped 86–89% of its captures to a starved encoder, (C) needs ~250 MB/s of RAM. *(Added 2026-11-10; revised 2026-11-10 by Story 1.14 and its code review.)* |
 | 10 | World scale | **ADR-5 — Accepted 2026-11-11 (Story 2.1; Alexv may veto):** (A) the characters are scaled to the town. People are 1.77 m with the eye at 1.65 m; the town keeps its modelled, roughly real-metre size; F = 5.0 | Photographed and measured from the player's eye at four spots under all three options. Keeping 8.86 m giants puts the eye above every pine and eave. Scaling the town ×5 gives the same pictures for 30+ moved values and a 25×-area NavMesh. *(Added 2026-11-11.)* |
 | 11 | World bounds | **Decided 2026-11-11 (Story 2.2; Alexv may veto):** the playable area is the plain plus the ring's inner slopes (one polygon in `TownBoundsConfig`). Invisible `WorldBounds` barriers stand at the water's edge and on the slopes. The oil rig is out of bounds. `FallRecovery` puts a fallen player back. A whole-town NavMesh (15.5 MB) is crossed by chains of waypoints | Every edge walk stayed inside (28/28). Every provoked fall was restored in ≤ 0.16 s. 18/18 parts are reachable from the pub through complete legs (one query reaches 7/18: the search budget). See §World bounds and traversal. *(Added 2026-11-11.)* |
 
@@ -218,7 +218,7 @@ Holding RMB still raises the camera into the Viewfinder state; the code keeps th
 - **`ClipRecorder`** (`Scripts/Recording/`): started and stopped by `PhotoModeController`'s Capture handler.
   It is also stopped by lowering the camera or by a full memory card, and footage recorded so far is always
   kept. It captures footage in the format ADR-4 chooses: a replay track plus listener PCM behind a narrow
-  `IClipBackend` seam *(ADR-4 proposed 2026-11-10 by Story 1.14, awaiting Alexv)*.
+  `IClipBackend` seam *(ADR-4 proposed 2026-11-10 by Story 1.14, accepted 2026-11-15)*.
 - **`ClipGrader`**: samples `ShotGrader.Grade(...)` on frames throughout the recording. The per-frame subject
   gate and composition are **unchanged and not re-implemented**. It aggregates the samples, plus **peak
   coverage** read from `ISubject`, into a `ClipGrade` (0–100% → 1–5★, with a per-axis breakdown). Tunables
@@ -226,7 +226,7 @@ Holding RMB still raises the camera into the Viewfinder state; the code keeps th
 - **`MemoryCardService`** (evolves `GalleryService`, stays in `Scripts/Gallery/`): stores `CapturedClip`s,
   enforces capacity in **seconds of footage**, and frees footage on delete. It remains the **single owner**
   of any native memory, as `GalleryService` is today.
-- **`CapturedClip { string Id; IFootage Footage /* ADR-4: ReplayFootage first; proposed 2026-11-10 */; Texture2D Thumbnail; ClipGrade Grade;
+- **`CapturedClip { string Id; IFootage Footage /* ADR-4: ReplayFootage first; accepted 2026-11-15 */; Texture2D Thumbnail; ClipGrade Grade;
   string SubjectId; DateTime CapturedAtUtc; float DurationSeconds }`**: follows the same disk-ready rules as
   `CapturedShot` (a file-name-safe, unique Id; UTC wall-clock time; a small DTO for JSON, because
   `JsonUtility` handles neither `DateTime` nor textures).
@@ -358,7 +358,11 @@ added later without reshaping the model.
 - **ADR-3 (Event system):** Data-driven (ScriptableObject) over hard-coded events.
   *Rationale:* makes the ~80% of future events cheap (data, not code). *Consequence:*
   slightly more upfront structure for the single slice event, paid back immediately in Epic 3.
-- **ADR-4 (Clip recording) — Proposed (2026-11-10) — awaiting Alexv's approval.** *(Replaces the OPEN
+- **ADR-4 (Clip recording) — Accepted (2026-11-15).** Proposed 2026-11-10 by Story 1.14; Alexv approved
+  it on 2026-11-15 (`loop/runtime/approvals.txt`: *APPROVED ADR-4 2026-11-15 — "Approve" (after a
+  plain-language walkthrough: (B) replay recording, MP4 only at export; the export licence and patent
+  questions stay open)*). The approval covers the recording approach; the **Export path** items below stay
+  open exactly as written. *(Replaces the OPEN
   block of 2026-11-10; decided by measurement in Story 1.14. Evidence: `_bmad-output/verification/1-14-decide-how-the-game-records-video/`, git-ignored; how to rebuild it:
   `Assets/Spikes/RecordingSpike/README.md`.)*
 
@@ -713,6 +717,24 @@ public class ShotCapturedChannel : ScriptableObject
 }
 // GalleryService and (later) ReputationSystem both listen to the same asset.
 ```
+
+### Recordability (ADR-4; added 2026-11-15 when ADR-4 was accepted)
+
+**Rule:** everything that moves or makes sound on screen must be recordable, because a clip is a
+replay track plus the sound the listener heard, not a video file (ADR-4). The full list and the reasons
+are in ADR-4's **Consequences**. In short:
+
+- **Sound.** Game `AudioSource`s keep `bypassEffects` and `bypassListenerEffects` off, so the listener's
+  `OnAudioFilterRead` tap records them. A sound that must stay out of the footage sets
+  `bypassListenerEffects = true` on purpose, and says why in a comment.
+- **Actors.** Every event actor exposes its transform, its Animator state and the `EventDefinition` it
+  runs, so a recorder can name it in the track. A new Animator feature (parameters, layer weights, IK,
+  blend trees) must be added to the track before an event uses it.
+- **Everything else** that is not in the track (particles, physics props, the player's body, shader-time
+  sway) appears in a replay as it is at playback time. Record it, hide it from the playback camera, or
+  accept the difference, and write down which.
+- **Content versions.** Renaming an Animator state, editing a clip or moving a prop can change old clips,
+  so the persisted format (Story 1.17 onward) carries a content version.
 
 ### Debug Tools
 
