@@ -35,6 +35,18 @@ namespace CameraGame.Grading
         DeepestGate,
     }
 
+    /// <summary>What "footage without the subject" means for the presence term (Story 1.16, decided by measuring).</summary>
+    public enum ClipPresence
+    {
+        /// <summary>The share of the clip in which ANY subject passed the gate: empty footage is footage with nobody
+        /// gradeable in it. A clip filmed continuously across a respawn keeps its in-shot share.</summary>
+        AnySubject,
+
+        /// <summary>The share in which the graded lifecycle itself passed the gate: a respawn's earlier lifecycle,
+        /// framed well, counts as absence. Kept for the measuring sweep.</summary>
+        Lifecycle,
+    }
+
     /// <summary>The resolved blend a clip is graded with. <see cref="GradingConfig.SafeClipBlend"/> builds the
     /// shipped one; the measuring sweep builds others to compare candidates through the same code.</summary>
     public readonly struct ClipBlend
@@ -44,15 +56,17 @@ namespace CameraGame.Grading
         public readonly ClipBlendShape Shape;
         public readonly ClipFramingSource FramingSource;
         public readonly ClipMissRule MissRule;
+        public readonly ClipPresence Presence;
 
         public ClipBlend(float floor, float absenceWeight, ClipBlendShape shape, ClipFramingSource framingSource,
-                         ClipMissRule missRule)
+                         ClipMissRule missRule, ClipPresence presence = ClipPresence.AnySubject)
         {
             Floor = ClipGrade.Sane(floor);
             AbsenceWeight = ClipGrade.Sane(absenceWeight);
             Shape = shape;
             FramingSource = framingSource;
             MissRule = missRule;
+            Presence = presence;
         }
     }
 
@@ -198,6 +212,7 @@ namespace CameraGame.Grading
         private readonly string[] _missSubject;
 
         private double _gradedSeconds;
+        private double _anyGatedSeconds;
         private int _ticks;
         private bool _inTick;
         private double _tickSeconds;
@@ -242,6 +257,7 @@ namespace CameraGame.Grading
             Array.Clear(_missSeconds, 0, _missSeconds.Length);
             Array.Clear(_missSubject, 0, _missSubject.Length);
             _gradedSeconds = 0d;
+            _anyGatedSeconds = 0d;
             _ticks = 0;
             _inTick = false;
             Overflowed = false;
@@ -331,6 +347,7 @@ namespace CameraGame.Grading
             _inTick = false;
             _ticks++;
             _gradedSeconds += _tickSeconds;
+            if (_tickCounted) _anyGatedSeconds += _tickSeconds;
 
             if (!_tickCounted && _tickHasMiss)
             {
@@ -363,7 +380,7 @@ namespace CameraGame.Grading
                 ref Candidate c = ref _candidates[i];
                 if (c.CountedTicks <= 0) continue;
 
-                ClipGrade g = Score(ref c, in blend, scale, _gradedSeconds);
+                ClipGrade g = Score(ref c, in blend, scale, _gradedSeconds, _anyGatedSeconds);
                 if (!haveBest || GradeRanking.Beats(g.Counted, g.Percent01, best.Counted, best.Percent01))
                 {
                     best = g;
@@ -380,14 +397,16 @@ namespace CameraGame.Grading
             return ClipGrade.Missed(reason, clipSeconds, ri >= 0 && ri < _missSubject.Length ? _missSubject[ri] : null);
         }
 
-        private static ClipGrade Score(ref Candidate c, in ClipBlend blend, StarScale scale, double clipSeconds)
+        private static ClipGrade Score(ref Candidate c, in ClipBlend blend, StarScale scale, double clipSeconds,
+                                       double anyGatedSeconds)
         {
             double composition = c.GatedSeconds > 0d ? c.CompositionSeconds / c.GatedSeconds : 0d;
             double framingMean = composition;
             if (blend.FramingSource == ClipFramingSource.PeakTicksWhenCovered && c.PeakGatedSeconds > 0d)
                 framingMean = c.PeakCompositionSeconds / c.PeakGatedSeconds;
 
-            float inShot = clipSeconds > 0d ? (float)(c.GatedSeconds / clipSeconds) : 0f;
+            double present = blend.Presence == ClipPresence.Lifecycle ? c.GatedSeconds : anyGatedSeconds;
+            float inShot = clipSeconds > 0d ? (float)(present / clipSeconds) : 0f;
             float framing = ClipScoring.Framing((float)framingMean, inShot, blend.AbsenceWeight);
 
             bool hasPeak = c.PeakDuration > 0f;
@@ -459,7 +478,7 @@ namespace CameraGame.Grading
                 {
                     if (_candidates[i].TouchedTick == _ticks + 1) continue;
                     ClipGrade g = _candidates[i].CountedTicks > 0
-                        ? Score(ref _candidates[i], in neutral, StarScale.Default, _gradedSeconds + _tickSeconds)
+                        ? Score(ref _candidates[i], in neutral, StarScale.Default, _gradedSeconds + _tickSeconds, _anyGatedSeconds)
                         : ClipGrade.Missed(GradeMiss.NoSubject, 0f);
                     if (idx < 0 || GradeRanking.Beats(worst.Counted, worst.Percent01, g.Counted, g.Percent01))
                     {

@@ -231,6 +231,27 @@ namespace CameraGame.Tests
             Assert.AreEqual(1f, g.Composition01, 1e-6f);
         }
 
+        [Test]
+        public void Presence_AnySubject_CountsAClipFramedAcrossARespawnAsInShot_Lifecycle_DoesNot()
+        {
+            // Lifecycle 1 framed for 2 s, then the respawn's lifecycle 2 framed for 2 s: the subject was in shot the
+            // whole clip. Story 1.16's S8 measured the Lifecycle rule charging the first half as absence.
+            var b = new ClipGradeBuilder();
+            for (int i = 0; i < 60; i++) TickOf(b, Tick, Framed(1, 4f + i / 30f, 0.9f));
+            for (int i = 0; i < 60; i++) TickOf(b, Tick, Framed(2, -1f + i / 30f, 0.9f));
+            var any = new ClipBlend(0.3f, 1f, ClipBlendShape.FloorTimesCoverage, ClipFramingSource.GatedTicks, ClipMissRule.MostTime, ClipPresence.AnySubject);
+            var own = new ClipBlend(0.3f, 1f, ClipBlendShape.FloorTimesCoverage, ClipFramingSource.GatedTicks, ClipMissRule.MostTime, ClipPresence.Lifecycle);
+            Assert.AreEqual(1f, b.Finish(in any, StarScale.Default).InShot01, 1e-5f);
+            Assert.AreEqual(0.5f, b.Finish(in own, StarScale.Default).InShot01, 1e-5f);
+
+            // A tick on which NOBODY passed the gate is absence under both rules.
+            var e = new ClipGradeBuilder();
+            for (int i = 0; i < 30; i++) TickOf(e, Tick, Missed(1, -3f + i / 30f, GradeMiss.OutsideFrustum));
+            for (int i = 0; i < 90; i++) TickOf(e, Tick, Framed(1, -2f + i / 30f, 0.9f));
+            Assert.AreEqual(0.75f, e.Finish(in any, StarScale.Default).InShot01, 1e-5f);
+            Assert.AreEqual(0.75f, e.Finish(in own, StarScale.Default).InShot01, 1e-5f);
+        }
+
         [TestCase(float.NaN)]
         [TestCase(float.PositiveInfinity)]
         [TestCase(float.NegativeInfinity)]

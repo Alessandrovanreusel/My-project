@@ -219,6 +219,7 @@ namespace CameraGame.Grading
         public const ClipBlendShape ClipShape = ClipBlendShape.FloorTimesCoverage;
         public const ClipFramingSource ClipFraming = ClipFramingSource.GatedTicks;
         public const ClipMissRule ClipMiss = ClipMissRule.MostTime;
+        public const ClipPresence ClipPresenceMode = ClipPresence.AnySubject;
 
         /// <summary>Ceiling for <see cref="prominenceFalloffAbove"/>. Above 1 is normal (the measured box is
         /// clamped to the frame); beyond this the far side of the curve is so flat that prominence stops
@@ -293,7 +294,7 @@ namespace CameraGame.Grading
         /// <summary>The resolved clip blend (Story 1.16): the two tunables through their Safe* accessors, plus the
         /// measured shape, framing source and miss rule.</summary>
         public ClipBlend SafeClipBlend =>
-            new ClipBlend(SafeClipPeakFloor, SafeClipAbsenceWeight, ClipShape, ClipFraming, ClipMiss);
+            new ClipBlend(SafeClipPeakFloor, SafeClipAbsenceWeight, ClipShape, ClipFraming, ClipMiss, ClipPresenceMode);
 
         /// <summary>
         /// The star boundaries as a resolved, guaranteed-DESCENDING set, so the grader can never be handed

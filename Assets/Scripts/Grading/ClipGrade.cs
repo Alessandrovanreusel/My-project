@@ -67,7 +67,9 @@ namespace CameraGame.Grading
         /// <summary>Share of the peak window still to come when the clip stopped.</summary>
         public readonly float PeakAfterClip01;
 
-        /// <summary>Share of the clip's footage in which this subject passed the gate.</summary>
+        /// <summary>Share of the clip's footage that was "in shot" for the presence term: by default the ticks on which
+        /// ANY subject passed the gate (<see cref="ClipPresence.AnySubject"/>), so a clip filmed continuously across a
+        /// respawn is not charged for the earlier lifecycle it framed well (Story 1.16, measured on S8).</summary>
         public readonly float InShot01;
 
         /// <summary>True when the subject had a peak window to cover (<c>ISubject.PeakDuration</c> &gt; 0). When
