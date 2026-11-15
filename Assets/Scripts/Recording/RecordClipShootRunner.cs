@@ -918,6 +918,10 @@ namespace CameraGame.Recording
             anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             anim.applyRootMotion = false;
             anim.speed = 0f;
+            // cam.Render() straight after posing would otherwise draw the skinning from the engine's last skinning pass,
+            // i.e. the PREVIOUS pose: run 3's pictures differed around the drunk while his bones matched to 0.000 cm.
+            foreach (SkinnedMeshRenderer smr in ghost.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                smr.forceMatrixRecalculationPerRender = true;
             ghost.SetActive(true);
             return ghost;
         }
@@ -1207,6 +1211,7 @@ namespace CameraGame.Recording
                 if (k < 0) { pairs.Append($"[{shot.file}: no tick on frame {shot.frame}] "); continue; }
                 TickSample t = f.TickAt(k);
                 bool liveActor = PoseGhost(ghost, anim, f, t);
+                yield return null;   // and one engine frame for the skinning, belt and braces (the frozen Animator holds the pose)
                 cam.transform.SetPositionAndRotation(t.Camera.Position, t.Camera.Rotation);
                 cam.fieldOfView = t.Camera.FieldOfView;
                 string gfile = shot.file.Replace("_live_", "_ghost_");
