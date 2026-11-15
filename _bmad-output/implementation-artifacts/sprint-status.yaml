@@ -37,7 +37,8 @@
 # (Jira mirror removed 2026-11-10 - Jira was dropped from the project; the old KAN keys are in git history.)
 
 generated: 2026-06-04
-last_updated: 2026-11-15 (story 1.19 -> in-progress. Loop DEV phase started)
+last_updated: 2026-11-15 (story 1.19 -> review. Loop DEV phase - all 9 tasks done. A MISS and a counted shot printing 0 % now share red E (1, 0.33, 0.28), decided from the printed text by GradeText.Percent and PrintsZero (invariant culture) and GradeHudConfig.ColorFor; a shot printing 1 % keeps amber. Every readout line has a 1.5 px black uGUI Outline from the config, applied in GradeHud.Awake. Measured at 1920x1080 on frozen frames with renderer-made glyph and outline masks - every colour clears 4.5 to 1 against its outline on every measured background (red 4.64 at worst, salmon had 2.74 against the panel with no outline). Red and thickness chosen by a candidate sweep, the 2 px bound by photographs. EditMode 254 to 290 with mutation proof, HUD and Photo and Gallery shoots without regression, editor restored. AC7 queued for Alexv)
+  2026-11-15 (story 1.19 -> in-progress. Loop DEV phase started)
   2026-11-15 (story 1.19 -> ready-for-dev. Context file created by the loop CREATE phase - 7 ACs verbatim from epics.md, 9 tasks with 6 gating decisions. The colour follows the printed text through one GradeText formatter (measured in this editor - 0.005 prints 1 %, -0 prints 0 %, fr-FR prints an Arabic percent sign, so the culture is pinned), a red chosen by measurement from an authored shortlist, a uGUI Outline applied by GradeHud from GradeHudConfig, and AC4 measured at 1920x1080 on frozen frames with glyph masks, before and after. AC7 is a human check)
   2026-11-12 (story 2.2 CLOSE gate attempt 4 - attempts 2-3's world changes (1,781 edge rocks, the TownSeal skirt, two re-bakes) verified independently on HEAD. Paths from the pub 18/18 by chain, real agents 17/18, the 27 new unreached grid points explained (25 on edge rocks, 2 on a ledge whose only link the rocks cover). Sprint tour 18/18 with 0 sticks and 0 falls. Put-back 20/20 (worst 0.162 s) after two rig fixes. The drunk's route unchanged. The seal skirt pressed against, 0 see-through in 66 valid poses. Edge rocks and seal cost +0.09 to +1.02 ms per frame (ABBA render A/B), so AC5 holds against its own spread. EditMode 254/254, console clean, editor restored, no game file changed. Story stays review - perceptual checks queued for Alexv.
   2026-11-12 (story 2.2 CLOSE gate attempt 3 - the mountain foot sealed with Tools/Town/Seal Mountain Foot (a collidable skirt from 3,124 m of hovering terrain lip under a TownSeal root, chosen over boulders by measurement and photograph); re-baked 16.27 MB; pub-island NavMesh under the terrain 54,319 -> 216 m2 (2 unreachable pockets); capsule entries 21 -> 4 (none from the pub's island); ring contact 0 m; edge walks 28/28; edge+seal frame cost within the noise (interleaved A/B); EditMode 254/254; console clean. Story stays review - perceptual checks queued, absolute fps vs the start needs a fresh editor.
@@ -78,7 +79,7 @@ development_status:
   1-16-grade-a-clip: backlog                                          # carries 1-13's intent
   1-17-the-memory-card: backlog
   1-18-watch-your-clips: backlog
-  1-19-a-shot-that-earns-nothing-reads-red: in-progress                 # added 2026-11-14 from Alexv's 1.12 answer;
+  1-19-a-shot-that-earns-nothing-reads-red: review                 # added 2026-11-14 from Alexv's 1.12 answer;
   #   independent of the video stories (not gated by ADR-4), so the loop can build it now
   epic-1-retrospective: optional
 

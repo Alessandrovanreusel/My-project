@@ -4,7 +4,7 @@ baseline_commit: 91d3f8b8192e4f1e5d2bfb14b7dac05665cb760c
 
 # Story 1.19: A shot that earns nothing reads red
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -151,13 +151,13 @@ rather than a heavy box. This is a **human** check and stays open until he has d
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Settle the six decisions that GATE THE STORY (AC1–AC5). DO THESE FIRST.**
+- [x] **Task 1 — Settle the six decisions that GATE THE STORY (AC1–AC5). DO THESE FIRST.**
 
   Each has a recommendation and the evidence that should settle it. Record every choice **with its reason and its
   evidence path** in the Dev Agent Record and in the result file's `decisions`, including the ones where you follow
   the recommendation. Alexv reviews them in one batch and may veto.
 
-  - [ ] **1a. How the outline is drawn.** *Toolbox: invoke `unity:ui`, then `unity:ui-ugui`, before writing the HUD
+  - [x] **1a. How the outline is drawn.** *Toolbox: invoke `unity:ui`, then `unity:ui-ugui`, before writing the HUD
         code.*
         - **Recommended: uGUI's built-in `UnityEngine.UI.Outline`** (`com.unity.ugui` 2.0.0, already used; confirmed
           present by `execute_code` on 2026-11-15). It is a `BaseMeshEffect` that draws four copies of the text mesh
@@ -176,7 +176,7 @@ rather than a heavy box. This is a **human** check and stays open until he has d
           The project has no `Assets/TextMesh Pro` essentials. The `★`/`☆` glyphs would need a font asset that
           contains them, and the gallery would still be legacy `Text`. **Reject unless 1a's recommendation fails on
           the captures.** If you do take it, it is a design decision: record it.
-  - [ ] **1b. Where the outline's colour and thickness live, and who adds the component.**
+  - [x] **1b. Where the outline's colour and thickness live, and who adds the component.**
         - **Recommended: two new tunables on `GradeHudConfig`**, read through `Safe*` accessors like every other value
           there: `outlineColor` (start near-black, e.g. `(0, 0, 0, 0.9–1)`) and `outlineDistance` (start ~1.5 canvas
           units, so ~1.5 px at 1080p). **`GradeHud.Awake` applies them**: for each label that exists, take its `Outline`
@@ -194,7 +194,7 @@ rather than a heavy box. This is a **human** check and stays open until he has d
           report them in `TryGetConfigProblem`. **No `OnValidate`** (`GradeHudConfig.cs:421-439` explains why).
         - Bounds to choose, measure and record: a minimum thickness that is still visible at 1080p, and a maximum
           beyond which the outline stops being "thin" (AC7's "heavy box").
-  - [ ] **1c. The "prints 0 %" rule: one source of truth for the text and the colour.**
+  - [x] **1c. The "prints 0 %" rule: one source of truth for the text and the colour.**
         - **Recommended: add to `GradeText` (`Assets/Scripts/Grading/GradeText.cs`):**
           - `public static string Percent(float percent01)`. It sanitises first (`if (!(p > 0f)) p = 0f;`, which maps
             NaN, negatives and **−0** to +0; then clamp to 1) and formats `P0` with **`CultureInfo.InvariantCulture`**.
@@ -216,7 +216,7 @@ rather than a heavy box. This is a **human** check and stays open until he has d
           red.
         - Rejected alternative: a numeric threshold (`percent01 < 0.005f`). It writes the rounding rule down a second
           time, and it is wrong in this runtime (0.005 → `1 %`).
-  - [ ] **1d. Which red.** Decide by measuring, in this order:
+  - [x] **1d. Which red.** Decide by measuring, in this order:
         1. **Shortlist by the authored numbers** (`create/red_candidates.txt`, computed 2026-11-15). The ΔE floor of
            25 against green, cream and amber is met by every candidate (ΔE 72–135). Against a pure-black outline, the
            authored contrast is **5.25:1 (pure red) to 7.1:1**, and salmon is 9.3:1 because it is light. Try
@@ -236,7 +236,7 @@ rather than a heavy box. This is a **human** check and stays open until he has d
           ΔE 35–46, because it is darker than salmon. Re-run the Vienot simulation on the rendered colours
           (`_bmad-output/verification/review-1-12-banding/cvd.py` has the matrices) for red against green and red
           against amber, and add the numbers to that deferred entry.
-  - [ ] **1e. How AC4 is measured: frozen frames, masks, 1920×1080.** The 1.12 tooling cannot answer AC4 as written.
+  - [x] **1e. How AC4 is measured: frozen frames, masks, 1920×1080.** The 1.12 tooling cannot answer AC4 as written.
         `build_hud_panel_sheet.py` measures "text vs background" inside a hand-given rectangle, and its own header
         lists five auto-detectors that produced plausible wrong numbers. It also has no notion of an outline. Its
         header names the right fix: the runner knows where the HUD is. **Recommended technique:**
@@ -290,7 +290,7 @@ rather than a heavy box. This is a **human** check and stays open until he has d
             captures "channel-raised"** in every caption; the Phase A states stay real-shutter.
           - (iv) Optional: a labelled **synthetic** white card behind the panel, as the upper bound of "any
             background".
-  - [ ] **1f. Scope: what this story does NOT change (record it, so it is not mistaken for an oversight).**
+  - [x] **1f. Scope: what this story does NOT change (record it, so it is not mistaken for an oversight).**
         - **The gallery.** `GalleryView` has its own salmon `MissTextColor` `(1, 0.55, 0.45)` and prints `P0` itself
           (`GalleryView.cs:103, :583, :762-763`). AC1–AC4 are about the grade readout. **Recommended: leave the
           gallery alone** and log in `deferred-work.md` that its miss caption is still salmon, for Story 1.17, which
@@ -304,28 +304,28 @@ rather than a heavy box. This is a **human** check and stays open until he has d
         - **The panel's 78 % opacity.** Alexv chose the outline over a ~90 % panel. Do not raise the panel opacity
           to pass a number.
 
-- [ ] **Task 2 — Baseline on HEAD, before changing any code (AC4, AC6)**
-  - [ ] 2.1 Copy `_bmad-output/verification/hud/` to
+- [x] **Task 2 — Baseline on HEAD, before changing any code (AC4, AC6)**
+  - [x] 2.1 Copy `_bmad-output/verification/hud/` to
         `_bmad-output/verification/1-19-a-shot-that-earns-nothing-reads-red/baseline-1-12-hud/` **before any rig
         run**. The HUD rig writes into `hud/` (`GradeHudShootRig.cs:59`), which is the evidence Story 1.12 closed on
         (lessons, 2-2: "Rigs that write into a story's evidence folders overwrite the dev's evidence").
-  - [ ] 2.2 Give the rig an output directory (a `SessionState` key, set **and** erased before every run, per the
+  - [x] 2.2 Give the rig an output directory (a `SessionState` key, set **and** erased before every run, per the
         lessons), so this story writes under its own evidence folder and never into `hud/` again.
-  - [ ] 2.3 Record: the EditMode count (run all), the console baseline (CLAUDE.md lists the known warnings, plus
+  - [x] 2.3 Record: the EditMode count (run all), the console baseline (CLAUDE.md lists the known warnings, plus
         `ThirdPersonCamera` head-bone), and `git status`.
-  - [ ] 2.4 Build the measurement (Task 1e) **first**, run it on HEAD at 1920×1080, and keep the result as
+  - [x] 2.4 Build the measurement (Task 1e) **first**, run it on HEAD at 1920×1080, and keep the result as
         `before/`. That gives today's salmon and amber, with no outline, measured as rendered at the shipping
         resolution, **including `e_too_far` and `g_out_of_frame`**: the bright-ground miss scenarios AC4 says were
         never measured. This is the "before" half of every comparison, and the control that proves the measurement
         can report a low number. Expect salmon around 3.5–3.7:1 against the panel on bright ground (fact 6). If it
         reads far higher or lower, suspect the rig before believing either.
 
-- [ ] **Task 3 — `GradeText.Percent` / `PrintsZero` (AC2, AC5)**
-  - [ ] 3.1 Implement as in 1c, in `Assets/Scripts/Grading/GradeText.cs`. Pure static, no allocation beyond the
+- [x] **Task 3 — `GradeText.Percent` / `PrintsZero` (AC2, AC5)**
+  - [x] 3.1 Implement as in 1c, in `Assets/Scripts/Grading/GradeText.cs`. Pure static, no allocation beyond the
         returned string. It is called once per shutter press, never per frame. `using System.Globalization;`.
-  - [ ] 3.2 Comment *why* the predicate is defined by the string (AC2's own words; 0.005 prints `1 %`) and why the
+  - [x] 3.2 Comment *why* the predicate is defined by the string (AC2's own words; 0.005 prints `1 %`) and why the
         culture is pinned (fr-FR's U+066A).
-  - [ ] 3.3 Tests in `Assets/Tests/EditMode/GradeTextTests.cs`:
+  - [x] 3.3 Tests in `Assets/Tests/EditMode/GradeTextTests.cs`:
         - the AC's four cases, through `ShotGrade.Scored`: 0, 0.4 % (e.g. composition 1 × timing 0.004), 0.6 %, and
           −0 (timing `-0f`). **Assert the −0 fixture's sign bit is set** before asserting the text.
         - `Percent` never prints a minus sign, and prints `0 %` for NaN, ±∞ (if `Sane` lets them through) and
@@ -336,19 +336,19 @@ rather than a heavy box. This is a **human** check and stays open until he has d
         - Run the same agreement under `CultureInfo.CurrentCulture` set to en-US, fr-FR and invariant (restore it in
           `finally`), to prove the pin holds.
 
-- [ ] **Task 4 — `GradeHudConfig`: red, outline, `ColorFor`, validator (AC1, AC3, AC4, AC5)**
-  - [ ] 4.1 `missColor` → the red chosen in 1d, in **both** the C# initialiser and
+- [x] **Task 4 — `GradeHudConfig`: red, outline, `ColorFor`, validator (AC1, AC3, AC4, AC5)**
+  - [x] 4.1 `missColor` → the red chosen in 1d, in **both** the C# initialiser and
         `Assets/Data/UI/GradeHudConfig.asset`. **Keep the field name** (`missColor`): the AC names it, and a rename
         needs `[FormerlySerializedAs]` and touches the asset for nothing (`deferred-work.md:290` is the same trade
         for `countedColor`). Rewrite its tooltip: it now colours **both** a MISS and a counted shot that prints `0 %`,
         "anything that earned nothing".
-  - [ ] 4.2 Add `outlineColor` and `outlineDistance` with tooltips, named constants, `Safe*` accessors and bounds
+  - [x] 4.2 Add `outlineColor` and `outlineDistance` with tooltips, named constants, `Safe*` accessors and bounds
         (1b). Add both to the asset YAML by hand (memory: *Create SO assets via YAML*; the file is LF). Then
         `refresh_unity` and **read the values back** with `AssetDatabase.LoadAssetAtPath` + `execute_code` (CLAUDE.md
         trap: a stale asset runs with a clean console).
-  - [ ] 4.3 Add `ColorFor(...)` (1c). Keep `CountedColorFor` as it is (AC3). Update its doc comment where it talks
+  - [x] 4.3 Add `ColorFor(...)` (1c). Keep `CountedColorFor` as it is (AC3). Update its doc comment where it talks
         about the 0 % shot being amber.
-  - [ ] 4.4 `TryGetConfigProblem`:
+  - [x] 4.4 `TryGetConfigProblem`:
         - keep all six pairs;
         - add the outline checks (distance non-finite, ≤ 0 or above the max; colour invisible);
         - optionally, the "drifted back to salmon" check (1d);
@@ -356,14 +356,14 @@ rather than a heavy box. This is a **human** check and stays open until he has d
           authored-only. It is not AC4's measurement: the panel and the world are scene data
           (`deferred-work.md:285`).
         Report every problem in one message, as today.
-  - [ ] 4.5 **Fix the wording that this story makes false.** `WhyMiss` says a counted shot and a miss "both can read
+  - [x] 4.5 **Fix the wording that this story makes false.** `WhyMiss` says a counted shot and a miss "both can read
         1 star, so colour is most of what separates them" (`GradeHudConfig.cs:404-406`). After this story a counted 0 %
         and a miss **share** red on purpose: colour now separates *earned something* from *earned nothing*, and the
         words (MISSED and dashes against the breakdown) separate a miss from a 0 % shot. Re-read every comment and
         tooltip in `GradeHudConfig.cs`, `GradeHud.cs` and `CountedColorFor` that mentions salmon, "the miss colour",
         or the 0 % shot being amber, and correct it. The 2026-09-27 review spent a whole pass correcting six false
         comments in this file. Do not add a seventh.
-  - [ ] 4.6 Tests in `Assets/Tests/EditMode/GradeHudConfigTests.cs`:
+  - [x] 4.6 Tests in `Assets/Tests/EditMode/GradeHudConfigTests.cs`:
         - `ColorFor` for every state through the real factories;
         - the outline `Safe*` accessors under 0, negative, NaN, ±∞ and alpha 0;
         - the validator reports each outline mistake and names the field;
@@ -372,72 +372,72 @@ rather than a heavy box. This is a **human** check and stays open until he has d
         repair, then the asset's red (set it back to salmon, if you added the salmon check). Watch the right test fail
         each time, and restore. Story 1.12's reviews found tests that could not fail.
 
-- [ ] **Task 5 — `GradeHud`: use the rule, apply the outline (AC1–AC4)**
-  - [ ] 5.1 `Format` takes every colour from `config.ColorFor(...)` and prints the rating's percentage with
+- [x] **Task 5 — `GradeHud`: use the rule, apply the outline (AC1–AC4)**
+  - [x] 5.1 `Format` takes every colour from `config.ColorFor(...)` and prints the rating's percentage with
         `GradeText.Percent`. Keep "every branch writes every label" (`GradeHud.cs:254-256`) and the four-state
         structure (`:258-284`). Do not log on the shutter (`:231-232`).
-  - [ ] 5.2 `Awake` applies the outline to each existing label (1b), after `ApplyFont` and with the same per-label
+  - [x] 5.2 `Awake` applies the outline to each existing label (1b), after `ApplyFont` and with the same per-label
         null tolerance. A missing label still disables only its own line.
-  - [ ] 5.3 Do **not** touch the render mode guard, the subscribe/unsubscribe caching, `Show`, the unscaled
+  - [x] 5.3 Do **not** touch the render mode guard, the subscribe/unsubscribe caching, `Show`, the unscaled
         countdown, or `hideOnCameraLowered`. They are proven, and AC6 says nothing else regresses.
 
-- [ ] **Task 6 — The rig: measure what AC4 asks, at 1080p (AC4, AC6)**
-  - [ ] 6.1 Extend `GradeHudShootRig` / `GradeHudShootRunner` (do not fork them): the output directory (2.2), the
+- [x] **Task 6 — The rig: measure what AC4 asks, at 1080p (AC4, AC6)**
+  - [x] 6.1 Extend `GradeHudShootRig` / `GradeHudShootRunner` (do not fork them): the output directory (2.2), the
         1920×1080 Game View with read-back and restore (1e), and a new legibility phase that captures A/M/P/N per
         state and writes the JSON sidecar. Restore `timeScale`, every label colour, `enabled` flag and outline after
         each variant. The runner stays in the runtime assembly behind `#if UNITY_EDITOR` (CLAUDE.md trap).
-  - [ ] 6.2 Phase D boundaries: add `outlineDistance` 0, negative, NaN and huge, and `outlineColor` at alpha 0, as
+  - [x] 6.2 Phase D boundaries: add `outlineDistance` 0, negative, NaN and huge, and `outlineColor` at alpha 0, as
         provoked cases. List them by name at the top of the rig's output, so the clean-console check can tell them from
         findings (CLAUDE.md: "A rig that logs its own errors trains you to ignore errors").
-  - [ ] 6.3 `tools/verification/measure_hud_legibility.py` (1e). Every number it prints says what it measured
+  - [x] 6.3 `tools/verification/measure_hud_legibility.py` (1e). Every number it prints says what it measured
         (label, colour state, background, median and worst 5 %). It refuses to print a number when the mask is empty
         or the freeze control failed. Write a `summary.md` beside the captures.
-  - [ ] 6.4 The brightest-background survey (1e(ii)) and the every-colour-on-one-background sheet (1e(iii)).
-  - [ ] 6.5 Update `tools/verification/build_hud_panel_sheet.py`: its labels say `expect SALMON` and
+  - [x] 6.4 The brightest-background survey (1e(ii)) and the every-colour-on-one-background sheet (1e(iii)).
+  - [x] 6.5 Update `tools/verification/build_hud_panel_sheet.py`: its labels say `expect SALMON` and
         `1 star expect AMBER` for `c_counted_but_zero`. After this story that panel is **red**. Add the `--dir` of
         this story's captures, and keep the script's lesson text.
-  - [ ] 6.6 **Name the toolbox decision:** Performance Testing / Profile Analyzer / Graphy are **not** needed. The
+  - [x] 6.6 **Name the toolbox decision:** Performance Testing / Profile Analyzer / Graphy are **not** needed. The
         outline adds vertices to a mesh rebuilt once per shutter press, and Phase E already measures the shutter
         (NFR2). Gemini is **not** needed either: nothing here is temporal except the fade, which frame analysis
         settles (7.4).
 
-- [ ] **Task 7 — Run it, look at it, tune it (AC1, AC2, AC4)**
-  - [ ] 7.1 Before any rig run: `refresh_unity`, wait for the compile, `read_console`, and read `missColor`,
+- [x] **Task 7 — Run it, look at it, tune it (AC1, AC2, AC4)**
+  - [x] 7.1 Before any rig run: `refresh_unity`, wait for the compile, `read_console`, and read `missColor`,
         `outlineColor` and `outlineDistance` back through the editor (fact: a stale assembly or asset runs with a clean
         console).
-  - [ ] 7.2 Run the shortlist (1d) through the rig. **Open the captures yourself** (Read tool), at full size and
+  - [x] 7.2 Run the shortlist (1d) through the rig. **Open the captures yourself** (Read tool), at full size and
         cropped to the panel. Check that:
         - the outline is visible and thin;
         - `★`/`☆` still render (not boxes);
         - the axes and why lines (22 px) are still legible;
         - there are no notches;
         - MISSED and `0 %` are both red and still say different things.
-  - [ ] 7.3 Choose the red and the thickness by the numbers **and** the pictures. If any colour is below 4.5:1 text
+  - [x] 7.3 Choose the red and the thickness by the numbers **and** the pictures. If any colour is below 4.5:1 text
         against outline as rendered, **fix it now** (thicker or darker outline, or a lighter red within "clearly
         red"). Never park a measured failure in a human check (loop rule). Re-measure after every change.
-  - [ ] 7.4 Re-run `Tools/HUD/Grade HUD — Record the readout (Play)` once and do frame analysis of the fade
+  - [x] 7.4 Re-run `Tools/HUD/Grade HUD — Record the readout (Play)` once and do frame analysis of the fade
         (`tools/verification/README.md`). The outline should fade with the text and leave no dark ghost after the text
         has gone. Use frame analysis only, no Gemini.
-  - [ ] 7.5 Build the evidence for Alexv:
+  - [x] 7.5 Build the evidence for Alexv:
         - `panels_red.png`: the five bands plus NOT GRADED, at 1080p, cropped to the panel;
         - `before_after.png`: the same frozen frame, salmon with no outline against red with the outline, and amber
           with no outline against amber with the outline;
         - one sheet per bright background with every colour on it (channel-raised, labelled).
         Confirm none is blank or white before handing it over.
 
-- [ ] **Task 8 — Regressions and restore (AC6)**
-  - [ ] 8.1 EditMode: all green. Report before → after counts.
-  - [ ] 8.2 `Tools > HUD > Grade HUD Shoot (Play)`, full run, with:
+- [x] **Task 8 — Regressions and restore (AC6)**
+  - [x] 8.1 EditMode: all green. Report before → after counts.
+  - [x] 8.2 `Tools > HUD > Grade HUD Shoot (Play)`, full run, with:
         - every Phase A state's grade and wording unchanged (diff `hud.txt` **unmasked** for stars and percentages:
           lessons, "masking digits also masks the star ratings");
         - Phase B still 0 HUD pixels in a stored photograph;
         - Phase C stress unchanged;
         - Phase D every boundary logs once and clears;
         - Phase E shutter time reported against 0.2 s.
-  - [ ] 8.3 `Tools > Grading > Photo Shoot (Play)` and `Tools > Gallery > Gallery Shoot (Play)` run to the end with no
+  - [x] 8.3 `Tools > Grading > Photo Shoot (Play)` and `Tools > Gallery > Gallery Shoot (Play)` run to the end with no
         exception. The gallery's captions are byte-identical (it is untouched, 1f).
-  - [ ] 8.4 Console: zero errors and zero new warnings outside the named provoked cases.
-  - [ ] 8.5 **Restore and read back:**
+  - [x] 8.4 Console: zero errors and zero new warnings outside the named provoked cases.
+  - [x] 8.5 **Restore and read back:**
         - SampleScene open and **not dirty**;
         - no `(rig)` objects;
         - `Time.timeScale` 1;
@@ -448,15 +448,15 @@ rather than a heavy box. This is a **human** check and stays open until he has d
         After any build or rig that touches settings, check `ProjectSettings/` and the URP assets against HEAD
         (lessons, 1-14).
 
-- [ ] **Task 9 — Records and the human check (AC7)**
-  - [ ] 9.1 Dev Agent Record: decisions 1a–1f with evidence, the measured table (every colour × line × background,
+- [x] **Task 9 — Records and the human check (AC7)**
+  - [x] 9.1 Dev Agent Record: decisions 1a–1f with evidence, the measured table (every colour × line × background,
         both contrasts, before and after), the final red and outline values, the mutation results, and the File List.
-  - [ ] 9.2 `deferred-work.md`:
+  - [x] 9.2 `deferred-work.md`:
         - the gallery's salmon (1f), for 1.17;
         - the CVD numbers added to the `:287` entry;
         - close or update any entry this story resolves.
-  - [ ] 9.3 Queue AC7 in `human_checks` (see *Human checks to queue* below). Never mark it verified.
-  - [ ] 9.4 sprint-status → `review` when Tasks 1–8 are done, with a `last_updated` entry that follows the YAML
+  - [x] 9.3 Queue AC7 in `human_checks` (see *Human checks to queue* below). Never mark it verified.
+  - [x] 9.4 sprint-status → `review` when Tasks 1–8 are done, with a `last_updated` entry that follows the YAML
         rules (no `: ` and no trailing `:`; continuation lines indented; verify with `yaml.safe_load`; edit the real
         key near line 40, not the commented line 2).
 
@@ -640,14 +640,167 @@ No `project-context.md` exists. The binding rules are `CLAUDE.md` (*Verifying Yo
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`), loop DEV phase, attempt 1, 2026-11-15.
+
 ### Debug Log References
+
+- Evidence index: `_bmad-output/verification/1-19-a-shot-that-earns-nothing-reads-red/README.md`.
+- Runs (each with `hud.txt`, `summary.md`, `legibility_results.json`, crops, masks): `before/` (HEAD), `candidates/`
+  (the sweep), `after/` (shipped values), `motion/` (fade), `regression/hud/` (full shoot), `regression/photo-shoot-after`,
+  `regression/gallery-after`, `mutation/mutation_results.md`.
+- Commits: `7048fa7` (code + rig + measurement), `a46b7c0` (chosen red and bound, control fixes, mutation proof),
+  `c3a6a47` (refusals per variant, sheets, deferred work), and this record.
 
 ### Completion Notes List
 
+**What was built.**
+- `GradeText.Percent` (invariant culture; NaN, negatives and −0 print `0 %`) and `GradeText.PrintsZero`, defined by the
+  printed string.
+- `GradeHudConfig.ColorFor(bool counted, bool isMiss, int stars, float percent01)` plus `ColorFor(ShotGrade)`.
+  `missColor` is red E `(1, 0.33, 0.28)`. New `outlineColor (0,0,0,1)` and `outlineDistance 1.5` with `Safe*` repair,
+  bounds 1–2 and validator reports. Two authoring guards were added to the validator: authored text-vs-outline 4.5:1, and
+  "missColor still reads as red" (HSV saturation ≥ 0.65, hue within 15° of red).
+- `GradeHud`: every colour comes from `ColorFor` and every percentage (rating and axes) from `GradeText.Percent`. Awake adds
+  a uGUI `Outline` to each label that exists.
+- The rig gained a one-shot `SessionState` output folder, the built-in Full HD Game View preset (restored on exit) and
+  Phase L, a new partial file with:
+  - frozen A/M/P/N variants;
+  - a 384-pose brightest-background survey;
+  - channel-raised every-colour sets;
+  - a candidate sweep.
+
+  It also gained outline boundaries in Phase D.
+- `tools/verification/measure_hud_legibility.py` and `build_hud_legibility_sheets.py` are new.
+
+**Decisions (each also in the result file's `decisions`; Alexv may veto):**
+- **1a — outline technique:** uGUI's built-in `Outline` (recommended). At the shipped 1.5 px there are no notches and the
+  ★/☆ glyphs render (`candidates/thickness_compare.png`, `after/legibility/*_A.png`). Alternative A (8-direction effect)
+  is not needed at 1.5 px, and is logged as the route if a thicker outline is ever wanted. TextMeshPro was rejected.
+- **1b — where it lives:**
+  - `outlineColor`/`outlineDistance` on `GradeHudConfig`, applied by `GradeHud.Awake` (code, not scene).
+    `SampleScene.unity` is untouched.
+  - Bounds: min 1 (one pixel at 1080p). Max 2, measured: at 2 px the "·" separator already splits into four dots, and at
+    3 px every line doubles.
+  - Outline alpha 1, chosen over 0.85: 0.85 costs 0.4–0.5 of contrast (red E 4.70 → 4.23 worst 5 % on the brightest
+    background).
+- **1c — one source of truth:** `GradeText.Percent`/`PrintsZero` and `GradeHudConfig.ColorFor`, as recommended.
+  - *Extra, recorded:* the axes line also prints through `GradeText.Percent`, so the whole readout is in one culture. It is
+    byte-identical in en-US; the Phase A wording diff proves it.
+- **1d — which red:** **red E `(1, 0.33, 0.28)`**, rendered **(255, 85, 71)**: HSV s 0.722, Lab C* 77.3 (salmon rendered
+  0.549 / 52.6).
+  - Choice: the reddest shortlisted red that clears 4.5:1 text-vs-outline at 1.5 px on every measured background *with a
+    margin run-to-run noise will not erase*.
+  - Worst 5 %, brightest background, 1.5 px: pure 3.84, B 4.33, C 4.51–4.55, **E 4.70**, salmon 6.17.
+  - At 2 px every red but pure clears (B 4.83, C 5.04, E 5.22), but the outline shows notches. The thickness was decided
+    by the pictures, the red by the numbers.
+  - Colour blindness (Viénot, rendered colours):
+    - red vs 5★ green under deuteranopia ΔE 35.8 (salmon on the same method 18.3);
+    - red vs amber 29.7 under deuteranopia (salmon 37.1), still clearly different.
+- **1e — measurement:** as recommended, with these changes, each found by running:
+  - **Game View by reflection, not test-helper.** It selects the BUILT-IN Full HD preset, because test-helper's
+    `SetResolution` adds a custom size to Alexv's editor preferences. test-helper is not used, and `CameraGame.Editor.asmdef`
+    is untouched.
+  - **M paints the outline marker green**, an exact outline mask in place of "A darker than P".
+  - **The freeze control is judged within 160 px of the panel, with the whole-frame difference box logged.** The editor-only
+    debug overlay expires on unscaled time mid-freeze, and refused `a_money_shot` for pixels nowhere near the panel.
+  - **A positive control:** an unfrozen frame one live frame before the freeze. The first version read 0/255 on all 10
+    states because it froze the same simulation instant. Fixed, it reads 106–165/255 wherever the drunk is in view.
+  - **Refusals per variant:** a fade on N drops only the no-outline numbers.
+- **1f — scope:** gallery (still salmon, still culture-dependent `P0`), `P0` 100 % rounding, the why-line voice and the 78 %
+  panel are all unchanged; the gallery item is logged for Story 1.17.
+- **6.6 — toolbox:** Performance Testing, Profile Analyzer and Graphy were not needed: Phase E measures the shutter with the
+  HUD listening against disabled in the same run (mean 25.0 ms against 39.0 ms; HUD cost lost in the noise; worst 60 ms
+  against the 200 ms budget). Gemini was not needed: the fade was settled by frame analysis.
+
+**AC4 — measured off real captures at 1920×1080, as rendered** (worst 5 % of glyph-core pixels, lowest line, every
+background; `after/summary.md`, `before/summary.md`):
+
+| readout state | before: text vs panel, no outline | after: **text vs outline** (target 4.5) | after: text vs panel (reported) |
+|---|---|---|---|
+| 5★ green (channel-raised, 4 backgrounds) | 4.34 | **6.34** | 4.29 |
+| 3★ cream | 5.36 | **7.52** | 5.31 |
+| 1★ printing 1 %, amber | 4.68 | **7.55** | 4.65 |
+| counted 0 % (amber → red) | 4.68 | **4.64** | 1.94 |
+| MISS (salmon → red) | 2.74 | **4.68** | 1.92 |
+| NOT GRADED grey | 2.34 | **5.17** | 2.28 |
+| `e_too_far` (real shutter, bright ground) | 3.59 | **5.00** | 2.56 |
+| `g_out_of_frame` (real shutter, bright ground) | 3.63 | **4.99** | 2.58 |
+| `c_counted_but_zero` (real shutter) | 6.18 | **5.01** | 2.53 |
+| `f_blocked` / `a_money_shot` (real shutter) | 6.51 / 5.63 | **5.58 / 7.82** | 4.70 / 5.66 |
+
+- Every readout colour clears 4.5:1 against its outline on every measured background. The red's margin is the smallest
+  (4.64–4.68 on the brightest survey background), so it is logged as a tuning constraint in `deferred-work.md`.
+- Text-vs-panel is reported, not required: on bright ground no red reaches 4.5:1 against the 78 % panel. That is why the
+  outline exists.
+- This is not a "WCAG compliant" claim.
+- Brightest backgrounds: survey spot 4, `(28.7, 2.1, 14.0)`, heading 270, pitch −12, mean L 0.46.
+- Controls passed:
+  - freeze 0/255 on all 34 sets;
+  - 1080p and scale 1.0;
+  - masks non-empty (363–1,330 core px per line);
+  - rendered colour within ΔE 0.5 of authored.
+
+**AC1–AC3 on rendered pixels:** a MISS and a counted 0 % are the same (255, 85, 71). The words still differ: MISSED and
+dashes against `0 %`, a breakdown and the timing advice. A shot printing `1 %` stays amber (255, 224, 79).
+
+**AC5:** EditMode **254 → 290**, all green. The agreement sweep runs 0–3 % in steps of 0.01 % under en-US, fr-FR and
+invariant cultures. Mutation proof (`mutation/mutation_results.md`), 19 of 290 failing, each on the right tests, then
+restored to 290/290:
+- a `< 0.01f` threshold in `PrintsZero` fails the sweep at exactly 0.005;
+- removing the outline repair fails 11 tests;
+- the shipped asset set back to salmon fails `ShippedAsset_PassesItsOwnValidator`.
+
+**AC6 — nothing else regresses:**
+- **Phase A wording:** byte-identical for every miss whose grade matched HEAD. Every counted label agrees, unmasked, with
+  its own grade (stars and percentage) on HEAD's template (`regression/phase_a_wording_diff.txt`). `h_behind_you` graded
+  BehindCamera here and OutsideFrustum on HEAD; Story 1.12's own baseline also had OutsideFrustum. That is the grader's
+  call on a live pose (no grading code changed), and each label matches its grade.
+- **Phase B:** 0 of 12 thumbnails contaminated.
+- **Phase C:** alpha 1.00 after a mid-fade capture, hidden when the camera is lowered, not over the gallery, and pooled
+  cycles agree.
+- **Phase D:** each outline boundary reported once and repaired (0 → 1, −2 → 1, NaN → 1.5, 999 → 2, alpha 0 → opaque),
+  and the readout still clears in 2.8 s.
+- **Phase E:** as above.
+- **Photo Shoot and Gallery Shoot:** both ran to the end with no exception. The gallery's headers are identical and its
+  pictures still show the salmon `missed —` captions. Its folders were restored byte-identical.
+- **Fade:** the outline brightens with the group alpha (measured 0.011 → 0.057 → 0.174 → 0.425 → 0.759 against the
+  fading model 0 → 0.076 → 0.226 → 0.481 → 0.759; a ghost would stay at 0). The pixels equal the world to 4 decimals once
+  it has gone (`motion/analysis/`).
+- **Console:** no error or warning outside the named provoked cases and the pre-existing PhysX large-triangle advisory.
+- **Editor restored and read back:**
+  - SampleScene open and not dirty, with no rig objects;
+  - `timeScale` 1;
+  - Game View index 0 (Free Aspect);
+  - no `GradeHudShoot.*` SessionState keys;
+  - the asset holds the committed values;
+  - ProjectSettings, URP assets and Packages unchanged;
+  - `hud/` and `hud-motion/` (Story 1.12's evidence) never written.
+
+**Left for Alexv:** AC7 (human check, below; never self-certified) and the decision batch above.
+
 ### File List
+
+- `Assets/Scripts/Grading/GradeText.cs` (modified)
+- `Assets/Scripts/UI/GradeHudConfig.cs` (modified)
+- `Assets/Scripts/UI/GradeHud.cs` (modified)
+- `Assets/Data/UI/GradeHudConfig.asset` (modified)
+- `Assets/Tests/EditMode/GradeTextTests.cs` (modified)
+- `Assets/Tests/EditMode/GradeHudConfigTests.cs` (modified)
+- `Assets/Scripts/UI/GradeHudShootRunner.cs` (modified)
+- `Assets/Scripts/UI/GradeHudShootRunner.Legibility.cs` (new) and `.meta` (new)
+- `Assets/Scripts/Editor/GradeHudShootRig.cs` (modified)
+- `tools/verification/measure_hud_legibility.py` (new)
+- `tools/verification/build_hud_legibility_sheets.py` (new)
+- `tools/verification/build_hud_panel_sheet.py` (modified)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (modified)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified)
+- `_bmad-output/implementation-artifacts/1-19-a-shot-that-earns-nothing-reads-red.md` (this file)
+- Not changed, as the story expected: `SampleScene.unity`, `GalleryView.cs`, `ShotGrade.cs`, `ShotGrader.cs`,
+  `GradingConfig*`, `CameraGame.Editor.asmdef`.
 
 ## Change Log
 
 | Date | Change |
 |------|--------|
 | 2026-11-15 | Story context created by the loop CREATE phase (`gds-create-story`). 7 ACs (verbatim from epics.md), 9 tasks with 6 gating decisions. Facts measured for it: Mono's `P0` output in this editor (0.005 → `1 %`, −0 → `0 %`, fr-FR → U+066A), `Clamp01(-0f)` keeps the sign, uGUI `Outline` present, and an authored-colour shortlist of reds (`create/red_candidates.txt`). Status → ready-for-dev. |
+| 2026-11-15 | Loop DEV phase (`gds-dev-story`). All 9 tasks done. Anything that earned nothing now reads red: a MISS and a counted shot printing `0 %` share red E `(1, 0.33, 0.28)`, decided from the printed text through `GradeText.Percent`/`PrintsZero` and `GradeHudConfig.ColorFor`. A shot printing `1 %` keeps amber. Every readout line has a 1.5 px black uGUI Outline applied in `GradeHud.Awake` from the config. Measured at 1920x1080 on frozen frames with renderer-made masks: every colour clears 4.5:1 against its outline on every measured background (red 4.64 at worst). The red and thickness were chosen by a sweep, the bound of 2 px by photographs. EditMode 254 -> 290, mutation-proven. HUD, Photo and Gallery shoots show no regression. Editor restored. Status -> review; AC7 queued for Alexv. |
