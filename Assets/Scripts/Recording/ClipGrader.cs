@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 using CameraGame.Core;
 using CameraGame.Events;
@@ -56,7 +57,8 @@ namespace CameraGame.Recording
         /// <summary>Seconds of footage graded since <see cref="Begin"/>.</summary>
         public double GradedSeconds => _builder.GradedSeconds;
 
-        /// <summary>The config clips are graded against (PhotoModeController checks it is its own).</summary>
+        /// <summary>The config clips are graded against (the same asset as <c>ClipRecorder.GradingConfig</c>, which
+        /// PhotoModeController compares with its own and validates at Awake).</summary>
         public GradingConfig Config => _config;
 
 #if UNITY_EDITOR
@@ -108,6 +110,7 @@ namespace CameraGame.Recording
             {
                 _builder.BeginTick(repeats / (double)FootageFormat.TickRate);
                 int graded = 0;
+                int listed = 0;
 
                 // Read LIVE every tick and never cached: actors are pooled (ISubject's liveness contract). `_events
                 // != null` is Unity's check, so a manager destroyed first at a scene unload grades nobody.
@@ -117,21 +120,30 @@ namespace CameraGame.Recording
                     for (int i = 0; i < actors.Count; i++)
                     {
                         EventActor actor = actors[i];
+                        if (actor == null) continue;
 
-                        // ActiveActors tracks the lifecycle, not activation: an inactive pooled actor still
-                        // reports plausible bounds (PhotoModeController.GradeBestSubject, the same filter).
-                        if (actor == null || !actor.isActiveAndEnabled) continue;
-
-                        if (graded >= _maxActors)
+                        // THE SAME CAP, COUNTED THE SAME WAY AS THE FOOTAGE (code review 2026-11-15). The backend
+                        // spends a slot on EVERY listed actor, live or not (ReplayBackend.SampleActors stores an
+                        // inactive one with Live = false), so it must be counted here BEFORE the liveness filter.
+                        // Counting only live actors graded an actor the footage leaves out: with an inactive actor
+                        // listed first, 52 of 78 ticks graded a lifecycle the clip does not hold (Grade Clip rig,
+                        // review-a1, R6b). The grade must describe exactly the frames the clip holds.
+                        if (listed >= _maxActors)
                         {
                             if (!_actorCapWarned)
                             {
                                 _actorCapWarned = true;
-                                GameLog.Warn("Grading", $"More event actors are live than a clip grades per tick ({_maxActors}); " +
+                                GameLog.Warn("Grading", $"More event actors are active than a clip records and grades per tick ({_maxActors}); " +
                                                         "the extra ones are not graded (RecordingConfig.maxActorsPerTick). Said once.");
                             }
                             break;
                         }
+                        listed++;
+
+                        // ActiveActors tracks the lifecycle, not activation: an inactive pooled actor still
+                        // reports plausible bounds (PhotoModeController.GradeBestSubject, the same filter). The
+                        // footage holds it as not live, so it is not graded either.
+                        if (!actor.isActiveAndEnabled) continue;
 
                         ShotGrade g = ShotGrader.Grade(_camera, actor, _config, out GradeDetail detail);
                         float peak = actor.PeakDuration;
@@ -151,9 +163,14 @@ namespace CameraGame.Recording
 
                         if (!(peak > 0f) && !_noPeakWarned)
                         {
+                            // Says what the score actually does (code review 2026-11-15): with no window to cover,
+                            // coverage is 0, so the blend keeps only the floor's share of the framing (a perfectly
+                            // framed clip reads 30 % at the shipped floor), not "framing only".
                             _noPeakWarned = true;
-                            GameLog.Warn("Grading", $"'{s.SubjectId}' has no peak window (its Peak phase lasts {peak} s): " +
-                                                    "clips of it are graded on framing only, with no peak coverage. Said once.");
+                            GameLog.Warn("Grading", $"'{s.SubjectId}' has no usable peak window (its Peak phase must last a finite, " +
+                                                    "positive time): clips of it earn no peak coverage, so they score at most " +
+                                                    $"{_config.SafeClipPeakFloor.ToString("0.##", CultureInfo.InvariantCulture)} of their " +
+                                                    "framing (clipPeakFloor). Said once.");
                         }
 
 #if UNITY_EDITOR

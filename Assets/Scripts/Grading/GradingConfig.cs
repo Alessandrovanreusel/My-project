@@ -184,8 +184,9 @@ namespace CameraGame.Grading
                  "peak coverage). 0.30, decided by measuring recorded clips (Story 1.16; _bmad-output/verification/" +
                  "1-16-grade-a-clip/run2/decision.md): a well-framed clip that MISSED the peak reads 30 %, 2 stars, " +
                  "amber, never red (Alexv: 'too extreme to give 0'), while the same framing over the WHOLE peak reads " +
-                 "99 %, 5 stars. Floors of 0.20 and below drop the missed clip to 1 star; at or above the 4-star " +
-                 "boundary catching the peak adds at most one star (both warned at Awake).")]
+                 "99 %, 5 stars. Floors of 0.20 and below dropped the measured missed clip (framing 99 %) to 1 star. " +
+                 "Warned at Awake: a floor of 0 or 1, one below the 2-star boundary (even a perfectly framed missed " +
+                 "clip earns 1 star), and one at or above the 4-star boundary (catching the peak adds at most one star).")]
         [Range(0f, 1f)] public float clipPeakFloor = DefaultClipPeakFloor;
 
         [Tooltip("How much footage with NOBODY in shot costs a clip: framing is multiplied by 1 - absenceWeight x " +
@@ -380,8 +381,8 @@ namespace CameraGame.Grading
         /// Reports authoring mistakes that would silently break grading rather than loudly fail it — the
         /// project's standing "fail-soft must not mean invisible" rule, which Story 1.8's review added
         /// after a <c>cueRadius</c> of 0 produced total silence with a completely clean console.
-        /// Called once at Awake by the capture controller and the clip recorder; returns false when everything
-        /// is sane.
+        /// Called once at Awake by the capture controller, for its own config and for the clip recorder's (the
+        /// recorder does not call it, so one bad value is one warning); returns false when everything is sane.
         ///
         /// The 1.10 additions are the harder category to notice than a missing reference: a sweet spot that
         /// can never be reached does not crash, does not warn and does not look wrong — it just quietly
@@ -590,6 +591,11 @@ namespace CameraGame.Grading
                                $"({SafeStarScale.Four:0.###}) — a well-framed clip that MISSED the peak already earns " +
                                "four stars, so catching it can add at most one (Story 1.16 AC3 asks for a wide margin). " +
                                "Lower it.");
+            else if (floor < SafeStarScale.Two)
+                // The tooltip's other measured shape (code review 2026-11-15: it said "warned at Awake" and was not).
+                all = Add(all, $"clipPeakFloor ({floor:0.###}) is below the two-star boundary ({SafeStarScale.Two:0.###}) — " +
+                               "even a PERFECTLY framed clip that missed the peak earns one star, the rating a miss gets " +
+                               "(Story 1.16 decided 2 stars or more by measuring). Raise it.");
 
             problem = all;
             return all != null;

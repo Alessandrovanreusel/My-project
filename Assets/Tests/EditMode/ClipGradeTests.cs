@@ -504,7 +504,8 @@ namespace CameraGame.Tests
             {
                 string words = GradeText.ClipMissLong(m);
                 Assert.That(words, Does.Not.Contain("shot was"), m.ToString());
-                if (m != GradeMiss.Unevaluated && m != GradeMiss.NoCamera)
+                Assert.That(words, Does.Not.Contain("photograph"), m.ToString());   // code review 2026-11-15
+                if (m != GradeMiss.Unevaluated && m != GradeMiss.NoCamera && m != GradeMiss.DegenerateBounds)
                     Assert.AreEqual(GradeText.MissLong(m), words, m.ToString());
             }
         }
@@ -527,6 +528,24 @@ namespace CameraGame.Tests
             Assert.That(problem, Does.Contain(nameof(GradingConfig.clipAbsenceWeight)));
         }
 
+        /// <summary>The validator's report under the invariant culture. Its designer-facing numbers follow the CURRENT
+        /// culture ("1,7" under fr-FR or de-DE), so a test that pins a decimal must pin the culture too: the code
+        /// review of 2026-11-15 ran the unpinned test under fr-FR and de-DE and it failed on a correct build.</summary>
+        private static string InvariantProblem(GradingConfig c)
+        {
+            CultureInfo previous = Thread.CurrentThread.CurrentCulture;
+            try
+            {
+                Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
+                Assert.IsTrue(c.TryGetConfigProblem(out string problem));
+                return problem;
+            }
+            finally
+            {
+                Thread.CurrentThread.CurrentCulture = previous;
+            }
+        }
+
         [Test]
         public void ClipFields_OutOfRange_AreClampedAndReported()
         {
@@ -535,7 +554,7 @@ namespace CameraGame.Tests
             c.clipAbsenceWeight = -0.2f;
             Assert.AreEqual(1f, c.SafeClipPeakFloor);
             Assert.AreEqual(0f, c.SafeClipAbsenceWeight);
-            Assert.IsTrue(c.TryGetConfigProblem(out string problem));
+            string problem = InvariantProblem(c);
             Assert.That(problem, Does.Contain("clipPeakFloor is 1.7"));
             Assert.That(problem, Does.Contain("clipAbsenceWeight is -0.2"));
             Assert.That(problem, Does.Contain("peak coverage no longer changes"), "the clamped floor of 1 is reported too");
@@ -544,6 +563,7 @@ namespace CameraGame.Tests
         [TestCase(0f, "too extreme")]
         [TestCase(1f, "no longer changes")]
         [TestCase(0.75f, "four-star boundary")]
+        [TestCase(0.1f, "two-star boundary")]
         public void ClipPeakFloor_TheSilentShapes_AreReported(float floor, string words)
         {
             var c = NewConfig();
@@ -561,7 +581,7 @@ namespace CameraGame.Tests
             c.timingFullSeconds = 70f;
             c.timingZeroSeconds = 90f;
             c.starThreshold4 = 0.95f;
-            Assert.IsTrue(c.TryGetConfigProblem(out string problem));
+            string problem = InvariantProblem(c);
             foreach (string part in new[] { "minSubjectHeight is NaN", "timingFullSeconds is 70", "timingZeroSeconds is 90",
                                             "occluderMask is empty", "is not greater than", "not in descending order" })
                 Assert.That(problem, Does.Contain(part));
@@ -573,7 +593,7 @@ namespace CameraGame.Tests
             // The 2026-07-28 false alarm: idealMax 2.0 resolves to 1.0, whose curve is fine.
             var c = NewConfig();
             c.prominenceIdealMax = 2f;
-            Assert.IsTrue(c.TryGetConfigProblem(out string problem));
+            string problem = InvariantProblem(c);
             Assert.That(problem, Does.Contain("prominenceIdealMax is 2"));
             Assert.That(problem, Does.Not.Contain("is not above prominenceIdealMax"));
         }

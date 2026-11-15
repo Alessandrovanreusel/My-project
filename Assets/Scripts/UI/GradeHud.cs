@@ -69,8 +69,9 @@ namespace CameraGame.UI
         [Header("Wiring")]
 
         [Tooltip("The channel raised on every capture (Assets/Data/Channels/ShotCapturedChannel.asset). " +
-                 "The HUD's only wire to the capture path — if unassigned, the readout never appears and " +
-                 "capture, grading, flash, shutter and the gallery all keep working exactly as before.")]
+                 "A still's readout listens here (only the regression rigs take stills since Story 1.15; clips arrive " +
+                 "on the clip channel below) — if unassigned, no still's readout appears and capture, grading, flash, " +
+                 "shutter and the gallery all keep working exactly as before.")]
         [SerializeField] private ShotCapturedChannel shotCapturedChannel;
 
         [Tooltip("The channel raised once per finished clip (Assets/Data/Channels/ClipRecordedChannel.asset), " +

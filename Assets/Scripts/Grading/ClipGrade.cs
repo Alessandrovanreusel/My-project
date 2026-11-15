@@ -8,7 +8,7 @@ namespace CameraGame.Grading
     /// clip recorded him, and how much of his peak window the clip holds with him framed. Carried on
     /// <c>RecordedClip.Grade</c>, so it travels on <c>ClipRecordedChannel</c> with the clip itself.
     ///
-    /// Built by <see cref="ClipGradeBuilder.Finish(GradingConfig, double)"/> from the per-tick samples of the
+    /// Built by <see cref="ClipGradeBuilder.Finish(GradingConfig)"/> from the per-tick samples of the
     /// UNCHANGED per-frame grader (<see cref="ShotGrader.Grade(Camera, CameraGame.Events.ISubject, GradingConfig, out GradeDetail)"/>).
     /// Every rule of <see cref="ShotGrade"/> applies here too, for the same reasons:
     ///   - pure data, no Unity object reference, so Story 1.17's card and Epic 9 can map it into a JSON DTO;
@@ -23,8 +23,10 @@ namespace CameraGame.Grading
     /// ================================================================================================
     /// THE PEAK WINDOW, PARTITIONED
     /// ================================================================================================
-    /// For the lifecycle the clip is graded on, the peak window splits into four shares that add up to at most
-    /// 1 (less only when the subject was switched off mid-clip, a rig-only case):
+    /// For the lifecycle the clip is graded on, the peak window splits into four shares that add up to exactly 1
+    /// (the out-of-shot share is the remainder). The window is measured between the lifecycle's first and last
+    /// graded ticks, so a subject switched off mid-window while the clip rolls on (a rig-only case: nothing in
+    /// the game deactivates a live actor) has the rest of his window counted as "after the clip":
     ///   - <see cref="PeakBeforeClip01"/>: the part that had already happened when the clip started;
     ///   - <see cref="PeakAfterClip01"/>: the part still to come when the clip stopped;
     ///   - <see cref="PeakCoverage01"/>: the part the clip holds WITH HIM FRAMED (passing the gate);

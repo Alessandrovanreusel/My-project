@@ -668,6 +668,147 @@ result file.
   - [x] 10.6 Commit on `loop/1-16-grade-a-clip`, staging files by name with every new asset's `.meta`. Update the
         sprint status line, the Dev Agent Record, the File List and the Change Log.
 
+### Review Findings
+
+*Loop REVIEW phase, 2026-11-15 (Claude Opus 5.5). Diff `1601e7e..d6321e8`, shipped code only; the rigs were run and
+extended, not reviewed. Layers: Blind Hunter (diff only), Edge Case Hunter (diff + project), Acceptance Auditor (diff
++ this story + game-architecture.md), and a standards / zero-GC pass (`unity-perf:code-standards`,
+`unity-perf:csharp-zero-gc`, `unity-perf:unity-performance`). Reviewing also meant running: a stress phase **R** was
+added to the Grade Clip rig (`GradeClipShootRunner.PhaseR`, phases key `R`) for the paths the dev phase had proven
+only in EditMode, or not at all:*
+- *R1: twelve rapid clips, each 0-3 frames long, every stop followed by the next start in the same frame;*
+- *R2: the whole framed window at `timeScale` 2 and 0.5;*
+- *R4: three 450-ms stalls inside the peak, past `Time.maximumDeltaTime` (tick repeats up to 15);*
+- *R5: a full-length 120-s clip, framed throughout, stopped by the length limit across several lifecycles;*
+- *R6: three concurrent actors (`maxConcurrent` 3 > `maxActorsPerTick` 2), then the first listed actor deactivated;*
+- *on every clip, tick by tick, the lifecycles the grader graded against the lifecycles the footage holds live.*
+
+*Every finding marked **reproduced** was triggered before it was fixed and re-run after. Evidence:
+`_bmad-output/verification/1-16-grade-a-clip/review-a1/` (before) and `review-a1-fix/` (after), each with
+`report.txt`, `ticks.csv`, `clips.csv` and the frames.*
+
+**What the stress phase confirmed (no change needed).**
+- Coverage on the subject's clock holds live. The whole framed window reads **exactly 100 %** at timeScale 2 (62
+  ticks), at 0.5 (217-234 ticks), and through three 450-ms stalls (repeats up to 15).
+- Graded seconds equal footage seconds on every clip, the 120-s one included (120.000 s, 2683 ticks; 92 %, 5★,
+  in shot 69 % because nobody passes the gate during the respawn gaps and the occluded early Build).
+- Rapid reuse: 12 of 12 clips raised, each with graded = footage seconds, no exception.
+- Zero allocation with three live actors: 0 B over 9,000 `SampleTick` calls, against a positive control of 57,344 B.
+- Editor.log: zero exceptions across both runs. The only warnings are the two that R6 announces as provoked.
+
+**Fixed (patch):**
+
+- [x] [Review][Patch] **The grader and the footage counted the per-tick actor cap differently, so a clip could be
+  graded on an actor its footage does not hold** [ClipGrader.cs `SampleTick`]. `ReplayBackend.SampleActors` spends a
+  slot on every listed actor, live or not; the grader skipped inactive actors before counting. Found by the Edge
+  Case Hunter, and raised as a hypothesis by the other two layers.
+  - **Reproduced** in R6b (three actors, the first listed one deactivated): **26 of 78 ticks equal, and 52 samples
+    graded for a lifecycle the clip does not hold.**
+  - **Fix:** the grader counts every listed actor against the cap before the liveness filter, as the backend does.
+  - After (`review-a1-fix/`): R6b **72 of 72 ticks equal, 0 samples outside the footage**; R6a (all three live) 81 of
+    81; R1-R5 unchanged (100 % coverage, graded = footage seconds, R5 92 %, 5★ again).
+  - Unreachable with today's `maxConcurrent` 1, but it broke this story's own invariant ("the grade describes exactly
+    the frames the clip holds") the day Epic 2 adds actors.
+- [x] [Review][Patch] **The clip's grading config could go completely unvalidated** [PhotoModeController.cs `Awake`].
+  The recorder never validates (one bad value, one warning). The controller validated the clip config only when it
+  was a different asset AND its own config was set. Found by all three layers.
+  - **Reproduced** by running the controller's real `Awake` on a throwaway object with a NaN `clipPeakFloor`: **0
+    lines** with no config on the controller, and **0 lines** with the same config but grading not ready (no
+    EventManager). The same config through `TryGetConfigProblem` directly does report the problem.
+  - **Fix:** validate the clip config whenever the controller's own check did not already cover it.
+  - After: **1 line** in each shape. The control (same config, grading ready) still gives exactly one line, not two.
+  - The `TryGetConfigProblem` doc that said "and the clip recorder" is corrected.
+- [x] [Review][Patch] **Two validator tests failed on a correct build under fr-FR and de-DE** [ClipGradeTests.cs
+  `ClipFields_OutOfRange_AreClampedAndReported`, `Validator_*`]. They assert "clipPeakFloor is 1.7", but the message
+  follows the current culture.
+  - **Reproduced** by invoking the real test method under each culture: en-US PASS; fr-FR and de-DE FAIL ("1,7").
+    This machine's editor runs en-US, which is why 423/423 was green.
+  - **Fix:** the tests read the report under the invariant culture (`InvariantProblem`).
+  - After: PASS under fr-FR, de-DE and tr-TR. The culture of the designer-facing messages themselves is pre-existing
+    and deferred.
+- [x] [Review][Patch] **The no-peak warning misstated the score** [ClipGrader.cs]. It said clips of a subject with no
+  peak window "are graded on framing only". The blend gives them coverage 0, so they keep only the floor's share.
+  - **Measured** through the real builder and the shipped config: a perfectly framed 3-s clip of a no-peak subject
+    reads **30 %, 2★** ("peak n/a").
+  - **Fix:** the warning now says they "score at most 0.3 of their framing (clipPeakFloor)", in the invariant
+    culture. The score is unchanged: Task 1c specified coverage 0 for this case.
+- [x] [Review][Patch] **The `clipPeakFloor` tooltip said floors that drop a missed clip to 1★ are "warned at Awake";
+  nothing warned them** [GradingConfig.cs]. A floor of 0.1 passed with a clean console.
+  - **Fix:** the validator also reports a floor below the two-star boundary (even a perfectly framed missed clip then
+    earns one star, the rating a miss gets), beside its checks for 0, 1 and the four-star boundary. The tooltip now
+    lists exactly what is warned.
+  - Test case added: `ClipPeakFloor_TheSilentShapes_AreReported(0.1, "two-star boundary")`. The shipped 0.3 still
+    passes its own validator.
+- [x] [Review][Patch] **A clip's readout could say "there was nothing there to photograph"** [GradeText.cs
+  `ClipMissLong`, DegenerateBounds]. Task 5.2 asked for a clip's words wherever the photo's are wrong. **Fix:** "there
+  was nothing there to film". The test now also rejects "photograph" in every clip miss line.
+- [x] [Review][Patch] **Comments that said what the code does not do:**
+  - the `ClipGrade` header said the four peak shares add up to "at most 1, less when the subject was switched off".
+    The out-of-shot share is the remainder, so they add up to exactly 1, and a switched-off subject's remaining
+    window is counted as "after the clip";
+  - `Finish(blend)` "leaves the accumulators untouched", but it closes an open tick;
+  - two accumulators (`Held`, `LiveSeconds`) were summed on every sample and never read (removed);
+  - `ClipGrader.Config` said PhotoModeController checks it, but the controller reads the recorder's;
+  - `ClipRecorder`'s header gave the dependency direction without Grading;
+  - `GradeHud`'s shot-channel tooltip still called it "the HUD's only wire";
+  - a stale `cref` to `Finish(GradingConfig, double)`.
+
+**Decided and flagged (Alexv may veto):**
+
+- [x] [Review][Decision] **A glimpse earns two stars.** Measured through the real builder and the shipped config: a
+  10-s clip aimed away, with ONE framed tick (0.033 s, composition 95 %) and the peak missed, reads **21 %, 2★**. That
+  is the same number of stars as a well-framed clip that missed the peak (30 %, 2★). The presence term can take at
+  most `clipAbsenceWeight` (25 %) off the framing.
+  - Options: keep; raise the absence weight; or require a minimum in-shot share before a lifecycle counts.
+  - **Kept.** The blend was chosen against criteria committed before any clip existed (C4 judged ~20 s away, at
+    about a quarter in shot), and retuning it inside a review would be fitting the data.
+  - Added to human check 1 with these numbers. Reversal cost: one config value and a re-run of the sweep.
+
+**Deferred** (in `deferred-work.md`, "code review of story-1-16"):
+
+- [x] [Review][Defer] Overflow eviction can drop a live lifecycle, and ranks with a floor-0 blend [ClipGradeBuilder.cs
+  `Open`] — unreachable today: it needs 32 lifecycles in one clip, and R5 and R6 hold at most 5 and about 15.
+- [x] [Review][Defer] The HUD's missing-controller warning depends on `hideOnCameraLowered`, which a clip's guard
+  ignores [GradeHud.cs `Awake`] — diagnostics for a mis-wired scene; the fix changes the Grade HUD rig's provoked lines.
+- [x] [Review][Defer] Validator messages print in the current culture [GradingConfig, RecordingConfig, GradeHudConfig]
+  — a pre-existing pattern; the tests are now pinned.
+- [x] [Review][Defer] Stars and the printed percentage can disagree at a boundary (0.8996 prints "90 %" with 4★) —
+  pre-existing, inherited from the still's readout.
+- [x] [Review][Defer] The release-build bench measured only the size-gate path (the drunk was TooSmall) — disclosed by
+  the dev phase.
+- [x] [Review][Defer] No EditMode test drives `ClipGrader` with a live `EventActor` — the rig covers it live.
+
+**Dismissed** (each checked against the code, or disproven by running):
+
+- *A tick after a sampling gap credits the whole gap as coverage.* Unreachable: an inactive actor's clock does not
+  run (`EventActor.Update`), and after the cap fix a graded actor can never be pushed past the cap (`ActiveActors`
+  only appends; removals move actors toward the front).
+- *A non-finite or backwards actor clock double-counts coverage.* `TimeToPeak` only counts down, and is reset only in
+  `Begin`, which takes a new serial (a new candidate). NaN needs a NaN phase duration (existing deferred entry on
+  `EventDefinition.IsValid`).
+- *`Unevaluated` as both "no reason yet" and a bucket labels a clip NoSubject.* `ShotGrader` never returns an
+  uncounted `None` or `Unevaluated`; only the sweep or a test could feed it.
+- *`SubjectId` allocates through `name`.* An actor with no definition disables itself in `Awake` and is filtered out.
+  Measured: 0 B per tick with one and with three actors.
+- *The start tick at `Stop` grades a different camera state from the footage's.* `End()` takes that tick with
+  `Sample(0)` in the same call, so both see one camera state. Graded = footage seconds on every clip (R1, 12 of 12).
+- *A lifecycle's first tick reaches back one tick before the press, on the wrong clock at timeScale ≠ 1.* Disproven
+  for the whole window by measurement (R2: exactly 100 % at 2 and at 0.5). At a clip's edge it is the documented
+  one-tick convention.
+- *The MostTime miss rule ignores ticks with nobody live.* That is the rule decision 1e specified ("among ticks where
+  a subject was live; NoSubject when nobody was ever live").
+- *`ClipSample` drops `Subject01`.* No blend reads it; the rig logs the height and framed fractions per tick.
+- *One grading-failure line per session, not per fault.* Deliberate, and stated in the line; every failed clip still
+  reads NOT GRADED.
+- *The validator names a clamped floor twice, with two numbers.* Both are true: 1.7 is clamped to 1, then the second
+  line says what 1 does.
+- *The presence rule was chosen after the data.* Already recorded as a decision with S8 as its evidence, and flagged.
+- *The Info line carries the clip id.* An improvement: it ties the grade to its clip line.
+- *AC5 asks for one line when a subject despawns mid-clip; there is none.* Correct: despawning is normal play, and the
+  console must stay clean in normal play.
+- *`OnValidate` does not repair the clip fields.* Task 3.2's instruction.
+- *`Framing01`'s doc is wrong under `PeakTicksWhenCovered`.* A sweep-only shape; the shipped one matches the doc.
+
 ## Dev Notes
 
 ### What already exists — reuse it, do not rebuild it
@@ -1162,7 +1303,8 @@ Each rig's evidence folder was parked before its run and restored afterwards, th
 **Interim, plainly (decision 1h):** a clip now shows its grade, but it is stored nowhere except the recorder's single `LastClip` until Story 1.17's memory card. Stills still reach the gallery, but only the rigs take stills.
 
 **What is left for Alexv** is listed in the result file's human checks:
-1. The clip ladder (AC2/AC3).
+1. The clip ladder (AC2/AC3). Since the review, it also asks: is a single glimpse worth 2★? (A 10-s clip aimed away
+   with one framed tick reads 21 %, 2★, the same stars as a well-framed clip that missed the peak.)
 2. The readout's "why" at a glance (AC4, NFR10), including where the clip states meet 1.19's red.
 3. The new hide rule after lowering, and its giving way to the gallery.
 4. The visible peak against coverage.
@@ -1184,6 +1326,9 @@ Modified:
 - `Assets/Scripts/UI/GradeHud.cs` (the clip channel, `Format(ClipGrade)`, the hide rule), `Assets/Scripts/UI/GradeHudConfig.cs` (tooltip)
 - `Assets/Scripts/PhotoMode/PhotoModeController.cs` (comments, `GradeRanking.Beats`, the recorder-config check)
 - `Assets/Scripts/Recording/RecordClipShootRunner.cs`, `Assets/Scripts/UI/GradeHudShootRunner.cs` (rigs: wire the new references, fact 12)
+- Review phase (2026-11-15): `ClipGrader.cs`, `ClipGradeBuilder.cs`, `ClipGrade.cs`, `GradeText.cs`, `GradingConfig.cs`,
+  `PhotoModeController.cs`, `ClipRecorder.cs` (comment), `GradeHud.cs` (tooltip), `ClipGradeTests.cs`; the rig
+  `GradeClipShootRunner.cs` gained the stress phase `R`
 - `Assets/Tests/EditMode/RecordingTests.cs` (the `RecordedClip` construction site)
 - `Assets/Data/Grading/GradingConfig.asset` (`clipPeakFloor` 0.3, `clipAbsenceWeight` 0.25)
 - `Assets/Scenes/SampleScene.unity` (two references: `ClipRecorder.gradingConfig`, `GradeHud.clipRecordedChannel`)
@@ -1205,3 +1350,15 @@ Not in git (evidence): `_bmad-output/verification/1-16-grade-a-clip/`; `Builds/1
     presence from any subject), and replicated on a second recording;
   - verified by the Grade Clip rig in SampleScene, its sweep, a release-build bench, EditMode 423/423 (mutation-proven) and
     four regression rigs. Four human checks are queued.
+- 2026-11-15: Loop REVIEW phase (attempt 1). Stays **review**: the four human checks are still Alexv's. See Review
+  Findings.
+  - Three review layers and a standards and zero-GC pass ran. A stress phase **R** was added to the Grade Clip rig and
+    run before and after the fixes.
+  - Four reproduced defects were fixed and re-run:
+    - the actor-cap mismatch between the footage and the grader (52 samples were graded outside the footage; now 0);
+    - the unvalidated clip config (0 lines; now 1);
+    - the culture-fragile validator tests;
+    - the misstated no-peak warning.
+  - Also fixed: the silent low floor (now warned), "photograph" in a clip's miss line, and seven false comments.
+  - One design consequence is flagged for Alexv: a single framed tick earns 2★.
+  - 6 deferred, 15 dismissed. EditMode 424/424. The console is clean in normal play.

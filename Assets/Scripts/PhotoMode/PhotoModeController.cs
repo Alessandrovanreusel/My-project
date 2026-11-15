@@ -193,11 +193,18 @@ namespace CameraGame.PhotoMode
                 // said once here, and its own problems are reported here too, since this Awake is where a grading
                 // config is validated (the recorder does not, so one bad value is one warning, not two).
                 GradingConfig clipConfig = clipRecorder.GradingConfig;
-                if (clipConfig != null && gradingConfig != null && clipConfig != gradingConfig)
+                if (clipConfig != null)
                 {
-                    GameLog.Warn("Grading", $"Clips are graded against a different config ('{clipConfig.name}') than photos " +
-                                            $"('{gradingConfig.name}'): the same framing can score differently in a clip.");
-                    if (clipConfig.TryGetConfigProblem(out string clipProblem))
+                    if (gradingConfig != null && clipConfig != gradingConfig)
+                        GameLog.Warn("Grading", $"Clips are graded against a different config ('{clipConfig.name}') than photos " +
+                                                $"('{gradingConfig.name}'): the same framing can score differently in a clip.");
+
+                    // The block above validated the clip config only when it is this controller's own AND this
+                    // controller's grading is ready. In every other shape (a different asset, no config here, or no
+                    // EventManager / camera here) validate it now, or a bad clip value is clamped with a clean
+                    // console: code review 2026-11-15 reproduced 0 lines for a NaN floor in both shapes.
+                    bool alreadyValidated = clipConfig == gradingConfig && _gradingReady;
+                    if (!alreadyValidated && clipConfig.TryGetConfigProblem(out string clipProblem))
                         GameLog.Warn("Grading", $"GradingConfig '{clipConfig.name}' (clips): {clipProblem}");
                 }
             }

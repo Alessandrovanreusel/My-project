@@ -159,6 +159,7 @@ namespace CameraGame.Recording
             if (phases.Contains("H")) yield return PhaseH();
             if (phases.Contains("E")) yield return PhaseE();
             if (phases.Contains("F")) yield return PhaseF();
+            if (phases.Contains("R")) yield return PhaseR();
 
             Teardown();
             File.WriteAllText(Path.Combine(outputDir, "ticks.csv"), _ticks.ToString());
@@ -264,6 +265,8 @@ namespace CameraGame.Recording
             shotChannel.Raised -= OnShot;
             Application.logMessageReceived -= OnLog;
             if (_labelCanvas != null) Destroy(_labelCanvas);
+            if (_reviewTouchedScale) { Time.timeScale = _reviewPrevScale; _reviewTouchedScale = false; }
+            if (_reviewPrevConcurrent > 0) { SetConcurrent(_reviewPrevConcurrent); _reviewPrevConcurrent = 0; }
             Line($"Teardown: pad removed; input back to {InputSystem.settings.backgroundBehavior}; maxClipSeconds {F(recordingConfig.maxClipSeconds)}; timeScale {Time.timeScale}.");
         }
 
@@ -317,6 +320,8 @@ namespace CameraGame.Recording
                   .Append(s.Miss).Append(',').Append(R(s.Composition01)).Append(',').Append(R(s.ActorTime)).Append(',')
                   .Append(R(s.PeakDuration)).Append(',').Append(s.AtPeak ? 1 : 0).Append(',').Append(R(t.PeakOffset)).Append(',')
                   .Append(R(d.HeightFraction)).Append(',').Append(R(d.FramedFraction)).Append(',').Append(R(d.VisibleFraction)).AppendLine();
+
+            if (_reviewSets != null) _reviewSets.Add(new KeyValuePair<int, int>(t.Tick, s.Lifecycle));
 
             if (_controlArmed > 0)
             {
@@ -1105,6 +1110,212 @@ namespace CameraGame.Recording
             Line($"   log lines: {(_logLines.Count == 0 ? "none" : string.Join(" || ", _logLines))}");
 
             Debug.Log("[GradeClipShoot] PHASE F END — anything after this is not provoked (except F7/F8, announced).");
+        }
+
+        // =====================================================================================================
+        // Phase R — code review stress (Story 1.16 review, 2026-11-15). Paths the dev phases did not run live:
+        // rapid reuse, timeScale 2 and 0.5, frame hitches past Time.maximumDeltaTime, a full-length 120-s clip
+        // across several lifecycles, and several concurrent actors. Every clip also checks, tick by tick, that the
+        // lifecycles the grader graded are the lifecycles the footage holds live (the "grade describes exactly the
+        // frames the clip holds" invariant, at actor level). PROVOKED: with 3 concurrent actors and
+        // maxActorsPerTick 2, "[Recording] More event actors are live than a tick can hold" and "[Grading] More event
+        // actors are live than a clip grades per tick" (warnings, once each).
+        // =====================================================================================================
+
+        private List<KeyValuePair<int, int>> _reviewSets;
+        private bool _reviewTouchedScale;
+        private float _reviewPrevScale = 1f;
+        private int _reviewPrevConcurrent;
+
+        private int GetConcurrent() =>
+            (int)typeof(EventManager).GetField("maxConcurrent", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(manager);
+
+        private void SetConcurrent(int n) =>
+            typeof(EventManager).GetField("maxConcurrent", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(manager, n);
+
+        private int LiveCount()
+        {
+            int n = 0;
+            IReadOnlyList<EventActor> a = manager.ActiveActors;
+            for (int i = 0; i < a.Count; i++) if (a[i] != null && a[i].isActiveAndEnabled) n++;
+            return n;
+        }
+
+        /// <summary>Compares, tick by tick, the lifecycles the grader graded with the LIVE lifecycles the footage holds.</summary>
+        private void CompareSets(string tag)
+        {
+            var f = _lastRaised != null ? _lastRaised.Footage as ReplayFootage : null;
+            if (f == null || f.IsDisposed || _reviewSets == null) { Line($"   {tag}: actor-set check skipped (no footage)"); return; }
+            var graded = new Dictionary<int, HashSet<int>>();
+            foreach (var kv in _reviewSets)
+            {
+                if (!graded.TryGetValue(kv.Key, out var set)) graded[kv.Key] = set = new HashSet<int>();
+                set.Add(kv.Value);
+            }
+            int mismatched = 0, firstBad = -1, gradedNotInFootage = 0, footageNotGraded = 0;
+            string example = "";
+            for (int i = 0; i < f.TickCount; i++)
+            {
+                TickSample ts = f.TickAt(i);
+                var held = new HashSet<int>();
+                for (int k = 0; k < ts.ActorCount; k++)
+                {
+                    ActorSample a = f.ActorAt(ts.ActorStart + k);
+                    if (a.Live) held.Add(a.Lifecycle);
+                }
+                graded.TryGetValue(i, out var g);
+                g = g ?? new HashSet<int>();
+                if (!held.SetEquals(g))
+                {
+                    mismatched++;
+                    foreach (int x in g) if (!held.Contains(x)) gradedNotInFootage++;
+                    foreach (int x in held) if (!g.Contains(x)) footageNotGraded++;
+                    if (firstBad < 0)
+                    {
+                        firstBad = i;
+                        example = $"tick {i}: footage live {{{string.Join(",", held)}}} vs graded {{{string.Join(",", g)}}}";
+                    }
+                }
+            }
+            Line($"   {tag}: actor sets, footage vs grader: {f.TickCount - mismatched}/{f.TickCount} ticks equal; graded-but-not-in-footage samples " +
+                 $"{gradedNotInFootage}, in-footage-but-not-graded {footageNotGraded}{(firstBad >= 0 ? "; first: " + example : "")}");
+        }
+
+        private IEnumerator ReviewClip(string tag, float heightTarget, float startTau, float stopTau, float[] grabs = null, int stopLifecycles = 0)
+        {
+            _reviewSets = new List<KeyValuePair<int, int>>();
+            yield return Clip(tag, heightTarget, 0f, startTau, stopTau, grabs, stopLifecycles: stopLifecycles);
+            CompareSets(tag);
+            _reviewSets = null;
+        }
+
+        private IEnumerator PhaseR()
+        {
+            Line("\n== Phase R — code review stress (PROVOKED, R6 only: the two 'More event actors are live' warnings) ==");
+            float D = PeakLength;
+            const float Prominent = 0.55f;
+            photo.SetPhotoMode(true);
+            AimAt(Prominent);
+            yield return Wait(0.5f);
+
+            // R1: rapid reuse. Twelve clips, each 0-3 frames long, every stop followed by the next start in the SAME
+            // frame (ToggleRecording twice), through the real controller method.
+            Line("\n-- R1: twelve rapid clips, stop and start in one frame --");
+            int raises0 = _raises;
+            var rapid = new List<string>();
+            _tag = "R1_rapid";
+            photo.ToggleRecording();
+            for (int i = 0; i < 12; i++)
+            {
+                for (int k = 0; k < i % 4; k++) yield return null;
+                int before = _raises;
+                photo.ToggleRecording();                      // stop
+                RecordedClip c = _raises > before ? _lastRaised : null;
+                if (c != null)
+                {
+                    var f = c.Footage as ReplayFootage;
+                    rapid.Add($"#{i} frames {i % 4}: footage {F(c.DurationSeconds)} s / {(f != null ? f.TickCount : -1)} ticks, graded " +
+                              $"{F(c.Grade.GradedSeconds)} s / {recorder.Grader.TicksGraded} ticks, {(c.Grade.Counted ? "counted " + GradeText.Percent(c.Grade.Percent01) : c.Grade.MissReason.ToString())}");
+                }
+                else rapid.Add($"#{i}: NO CLIP RAISED");
+                if (i < 11) photo.ToggleRecording();          // start the next one in the same frame
+            }
+            Line($"   {_raises - raises0} clips raised:");
+            foreach (string r in rapid) Line("   " + r);
+            yield return Wait(0.5f);
+
+            // R2/R3: the whole window, framed, at timeScale 2 and 0.5. Coverage is measured on the subject's clock, so
+            // it must still read 100 % (decision 1c's claim, so far proven only in EditMode tests).
+            foreach (float ts in new[] { 2f, 0.5f })
+            {
+                _reviewPrevScale = Time.timeScale;
+                _reviewTouchedScale = true;
+                Time.timeScale = ts;
+                yield return ReviewClip($"R2_timescale_{F(ts, "0.0")}", Prominent, -2f, D + 1f, new[] { 0.4f });
+                Time.timeScale = _reviewPrevScale;
+                _reviewTouchedScale = false;
+            }
+
+            // R4: frame hitches inside the peak window, each longer than Time.maximumDeltaTime, so the subject's clock
+            // (clamped deltaTime) and the clip's clock (real time, repeats > 1) part company.
+            Line($"\n-- R4_hitches -- (Time.maximumDeltaTime {F(Time.maximumDeltaTime)} s; three 450-ms stalls at actor time 0.2, 0.7, 1.2)");
+            _reviewSets = new List<KeyValuePair<int, int>>();
+            AimAt(Prominent);
+            yield return WaitTau(-2f);
+            BeginClip("R4_hitches");
+            float[] stallAt = { 0.2f, 0.7f, 1.2f };
+            int stalls = 0, maxRepeats = 0;
+            float endBy = Time.realtimeSinceStartup + 30f;
+            while (Time.realtimeSinceStartup < endBy)
+            {
+                EventActor a = Live();
+                if (a == null) { yield return null; continue; }
+                float tau = Tau(a);
+                if (tau >= D + 1f) break;
+                if (stalls < stallAt.Length && tau >= stallAt[stalls]) { System.Threading.Thread.Sleep(450); stalls++; }
+                if (_haveTick && _lastTick.Repeats > maxRepeats) maxRepeats = _lastTick.Repeats;
+                yield return null;
+            }
+            yield return EndClip();
+            Line($"   stalls {stalls}, largest tick repeat count seen {maxRepeats}");
+            CompareSets("R4_hitches");
+            _reviewSets = null;
+
+            // R5: the full-length clip, 120 s at the length limit, framed throughout, across several lifecycles.
+            Line("\n-- R5_full_length -- (framed for the whole clip; stops by itself at maxClipSeconds)");
+            _reviewSets = new List<KeyValuePair<int, int>>();
+            AimAt(Prominent);
+            yield return WaitTau(-12f);
+            BeginClip("R5_full_length");
+            yield return EndClip(() => WaitStopped(recordingConfig.SafeMaxClipSeconds + 5f));
+            CompareSets("R5_full_length");
+            _reviewSets = null;
+
+            // R6: several concurrent actors (EventManager.maxConcurrent 3, restored), more than RecordingConfig's
+            // maxActorsPerTick. R6a films with all three live; R6b deactivates the FIRST actor in ActiveActors mid-clip
+            // (and puts it back), the shape in which the recorder's and the grader's per-tick actor caps count differently.
+            Line($"\n-- R6: several concurrent actors (maxConcurrent {GetConcurrent()} -> 3; maxActorsPerTick {recordingConfig.SafeMaxActorsPerTick}) --");
+            _reviewPrevConcurrent = GetConcurrent();
+            SetConcurrent(3);
+            float until = Time.realtimeSinceStartup + 40f;
+            while (LiveCount() < 3 && Time.realtimeSinceStartup < until) yield return null;
+            Line($"   live actors: {LiveCount()} (ActiveActors {manager.ActiveActors.Count})");
+            AimAt(Prominent);
+            yield return Wait(0.5f);
+
+            _reviewSets = new List<KeyValuePair<int, int>>();
+            BeginClip("R6a_three_live");
+            yield return Wait(3f);
+            yield return Grab("R6a_three_live_f0", "three concurrent actors, aimed at the first live one");
+            yield return EndClip();
+            CompareSets("R6a_three_live");
+
+            _reviewSets = new List<KeyValuePair<int, int>>();
+            BeginClip("R6b_first_deactivated");
+            yield return Wait(1f);
+            GameObject first = manager.ActiveActors.Count > 0 && manager.ActiveActors[0] != null ? manager.ActiveActors[0].gameObject : null;
+            if (first != null) first.SetActive(false);
+            Line($"   deactivated ActiveActors[0] '{(first != null ? first.name : "-")}'; live now {LiveCount()}");
+            yield return Wait(2f);
+            yield return EndClip();
+            CompareSets("R6b_first_deactivated");
+            _reviewSets = null;
+            if (first != null) first.SetActive(true);
+
+            // Allocation with three live actors (a SEPARATE grader; the recorder's clip is untouched).
+            var g = new ClipGrader(cam, manager, gradingConfig, RecordingConfig.MaxActorsPerTickOf(recordingConfig));
+            g.Begin();
+            for (int i = 0; i < 10; i++) g.SampleTick(1);
+            const int N = 9000;
+            long growth = HeapGrowth(() => { for (int i = 0; i < N; i++) g.SampleTick(1); });
+            var keep = new object[N];
+            long control = HeapGrowth(() => { for (int i = 0; i < N; i++) { g.SampleTick(1); keep[i] = new object(); } });
+            _sinkObject = keep[N - 1];
+            Line($"   heap growth over {N} SampleTick calls with {LiveCount()} live actors: {growth} B (control, a retained object per call: {control} B); its grade {g.Finish()}");
+
+            SetConcurrent(_reviewPrevConcurrent);
+            Line($"   maxConcurrent restored to {GetConcurrent()}");
+            _reviewPrevConcurrent = 0;
         }
     }
 }

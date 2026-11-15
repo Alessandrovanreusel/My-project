@@ -185,13 +185,11 @@ namespace CameraGame.Grading
             public int Order;
             public string SubjectId;
             public float PeakDuration;
-            public double LiveSeconds;
             public double GatedSeconds;
             public double CompositionSeconds;
             public double PeakGatedSeconds;
             public double PeakCompositionSeconds;
             public double Covered;
-            public double Held;
             public double SpanStart;
             public double SpanEnd;
             public float PrevActorTime;
@@ -309,9 +307,6 @@ namespace CameraGame.Grading
                 double hi = b < c.PeakDuration ? b : c.PeakDuration;
                 if (hi > lo) inWindow = hi - lo;
             }
-            c.Held += inWindow;
-            c.LiveSeconds += w;
-
             if (s.Counted)
             {
                 float comp = ClipGrade.Sane(s.Composition01);
@@ -364,8 +359,8 @@ namespace CameraGame.Grading
         public ClipGrade Finish(GradingConfig cfg) =>
             cfg == null ? ClipGrade.NotGraded((float)_gradedSeconds) : Finish(cfg.SafeClipBlend, cfg.SafeStarScale);
 
-        /// <summary>The clip's grade under <paramref name="blend"/>. Leaves the accumulators untouched, so the
-        /// measuring sweep can score one clip under several blends.</summary>
+        /// <summary>The clip's grade under <paramref name="blend"/>. Closes a tick left open, and otherwise leaves the
+        /// accumulators untouched, so the measuring sweep can score one clip under several blends.</summary>
         public ClipGrade Finish(in ClipBlend blend, StarScale scale)
         {
             if (_inTick) EndTick();

@@ -18,7 +18,7 @@ namespace CameraGame.Recording
     /// <c>PhotoModeController</c> calls <see cref="Begin"/> and <see cref="Stop"/>: Record toggles it, and every
     /// way the camera leaves the Viewfinder stops it with <see cref="StopReason.CameraLowered"/>. The recorder
     /// knows NOTHING about PhotoMode, UI, Gallery or the beeps: the direction is PhotoMode → Recording →
-    /// Events and Core (game-architecture.md §Clip Recording). The REC indicator READS
+    /// Grading, Events and Core (game-architecture.md §Clip Recording). The REC indicator READS
     /// <see cref="IsRecording"/> and <see cref="ElapsedSeconds"/>, and plays the beeps from
     /// <see cref="Started"/> and <see cref="Stopped"/>, so every stop beeps, including the ones the recorder
     /// decides itself (the length limit, a device change).

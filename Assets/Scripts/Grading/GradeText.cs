@@ -258,8 +258,9 @@ namespace CameraGame.Grading
         {
             switch (miss)
             {
-                case GradeMiss.Unevaluated: return "this clip was never graded";
-                case GradeMiss.NoCamera:    return "no camera — the clip could not be graded";
+                case GradeMiss.Unevaluated:      return "this clip was never graded";
+                case GradeMiss.NoCamera:         return "no camera — the clip could not be graded";
+                case GradeMiss.DegenerateBounds: return "there was nothing there to film";   // code review 2026-11-15
                 default:                    return MissLong(miss);
             }
         }
