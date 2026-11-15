@@ -134,12 +134,23 @@ it here.*
 > 13. **The rigs that record clips run in SampleScene**, so the card will now receive their clips. Record Clip Shoot
 >     (its phase B6 records ten clips) and Grade Clip Shoot (52 clips, including a full 120-s clip) would fill a 120-s
 >     card part-way through and see their later presses **refused**. A refused press looks exactly like a broken rig.
->     Grade HUD Shoot's Phase B checks that the HUD never reaches **gallery thumbnails**. Its Phase C and Grade Clip
->     Shoot's Phase H open the **gallery** mid-hold.
+>     **They also read `RecordedClip.Footage` after the raise:**
+>     - Record Clip Shoot casts `(ReplayFootage)_lastRaised.Footage` and calls `TickAt` (`RecordClipShootRunner.cs:723,
+>       :890, :1270`), and its B6 `alive` column checks that the footage is not disposed (`:599-601`);
+>     - Grade Clip Shoot's `CompareSets` (`GradeClipShootRunner.cs:1146-1149`), `:1221` and `WriteClip` (`:500`) read it
+>       too.
+>
+>     `EventChannel` calls listeners in subscription order (`Core/EventChannel.cs:42-46`), and the card subscribes at
+>     scene load, before any rig. So a card that disposes the scratch footage inside the raise hands every rig a disposed
+>     handle: `TickAt` throws, and `CompareSets` silently skips.
+>
+>     Grade HUD Shoot's Phase B checks that the HUD never reaches **gallery thumbnails**. Grade HUD Shoot's Phase C and
+>     Grade Clip Shoot's scenario **S9** (Phase S, `GradeClipShootRunner.cs:841-853`) open the **gallery** mid-hold.
 > 14. **What the deferred list hands this story** (`deferred-work.md`):
 >     - `:345`: card captions coloured with `GradeHudConfig.ColorFor` and printed with `GradeText.Percent`;
 >     - `:360`: the gallery half of `Capture()`'s fate;
->     - `:364` and `:373`: the card owns capacity, so no press allocates a block;
+>     - `:364` and `:373`: the card owns capacity, so no press allocates a block, and the pool is re-shaped when the
+>       audio device changes rather than on the next press;
 >     - `:374`: refuse to record when full, and catch an allocation failure in `Begin` with one line;
 >     - `:375`: size the card in bytes as well as seconds, because PCM scales with the device's rate and channels;
 >     - `:378`: when the card claims a clip, the recorder releases the clip it holds;
@@ -182,8 +193,9 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
    **CARD FULL** (FR27).
    - "Seconds of footage" is the footage's own timeline: Σ tick repeats ÷ 30 (ADR-4). The card can never hold more
      than its capacity, whatever the sequence of clips (a test pins it).
-   - The time remaining counts down live while recording and is right to the second against the clip's timecode
-     (the two always add up to the free time at the press).
+   - The time remaining counts down live while recording, and is right against the true free time
+     (capacity − stored − recorded so far) under the rounding rule Task 1g fixes. It never reads 0:00:00 while a tick
+     still fits.
    - Raising the camera with a full card shows CARD FULL. Pressing Record then records nothing: no clip, no REC and no
      start beep. CARD FULL is the feedback.
    - Whether it reads as a 2000s camcorder, legibly and at a glance, is perceptual, so it becomes a **human check**.
@@ -258,6 +270,19 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
             - `MemoryCardService` (Gallery) constructs it once, sized from the card's capacity, owns it, and drops it
               in `OnDestroy`.
             - It holds packed `TickSample[]`, `ActorSample[]`, `LayerSample[]` and `short[]` PCM arrays.
+            - **Its per-tick caps must match the recorder's.** The recorder sizes its scratch blocks from
+              `RecordingConfig.maxActorsPerTick` and `maxAnimatorLayers` (`ClipRecorder.cs:195-197`). Give the card the
+              **same** `RecordingConfig` asset (a serialized reference, read through `MaxActorsPerTickOf` and
+              `MaxAnimatorLayersOf`). Size the PCM from `AudioSettings.outputSampleRate` × `ReplayBackend.ListenerChannels()`
+              at `Awake`.
+            - `Keep()` checks that the incoming footage fits, then copies. If the two configs disagree, "bounded by
+              construction" is false, and Task 2.4's fallback would quietly keep a 23 MB block per clip. So a mismatch
+              is one warning, not a silent fallback.
+            - Clear vacated `ActorSample` slots after a compaction, as `ReplayStorage.Release` does, so no stale
+              `EventDefinition` reference stays alive.
+            - **Rigs need to resize the card.** Task 11's small capacities are `CreateInstance` configs. Give the card a
+              way to take a config before its `Awake`, or an internal re-initialise that empties it and reallocates. Do
+              not rely on swapping the asset at runtime.
           - **The claim.** Inside the channel raise the card claims the clip and asks the store to keep it. The store
             copies **only the recorded part** (ticks, actors, layers and the trimmed PCM) into its free tail and hands
             back a new footage handle over the store. The card then disposes the clip's scratch footage at once, so
@@ -281,6 +306,21 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
             Either let `ReplayFootage` read through (arrays, base offsets) or extract an interface. A test pins that a
             stored copy reads back identical to its scratch footage, tick by tick and sample by sample, and again
             after a compaction.
+          - **⚠️ After the claim, `RecordedClip.Footage` is disposed for everyone else.** It is get-only, and the card
+            runs first in the raise (fact 13). Make the clip's footage reachable afterwards **through the card**: a
+            lookup by clip id that returns the stored `CapturedClip`. Say so in `RecordedClip`'s and
+            `ClipRecordedChannel`'s docs ("a claimer may hand the footage to its own storage; read the claimer's copy").
+            Re-point every rig read listed in fact 13 (Task 12.1).
+            - Listeners registered after the card see a disposed handle by design, and the HUD reads only the grade.
+            - *Alternative:* keep the scratch block until the end of the frame. Rejected: the rigs hold `_lastRaised`
+              across frames, so it only moves the failure.
+          - **A device change must not allocate on a press either** (`deferred-work.md:373`, measured at 2.4–5.9 ms per
+            block). Today the first press after a rate or channel change calls `Prepare` from
+            `ReplayBackend.Begin` (`:139-142`), which orphans the pool and allocates two new blocks on the press frame.
+            - Re-shape the pool when the change is seen instead. The callback can arrive off the main thread
+              (`ClipRecorder.cs:355-359`), and `LateUpdate` returns early when not recording (`:332`), so handle the
+              flag before that return.
+            - Expect `StoragesCreated` to grow by two at the change, never on a press frame. Phase A records both.
         - *Alternative B: a chunk pool shared by recorder and card* (1.15 decision 1e noted it "suits 1.17 better").
           There is no copy and no compaction. But the tap would write across chunk boundaries on the audio thread,
           and `ReadPcm` would have to span chunks. Choose it only if A's measured stop-frame copy is a hitch a player
@@ -310,7 +350,12 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
             quite fill, and remaining would read 0:00:01 when no press can record that second.
           - Add a slot-based limit to the backend: `Begin(double startDspTime, long maxBoundaries)`, or a parameter
             beside the seconds one. `ReplayBackend` is its only implementer.
-          - A test over every free value from 1 to the capacity must show the clip's limit equals `free` exactly.
+          - A test over every free value from 1 to the capacity must show the clip's limit equals `free` exactly,
+            **through the real `Begin` path**. A test written in doubles passes while the float path fails. If you keep
+            the float, `(slots + 0.5) / 30f` rounds back exactly up to 9,000 slots, but slots are clearer.
+          - **The tie.** The shipped capacity (120 s) equals `maxClipSeconds` (120 s), so on an empty card a full-length
+            clip reaches both limits on the same tick. The rule: the stop is `CardFull` whenever the card's free slots
+            were ≤ the config's slots at `Begin`, because the card is then genuinely full. Pin that tie in a test.
         - **The card is full when it cannot hold one more tick.** That happens when any of these is true:
           - free slots < 1;
           - the store's free PCM cannot hold one tick at the **current** output format (rate × channels;
@@ -378,6 +423,11 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
             the press frame, gives a one-tick clip that `End()` completed (`ReplayBackend.cs:320-324`). It never had a
             rendered frame. Either arm one copy for the next render or store it with a plate. Decide, and put such a
             clip in Phase H.
+          - **The final tick.** A clip stopped by the card filling or the length limit stops in the same `LateUpdate`
+            that sampled its last tick (`ClipRecorder.cs:344-351`). It is announced, and claimed, **before** that frame
+            renders. A copy armed for that tick has not happened yet when the card takes the thumbnail. Either keep the
+            pass writing into the **same RT object** the claimer now owns, so the copy still lands later that frame, or
+            exclude the final tick from "best". Decide and test.
   - [ ] **1e. Adopt URP references in `CameraGame.asmdef`?** (Only if 1d needs the pass.)
         - **Recommended: add `Unity.RenderPipelines.Universal.Runtime` and `Unity.RenderPipelines.Core.Runtime`.**
           The project is URP-only (NFR4), so this couples it to nothing it does not already depend on. Invoke
@@ -385,7 +435,9 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
           - check that `RecordingSpikeFenceTests` and `RecordingBenchFenceTests` still pass;
           - confirm with `CompilationPipeline.GetAssemblies` that the plain player assembly still excludes the spike
             (lessons 34 and 35);
-          - update lesson 80's fact in the architecture ("CameraGame references only Unity.InputSystem").
+          - record the new references under §Architectural Boundaries ("One assembly", `game-architecture.md:952-953`),
+            and return a lesson that supersedes lesson 80 ("CameraGame references only Unity.InputSystem"), which
+            lives only in `loop/lessons.md`.
         - *Alternative:* a separate `CameraGame.Rendering` asmdef. Rejected: `CameraGame` would still have to reference
           it, so it buys nothing.
   - [ ] **1f. How the card's budget reaches the recorder, and how a full card stops it.** (AC2. Facts 5 and 6.)
@@ -416,28 +468,46 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
         - **For the viewfinder,** the recorder exposes read-only `HasBudget`, `RemainingSeconds` (free minus elapsed
           while recording, free otherwise) and `IsCardFull`. `UI` reads the recorder, as it already does for the
           timecode (`UI → Recording` read-only, `:943-947`). **There is no `UI → Gallery` dependency.**
+        - **A refusal the HUD can hear.** `Begin` returns false silently, and `ToggleRecording` ignores the result
+          (`PhotoModeController.cs:413`). For CARD FULL to re-flash on a refused press, the recorder raises a C# event
+          (for example `Refused`, beside `Started` and `Stopped`, isolated the same way) or bumps a counter the HUD
+          reads. Name the mechanism; the HUD still only reads and listens.
         - **Release the held clip.** After the raise, when someone else claimed the clip, the recorder disposes any
           `LastClip` it still holds and sets it to null (`deferred-work.md:378`). With the card, the recorder holds
           nothing.
   - [ ] **1g. What the viewfinder shows.** (AC2. Fact 11.)
-        - **Recommended: a third line in `RecordingHud`'s top-right cluster.** This is the camcorder's own corner, and
-          the readout must be on screen exactly when STBY is.
+        - **Recommended: a line under `RecordingHud`'s top-right REC/STBY corner.** This is the camcorder's own corner,
+          and the readout must be on screen whenever the camera is raised, in STBY and while recording.
           - **Wording.** For example `REM 0:01:23`. Choose the wording by looking at it. Use `ClipTimecode`-style
             formatting in the invariant culture.
           - **When it shows.** Whenever the camera is raised and the recorder has a budget.
           - **While recording.** It counts down live, and its string is rebuilt only when the shown second changes
             (no allocation per frame; prove it).
-          - **Rounding.** Remaining rounds **up**, so it never reads 0:00:00 while a tick still fits, and CARD FULL
-            appears exactly when `Begin` would refuse. Pin it with tests: the timecode floors, remaining ceils, and
-            the two add up to the free time at the press.
+          - **Rounding: choose explicitly, because two natural wishes conflict.** The timecode floors (a camcorder
+            counter). Remaining must never read 0:00:00 while a tick still fits. But "timecode + remaining always equals
+            the free time at the press" **cannot** hold with a floored timecode and a ceiled remaining. Example: 31
+            free slots and 1 recorded gives 0 + ceil(30/30) = 1, while ceil(31/30) = 2. Brute force over free values
+            1–199 and recorded values 0 to free finds 8,998 of 20,099 pairs failing (computed 2026-11-15). The two
+            candidates:
+            - **(a) Recommended: honest remaining.** Show `ceil((free − recorded) / 30)` whole seconds. It is never more
+              than one second above the truth, and CARD FULL appears exactly when `Begin` would refuse. The sum can
+              differ from the free time at the press by one second, so say so in the doc.
+            - **(b) Constant sum.** Show `ceil(free / 30) − floor(recorded / 30)`. The sum is constant, but it can
+              overstate the time left by up to about 2 s.
+            - Pin the chosen rule, its never-0:00:00 property and its CARD FULL instant with tests.
           - **CARD FULL.** It replaces STBY and the remaining line whenever the card is full. When the card fills
             mid-clip it appears on the stop event itself (not on the next `Update`), and REC hides with the usual stop
             beep. A refused press on a full card re-flashes CARD FULL, so the press is visibly heard.
           - **Colour.** Not the grade readout's "earned nothing" red (Story 1.19 gave red that meaning). Choose
             white or amber, steady or blinking, by looking, then measure it with Story 1.19's method (text against
             outline ≥ 4.5:1 at 1080p).
-          - **Space.** Grow the cluster's `sizeDelta` so the third line does not overflow, and keep it clear of the
-            REC dot.
+          - **Space, and its own group.** ⚠️ STBY is **not** inside `RecCluster`. `Build()` makes a separate `Standby`
+            rect with its own CanvasGroup (`RecordingHud.cs:198-203`), and `_recGroup` is hidden whenever the recorder
+            is not recording (`:133`). So a line added to `RecCluster` would vanish in STBY.
+            - Give the remaining line (and CARD FULL) their **own** rect and group.
+            - Place them so they read right under both `● REC` + timecode and `STBY`: below the taller REC cluster,
+              for example, at a fixed offset.
+            - Keep them clear of the REC dot.
         - *Alternative:* put it on the `PhotoViewfinder` canvas. Rejected for 1.15's reason: it is Constant Pixel Size
           and fades in over 0.15 s.
         - Without a budget (the isolated rigs) there is no remaining line and no CARD FULL.
@@ -458,8 +528,8 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
           - **Retire the Gallery Shoot rig** (its subject no longer exists). This story's Memory Card rig replaces it.
           - **Re-point the rig phases that use the gallery:**
             - Grade HUD Shoot Phase B, which checks that the HUD never reaches thumbnails, now checks clip thumbnails;
-            - Grade HUD Shoot Phase C and Grade Clip Shoot Phase H, which open the gallery mid-hold, now open the card
-              view.
+            - Grade HUD Shoot Phase C and Grade Clip Shoot scenario S9 (Phase S), which open the gallery mid-hold, now
+              open the card view.
             - If a phase cannot be re-pointed, retire it with its reason. Rigs are tools, not review subjects (project
               memory), but they must compile and still mean something.
         - *Alternative B: keep `GalleryService` storing stills beside a new card.* Rejected. Only rigs take stills, so
@@ -467,6 +537,24 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
           (`deferred-work.md:144`).
         - *Alternative C: evolve the classes in place under their old names.* It is the least churn, but the names
           would lie. Choose it only if the rename's reference count proves unreasonable, and record it.
+        - **The caption colour crosses a boundary.** `GradeHudConfig` (and so `ColorFor`) is in `CameraGame.UI`
+          (`UI/GradeHudConfig.cs:4`), and the architecture sanctions no `Gallery → UI` direction (`:923-925`).
+          - **Recommended:** let the view hold a read-only reference to the shipped `GradeHudConfig` asset (the
+            palette) and record a read-only `Gallery → UI` direction in Task 13.
+          - *Alternatives:* lift the colour rule (and its palette) into `Grading`, which is more churn; or move the
+            view itself into `UI`. `deferred-work.md:345` allows "or the same rule".
+        - **Overlay or Screen Space – Camera for the view?** 1.11 chose Screen Space – Camera only so that `cam.Render()`
+          could photograph it. The Overlay capture technique has since been proven (1.12, 1.19: 100.00 % / 0.00 %
+          controls). A Screen Space – Camera canvas composites **before** post-processing, which brings two
+          consequences:
+          - the captions are tonemapped (Task 7.4);
+          - **probably the thumbnails too.** An already post-processed sRGB RT shown through `RawImage` would be
+            tonemapped and graded a second time. This is a hypothesis, not reproduced; 1.11's thumbnails had the same
+            exposure.
+          - Measure it: compare the thumbnail's pixels as the view shows them with the RT's own pixels. If they
+            differ, switching the view to **Screen Space – Overlay** removes both effects and the near-plane trap.
+            It then needs the Overlay capture in the rig and an opaque backdrop that still hides the world. Decide by
+            that measurement, and record it.
         - With one screen owner (the card view) the suppression bool still has one caller. Story 1.18's playback will
           be the second, so say so in `deferred-work.md`. If you keep two owners, make it a refcount or an owner token
           **first** (`game-architecture.md:933-937`).
@@ -560,14 +648,16 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
   - [ ] 3.1 `MemoryCardConfig` and its asset (1j). Re-home or retire `GalleryConfig` and its tests (1h).
   - [ ] 3.2 `CapturedClip` with the written disk mapping (1k).
   - [ ] 3.3 `MemoryCardService` (renamed from `GalleryService`, 1h):
-        - **Wiring:** `[SerializeField]` `clipRecordedChannel` and `config`.
+        - **Wiring:** `[SerializeField]` `clipRecordedChannel`, `config`, and the **same** `RecordingConfig` asset the
+          recorder uses (1a: the store's per-tick caps).
         - **Readiness:** independent fail-soft flags, as `GalleryService` has.
         - **Subscription:** subscribe in `OnEnable` and unsubscribe in `OnDisable`.
         - **In the raise:** claim the clip, store its footage (Task 2), take its thumbnail (Task 4), and append a
           `CapturedClip`.
         - **Its surface:**
           - implements `IClipBudget` (1f);
-          - `Clips` as an `IReadOnlyList<CapturedClip>`, oldest first;
+          - `Clips` as an `IReadOnlyList<CapturedClip>`, oldest first, and a lookup by clip id (the way a rig, and
+            later Story 1.18, reaches a clip's footage once the card has stored it, 1a);
           - `Delete(string id)` (or by index), which disposes the footage, destroys the thumbnail and frees the slots
             on the same frame;
           - a rig-only `ClearAll()`;
@@ -599,8 +689,8 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
 - [ ] **Task 6 — The viewfinder readout** (AC2; Task 1g)
   - [ ] 6.1 `RecordingHud`: the remaining line, CARD FULL, the refused-press flash, and the cluster resized. It reads
         only the recorder (and `PhotoModeController` for raised), as it does today.
-  - [ ] 6.2 Its strings come from pure, invariant-culture formatters with EditMode tests (ceil for remaining, floor for
-        the timecode, the round trip from 1g).
+  - [ ] 6.2 Its strings come from pure, invariant-culture formatters with EditMode tests: the rounding rule 1g chose,
+        floor for the timecode, never 0:00:00 while a tick fits, and CARD FULL exactly when `Begin` refuses.
   - [ ] 6.3 Prove that its per-frame path allocates 0 B (1.16 Phase G's instrument).
 
 - [ ] **Task 7 — The memory-card view** (AC3; Task 1c, 1h, 1i)
@@ -662,7 +752,8 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
         pass its own validator.
   - [ ] 10.5 **The seam:** every `EventDefinition` has a non-empty, unique `Id`; `CapturedClip` holds no stray Unity
         objects; the content-version constant exists (1k).
-  - [ ] 10.6 **Formatters:** remaining ceil, timecode floor, the sum rule, and the invariant culture.
+  - [ ] 10.6 **Formatters:** the remaining rule from 1g, timecode floor, never 0:00:00 while a tick fits, and the
+        invariant culture.
   - [ ] 10.7 **Prove the tests can fail by mutation.** Break one line per guarded rule, watch the test go red, then
         restore it.
 
@@ -692,10 +783,11 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
   - [ ] **Phase A, store.** One clip per stop route, through real input where one exists: press, lower, card full,
         length limit, device change (`AudioSettings.Reset` + `Thread.Sleep(200)`, lesson 178; never toggle
         `m_DisableAudio`, lesson 182), and disabled. Each clip is on the card with its grade, subject, start time,
-        duration and stop reason. The recorder holds nothing, and `StoragesCreated` stays 2.
+        duration and stop reason. The recorder holds nothing. `StoragesCreated` stays 2, except +2 at a format-changing
+        device change, and **never on a press frame** (1a).
   - [ ] **Phase B, capacity and the viewfinder.** Grab the viewfinder:
         - with an empty card, in STBY, showing remaining;
-        - mid-recording, with the timecode plus remaining equal to the free time at the press, to the second;
+        - mid-recording, with remaining checked against the true free time under the rule 1g chose;
         - on the frame the card fills (the stop, the beep, CARD FULL);
         - after raising with a full card;
         - after pressing Record on a full card (refused: the clip count, the beep and REC all checked);
@@ -733,11 +825,18 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
         act (lesson 204).
 
 - [ ] **Task 12 — The other rigs meet the card** (AC6; fact 13, Task 1h)
-  - [ ] 12.1 Record Clip Shoot and Grade Clip Shoot: empty the card between scenarios with the rig-only `ClearAll()`
-        (or detach the budget for their run and restore it), so a filled card never refuses one of their presses. Update
-        Record Clip Shoot's claim and `LastClip` expectations (B7) and its storage counts (E) to the card's ownership.
+  - [ ] 12.1 Record Clip Shoot and Grade Clip Shoot, the two rigs that record in SampleScene:
+        - **Empty the card between scenarios** with the rig-only `ClearAll()`, so a filled card never refuses one of
+          their presses. Detaching the budget alone is not enough, because the card still claims and stores.
+        - **Re-point every footage read** from `_lastRaised.Footage` to the card's stored copy, looked up by clip id
+          (fact 13, 1a): Record Clip Shoot `:723, :890, :1270` and B6's `alive` column (`:599-601`); Grade Clip Shoot
+          `CompareSets` (`:1146-1149`), `:1221` and `WriteClip` (`:500`).
+        - **Prove the re-point worked:** no "skipped (no footage)" line, and the tick counts equal the graded ticks.
+        - **Update Record Clip Shoot's expectations** to the card's ownership: the claim and `LastClip` (B7), and the
+          storage counts (E).
   - [ ] 12.2 Re-point Grade HUD Shoot Phase B (clip thumbnails instead of gallery thumbnails), Grade HUD Shoot
-        Phase C and Grade Clip Shoot Phase H (the card view mid-hold). Retire the Gallery Shoot rig (1h). Record each change and its reason.
+        Phase C and Grade Clip Shoot scenario S9 (the card view mid-hold). Retire the Gallery Shoot rig (1h). Record
+        each change and its reason.
   - [ ] 12.3 Record Clip Shoot writes into 1.15's `rig/` folder: park and restore it with
         `_bmad-output/verification/1-15-record-a-clip/close-a1/swap_rig_dir.py` (lessons 181 and 189). Copy any story's
         evidence folder aside before a re-run, and `diff -r` it back (lesson 103).
@@ -801,8 +900,10 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
   thumbnails by the GPU copy (`:503-518, :576-578`).
 - **Dependency direction** (`:921-954`):
   - `Recording` never references `Gallery`, `UI` or `PhotoMode`; the budget is a `Recording` interface (1f);
-  - `Gallery → Recording` (channel, claim, store, `IClipBudget`), `Gallery → PhotoMode` (`SetRaiseSuppressed`) and
-    `Gallery → Player` (`SetInputSuppressed`);
+  - `Gallery → Recording` (channel, claim, store, `IClipBudget`, the shared `RecordingConfig`);
+  - `Gallery → PhotoMode` (`SetRaiseSuppressed`) and `Gallery → Player` (`SetInputSuppressed`);
+  - a new read-only `Gallery → UI` for the caption palette (`GradeHudConfig`), unless 1h lifts the rule into
+    `Grading`;
   - `UI → Recording` is read-only, which covers the remaining time and CARD FULL. Add the card's directions to
     §Architectural Boundaries (Task 13).
 - **AR4:** channels for cross-system traffic. Subscribe in `OnEnable` and unsubscribe in `OnDisable`.
@@ -823,7 +924,9 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
 1. **Memory that looks bounded and is not.** `Bytes` is the recorded size, not what is held (fact 2). Prove the bound
    with the store's own accounting **and** an instrument that a retained 23 MB array visibly moves.
 2. **The card's own rigs and the old rigs fill the card** (fact 13). A refused press looks like a broken rig. Empty
-   the card between scenarios, and prove each rig still records what it thinks it records.
+   the card between scenarios, and prove each rig still records what it thinks it records. Those rigs also read
+   `RecordedClip.Footage` **after** the card has stored and disposed it. `TickAt` then throws, or a check prints
+   "skipped" and looks like a pass. Re-point them to the card's copy (Task 12.1).
 3. **Compaction corrupting a later clip.** Moving segments must never change what a clip reads. Phase D compares
    before and after, sample by sample.
 4. **Float seconds drifting the card.** The card counts integer slots (1b).
@@ -964,9 +1067,9 @@ asks ("restated in acceptance criteria where they bite"). They add requirements 
 | Claim | Evidence | How judged |
 |---|---|---|
 | Every clip lands on the card with all its fields (AC1) | Phase A: one clip per stop route, with the card's record beside the recorder's log line | Field by field |
-| The card owns the footage, and no press allocates (AC1, AC5) | `StoragesCreated` stays 2 and `LastClip` is null after each claim; GC Allocated on press frames | Counts; bytes with controls |
+| The card owns the footage, and no press allocates (AC1, AC5) | `StoragesCreated` stays 2 (+2 only at a device change, never on a press) and `LastClip` is null after each claim; GC Allocated on press frames | Counts; bytes with controls |
 | Capacity in seconds, never exceeded (AC2) | Tests 10.1; Phase B's full card at the shipped 120 s | Σ slots ≤ 3,600 after every step |
-| The viewfinder shows the time left and CARD FULL (AC2) | Phase B captures at each state; the timecode + remaining sum; legibility numbers | Look; numbers. **Human check** for the camcorder read |
+| The viewfinder shows the time left and CARD FULL (AC2) | Phase B captures at each state; remaining against the true free time; legibility numbers | Look; numbers. **Human check** for the camcorder read |
 | A full card refuses Record cleanly (AC2, AC5) | Phase B: refused press, with clip count, beep count, REC and log lines | Counts, and an empty log |
 | Every clip is reachable and deletable (AC3) | Phase C grabs with more clips than fit; the selection window; the two-press delete | Look. **Human check** for the feel |
 | Delete frees seconds and memory at once, with no leak (AC3) | Phase D: 60+ cycles of store bytes, slots, texture and RT counts, and the proven instrument | Flat series with a working control |
@@ -1057,3 +1160,17 @@ This create phase opens none: nothing is built yet.
 ## Change Log
 
 - 2026-11-15: Story context created by the loop CREATE phase (status ready-for-dev).
+- 2026-11-15: An independent pass checked about 60 of the file's claims against the code. Its 13 findings are applied:
+  - the slot limit through float (re-measured);
+  - rigs reading footage the card has disposed;
+  - the rounding rules that could not all hold (re-computed);
+  - the pool re-shape on a device change;
+  - `Gallery → UI` for the caption palette;
+  - STBY outside `RecCluster`;
+  - the store's per-tick caps;
+  - S9, not Phase H;
+  - a refusal signal for the HUD;
+  - resizing the card for rigs;
+  - the final tick's thumbnail;
+  - lesson 80's wording;
+  - the double-tonemap hypothesis.
