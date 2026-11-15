@@ -62,6 +62,25 @@ namespace CameraGame.EditorTools
         // keys and return early when theirs is empty, so the three restores cannot fight over the scene.
         private const string ReturnSceneKey = "GradeHudShoot.ReturnScene";
 
+        /// <summary>
+        /// ONE-SHOT override of the output folder (Story 1.19). Set it, then run a menu item; <see cref="Run"/>
+        /// reads it and ERASES it straight away, so it can never leak into a later run.
+        ///
+        /// ⚠️ WHY IT EXISTS: this rig writes into <c>hud/</c> by default, and <c>hud/</c> is the evidence Story
+        /// 1.12 closed on. "Rigs that write into a story's evidence folders overwrite the dev's evidence"
+        /// (loop lessons, 2-2). A later story points its runs at its own folder with this key instead.
+        /// It must still be under the verification root — <see cref="ResetDir"/> refuses anything else.
+        /// </summary>
+        public const string OutputDirKey = "GradeHudShoot.OutputDir";
+
+        /// <summary>ONE-SHOT: when true, the legibility run also sweeps candidate reds and outline thicknesses
+        /// (Story 1.19, decision 1d). Read and erased by <see cref="Run"/>, like <see cref="OutputDirKey"/>.</summary>
+        public const string CandidatesKey = "GradeHudShoot.Candidates";
+
+        /// <summary>The Game View size index the rig replaced, so it can be put back when play mode ends.
+        /// Absent means the rig did not change it.</summary>
+        private const string PrevGameViewKey = "GradeHudShoot.PrevGameViewSize";
+
         private const string ScenePath = "Assets/Scenes/SampleScene.unity";
         private const string HudCfgPath = "Assets/Data/UI/GradeHudConfig.asset";
         private const string ChannelPath = "Assets/Data/Channels/ShotCapturedChannel.asset";
@@ -91,6 +110,7 @@ namespace CameraGame.EditorTools
             if (string.IsNullOrEmpty(previous)) return;
 
             SessionState.EraseString(ReturnSceneKey);
+            RestoreGameViewSize();
             if (File.Exists(previous))
             {
                 EditorSceneManager.OpenScene(previous, OpenSceneMode.Single);
@@ -112,8 +132,26 @@ namespace CameraGame.EditorTools
         [MenuItem("Tools/HUD/Grade HUD Shoot (Play)")]
         public static void Build() => Run(OutputDir, recordOnly: false);
 
-        private static void Run(string outputDir, bool recordOnly)
+        /// <summary>
+        /// Story 1.19, AC4: photographs the readout at the SHIPPING resolution on frozen frames, in four
+        /// variants per frame (as shipped / glyphs painted marker magenta with the outline marker green /
+        /// labels off / outline off), so tools/verification/measure_hud_legibility.py can measure text
+        /// against outline and text against panel off the pixels actually rendered. Every Phase A state
+        /// with the real shutter, then the brightest backgrounds a survey finds, with every readout colour
+        /// raised through the real channel onto each.
+        /// </summary>
+        [MenuItem("Tools/HUD/Grade HUD — Legibility at 1080p (Play)")]
+        public static void Legibility() => Run(OutputDir + "-legibility", recordOnly: false, legibility: true);
+
+        private static void Run(string outputDir, bool recordOnly, bool legibility = false)
         {
+            // One-shot options: read, then erased whatever happens next, so a refused run cannot arm the
+            // next one (loop lessons: SessionState options survive domain reloads and earlier sessions).
+            string overrideDir = SessionState.GetString(OutputDirKey, string.Empty);
+            bool candidates = SessionState.GetBool(CandidatesKey, false);
+            SessionState.EraseString(OutputDirKey);
+            SessionState.EraseBool(CandidatesKey);
+            if (!string.IsNullOrEmpty(overrideDir)) outputDir = overrideDir.Replace('\\', '/');
             if (EditorApplication.isPlaying)
             {
                 Debug.LogWarning("[GradeHudShoot] Already in play mode — stop first.");
@@ -161,9 +199,16 @@ namespace CameraGame.EditorTools
             if (SceneManager.GetActiveScene().path != ScenePath)
                 EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
 
+            // ⚠️ 1920x1080, THE SHIPPING RESOLUTION, FOR EVERY RUN (Story 1.19). The HUD canvas scales with
+            // the screen, so a small Game View photographs the right LAYOUT at the wrong SIZE: the 1.12
+            // evidence was 953x476, where the 22 px reference lines are ~10 px tall and a 1 px outline would
+            // be 0.44 px. Legibility measured there is not legibility a player gets. The runner logs the
+            // captured size and the canvas scale factor, and says so when they are not 1920x1080 and 1.0.
+            SelectFullHdGameView();
+
             try
             {
-                AddRunnerAndPlay(outputDir, recordOnly);
+                AddRunnerAndPlay(outputDir, recordOnly, legibility, candidates);
             }
             catch (System.Exception e)
             {
@@ -172,7 +217,7 @@ namespace CameraGame.EditorTools
             }
         }
 
-        private static void AddRunnerAndPlay(string outputDir, bool recordOnly)
+        private static void AddRunnerAndPlay(string outputDir, bool recordOnly, bool legibility, bool candidates)
         {
             // ⚠️ EVERY REFERENCE BELOW COMES OUT OF THE SHIPPED SCENE, not out of a world the rig built.
             // That is the whole point: if the scene is mis-wired, this throws HERE, loudly, instead of the
@@ -222,6 +267,8 @@ namespace CameraGame.EditorTools
             runner.channel = AssetDatabase.LoadAssetAtPath<ShotCapturedChannel>(ChannelPath);
             runner.outputDir = outputDir;
             runner.recordOnly = recordOnly;
+            runner.legibilityOnly = legibility;
+            runner.runCandidates = candidates;
 
             Debug.Log($"[GradeHudShoot] Runner added to SampleScene ({(recordOnly ? "recording" : "shoot")}). "
                       + $"Entering play mode — output lands in {outputDir}");
@@ -232,11 +279,111 @@ namespace CameraGame.EditorTools
         private static void Abort(string previousScene)
         {
             SessionState.EraseString(ReturnSceneKey);
+            RestoreGameViewSize();
 
             if (!string.IsNullOrEmpty(previousScene) && File.Exists(previousScene))
                 EditorSceneManager.OpenScene(previousScene, OpenSceneMode.Single);
             else
                 EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+        }
+
+        // --- The Game View size -----------------------------------------------------------------------
+        //
+        // ⚠️ THE BUILT-IN "Full HD" PRESET IS SELECTED, NOT A CUSTOM SIZE ADDED. test-helper's
+        // GameViewControlHelper.SetResolution (CLAUDE.md, Toolbox) calls PlayModeWindow.SetCustomRenderingResolution
+        // on Unity 6, which ADDS a custom entry to the user's Game View size list — editor preferences that
+        // live outside the project and that nothing here would remove. The Standalone group already ships a
+        // 1920x1080 FixedResolution preset (measured 2026-11-15: index 3 of 7, all built in), so selecting it
+        // and putting the old index back leaves nothing behind. It needs reflection because GameView is
+        // internal; if that ever fails, the run goes ahead at whatever size the window is, and the runner's
+        // resolution check says so in its output.
+
+        private static System.Type GameViewType =>
+            typeof(EditorWindow).Assembly.GetType("UnityEditor.GameView");
+
+        private const System.Reflection.BindingFlags Any =
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic;
+
+        private static Object GameViewWindow()
+        {
+            System.Type t = GameViewType;
+            if (t == null) return null;
+            Object[] all = Resources.FindObjectsOfTypeAll(t);
+            return all.Length > 0 ? all[0] : null;
+        }
+
+        private static int FullHdIndex()
+        {
+            System.Type sizesType = typeof(EditorWindow).Assembly.GetType("UnityEditor.GameViewSizes");
+            object sizes = typeof(ScriptableSingleton<>).MakeGenericType(sizesType)
+                .GetProperty("instance").GetValue(null, null);
+            object group = sizesType.GetProperty("currentGroup").GetValue(sizes, null);
+            System.Type g = group.GetType();
+            int total = (int)g.GetMethod("GetTotalCount").Invoke(group, null);
+            for (int i = 0; i < total; i++)
+            {
+                object s = g.GetMethod("GetGameViewSize").Invoke(group, new object[] { i });
+                System.Type st = s.GetType();
+                if (st.GetProperty("sizeType").GetValue(s, null).ToString() == "FixedResolution"
+                    && (int)st.GetProperty("width").GetValue(s, null) == 1920
+                    && (int)st.GetProperty("height").GetValue(s, null) == 1080)
+                    return i;
+            }
+            return -1;
+        }
+
+        private static void SelectFullHdGameView()
+        {
+            try
+            {
+                Object gv = GameViewWindow();
+                int target = FullHdIndex();
+                if (gv == null || target < 0)
+                {
+                    Debug.Log("[GradeHudShoot] No Game View or no built-in 1920x1080 preset — running at the " +
+                              "window's size. The runner's resolution line will say so.");
+                    return;
+                }
+
+                // A restore still pending from a run that never reached edit mode wins: overwriting it with
+                // the Full HD index would "restore" the Game View to the rig's own setting.
+                string pending = SessionState.GetString(PrevGameViewKey, string.Empty);
+                int previous = string.IsNullOrEmpty(pending)
+                    ? (int)GameViewType.GetProperty("selectedSizeIndex", Any).GetValue(gv, null)
+                    : int.Parse(pending);
+                SessionState.SetString(PrevGameViewKey, previous.ToString());
+
+                GameViewType.GetMethod("SizeSelectionCallback", Any).Invoke(gv, new object[] { target, null });
+                Debug.Log($"[GradeHudShoot] Game View set to the built-in 1920x1080 preset (index {target}); " +
+                          $"index {previous} is put back when play mode ends.");
+            }
+            catch (System.Exception e)
+            {
+                Debug.Log($"[GradeHudShoot] Could not set the Game View to 1920x1080 ({e.GetType().Name}) — " +
+                          "running at the window's size; the runner's resolution line will say so.");
+            }
+        }
+
+        private static void RestoreGameViewSize()
+        {
+            string stored = SessionState.GetString(PrevGameViewKey, string.Empty);
+            if (string.IsNullOrEmpty(stored)) return;
+            SessionState.EraseString(PrevGameViewKey);
+
+            try
+            {
+                Object gv = GameViewWindow();
+                if (gv == null) return;
+                int previous = int.Parse(stored);
+                GameViewType.GetMethod("SizeSelectionCallback", Any).Invoke(gv, new object[] { previous, null });
+                Debug.Log($"[GradeHudShoot] Game View size put back to index {previous}.");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[GradeHudShoot] Could not put the Game View size back ({e.Message}). " +
+                                 "Choose it again in the Game View's resolution menu.");
+            }
         }
 
         /// <summary>Clears the output folder. Delete-then-create immediately is the classic Windows lazy

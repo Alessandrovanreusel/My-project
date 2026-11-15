@@ -1,5 +1,7 @@
+using System.Globalization;
 using NUnit.Framework;
 using UnityEngine;
+using CameraGame.Grading;
 using CameraGame.UI;
 
 namespace CameraGame.Tests
@@ -444,6 +446,186 @@ namespace CameraGame.Tests
             Assert.That(_cfg.holdSeconds, Is.EqualTo(0f),
                 "the authored value must still be there for the warning to describe");
             Assert.That(_cfg.fadeSeconds, Is.EqualTo(-1f));
+        }
+
+        // =====================================================================================================
+        // Story 1.19 — anything that earned nothing reads red; a thin dark outline keeps every colour readable.
+        // =====================================================================================================
+
+        // Contract (AC1-AC3): every readout state, built by the REAL factories, gets the colour the story
+        // names. The fixture is CreateInstance, so this pins the RULE against the C# defaults; what the
+        // player's asset holds is pinned by ShippedAsset_PassesItsOwnValidator.
+        [Test]
+        public void ColorFor_EveryStateThroughTheRealFactories()
+        {
+            StarScale s = StarScale.Default;
+
+            Assert.AreEqual(_cfg.SafeStrongColor, _cfg.ColorFor(ShotGrade.Scored(1f, 1f, 1f, s, "D", 0f)), "5 stars");
+            Assert.AreEqual(_cfg.SafeCountedColor, _cfg.ColorFor(ShotGrade.Scored(1f, 1f, 0.55f, s, "D", -1f)), "3 stars");
+            Assert.AreEqual(_cfg.SafeWeakColor, _cfg.ColorFor(ShotGrade.Scored(1f, 1f, 0.30f, s, "D", -1f)), "2 stars");
+            Assert.AreEqual(_cfg.SafeWeakColor, _cfg.ColorFor(ShotGrade.Scored(1f, 1f, 0.012f, s, "D", -2f)),
+                "a shot printing 1 % earned something: it keeps the weak band's amber (AC3)");
+
+            Assert.AreEqual(_cfg.SafeMissColor, _cfg.ColorFor(ShotGrade.Scored(1f, 0.92f, 0f, s, "D", -2.4f)),
+                "a counted shot printing 0 % earned nothing: the miss red (AC2)");
+            Assert.AreEqual(_cfg.SafeMissColor, _cfg.ColorFor(ShotGrade.Missed(GradeMiss.TooSmall, "D")), "a miss (AC1)");
+            Assert.AreEqual(_cfg.SafeMissColor, _cfg.ColorFor(ShotGrade.Missed(GradeMiss.NoSubject)), "a miss with nobody");
+
+            Assert.AreEqual(_cfg.SafePlaceholderColor, _cfg.ColorFor(ShotGrade.Placeholder), "never graded");
+            Assert.AreEqual(_cfg.SafePlaceholderColor, _cfg.ColorFor(default(ShotGrade)),
+                "the zeroed fourth state is 'nobody graded this', not a red verdict");
+        }
+
+        // ⚠️ THE AGREEMENT PROPERTY (AC2: "the choice follows the printed text, not the raw number"). For every
+        // score from 0 to 3 % in steps of 0.01 %, through the real factory: the colour is the miss red
+        // EXACTLY WHEN the rating the readout prints is the zero string. This pins agreement between the two,
+        // not a number anybody expected — and it is run under three cultures, because the text it agrees with
+        // used to follow the player's locale.
+        //
+        // The sweep must actually CROSS the boundary, or a rule that paints everything red (or nothing) would
+        // pass it vacuously: both counts are asserted to be non-zero.
+        [TestCase("en-US")]
+        [TestCase("fr-FR")]
+        [TestCase("")]
+        public void ColorFor_IsRedExactlyWhenTheReadoutPrintsZero(string culture)
+        {
+            CultureInfo previous = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = culture.Length == 0 ? CultureInfo.InvariantCulture : new CultureInfo(culture);
+
+                Color red = _cfg.SafeMissColor;
+                string zero = GradeText.Percent(0f);
+                int redCount = 0, otherCount = 0;
+
+                for (int i = 0; i <= 300; i++)
+                {
+                    float p = i / 10000f;
+                    ShotGrade g = ShotGrade.Scored(1f, 1f, p, StarScale.Default, "D", -2f);
+
+                    string printed = GradeText.Percent(g.Percent01);
+                    bool isRed = _cfg.ColorFor(g) == red;
+
+                    Assert.AreEqual(GradeText.Percent(g.Percent01) == zero, GradeText.PrintsZero(g.Percent01),
+                        $"PrintsZero disagrees with the printed text at {p}");
+                    Assert.AreEqual(printed == zero, isRed,
+                        $"score {p}: the readout prints '{printed}' but is {(isRed ? "" : "NOT ")}red");
+
+                    if (isRed) redCount++; else otherCount++;
+                }
+
+                Assert.That(redCount, Is.GreaterThan(0), "the sweep never produced a red readout — it proves nothing");
+                Assert.That(otherCount, Is.GreaterThan(0), "the sweep never left red — it proves nothing");
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previous;
+            }
+        }
+
+        // Contract (1b): an outline thickness is usable however it was typed. 0, negative and NaN are the
+        // project's signature failure — the outline switched off by a value that looks deliberate.
+        [TestCase(0f)]
+        [TestCase(-1.5f)]
+        [TestCase(0.2f)]
+        [TestCase(99f)]
+        [TestCase(float.NaN)]
+        [TestCase(float.PositiveInfinity)]
+        [TestCase(float.NegativeInfinity)]
+        public void SafeOutlineDistance_IsAlwaysUsable(float authored)
+        {
+            _cfg.outlineDistance = authored;
+
+            float d = _cfg.SafeOutlineDistance;
+            Assert.IsFalse(float.IsNaN(d) || float.IsInfinity(d), "uGUI's Outline lets a NaN thickness through");
+            Assert.That(d, Is.InRange(GradeHudConfig.MinOutlineDistance, GradeHudConfig.MaxOutlineDistance));
+        }
+
+        [Test]
+        public void SafeOutlineDistance_LeavesADeliberateValueAlone()
+        {
+            _cfg.outlineDistance = 2.25f;
+            Assert.That(_cfg.SafeOutlineDistance, Is.EqualTo(2.25f).Within(1e-5f));
+        }
+
+        [Test]
+        public void SafeOutlineColor_IsNeverInvisible()
+        {
+            _cfg.outlineColor = new Color(0f, 0f, 0f, 0f);
+            Assert.That(_cfg.SafeOutlineColor.a, Is.GreaterThanOrEqualTo(GradeHudConfig.MinVisibleAlpha));
+
+            _cfg.outlineColor = new Color(float.NaN, 0f, 0f, float.NaN);
+            Color c = _cfg.SafeOutlineColor;
+            Assert.IsFalse(float.IsNaN(c.r) || float.IsNaN(c.a), "a NaN outline renders as nothing");
+            Assert.That(c.a, Is.GreaterThanOrEqualTo(GradeHudConfig.MinVisibleAlpha));
+        }
+
+        // Contract: every outline mistake is REPORTED at Awake and names its field — repaired is not enough,
+        // or the repair is silent. The explanation must fit the mistake (the WhyHold rule).
+        [TestCase(0f, "below zero")]
+        [TestCase(-2f, "below zero")]
+        [TestCase(float.NaN, "non-finite")]
+        [TestCase(99f, "heavy box")]
+        [TestCase(0.3f, "anti-aliasing")]
+        public void Validator_ReportsAnUnusableOutlineThickness(float authored, string because)
+        {
+            _cfg.outlineDistance = authored;
+
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string problem), $"outlineDistance {authored} went unreported");
+            StringAssert.Contains("outlineDistance", problem);
+            StringAssert.Contains(because, problem);
+        }
+
+        [Test]
+        public void Validator_ReportsAnInvisibleOrWeakOutline()
+        {
+            _cfg.outlineColor = new Color(0f, 0f, 0f, 0f);
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string invisible));
+            StringAssert.Contains("outlineColor", invisible);
+            StringAssert.Contains("not be drawn", invisible);
+
+            _cfg.outlineColor = new Color(0f, 0f, 0f, 0.3f);
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string weak), "a mostly transparent outline went unreported");
+            StringAssert.Contains("outlineColor", weak);
+        }
+
+        // Contract: an outline authored too light for the text on it is reported, naming the text colour.
+        [Test]
+        public void Validator_ReportsATextColourTheOutlineCannotSeparate()
+        {
+            _cfg.outlineColor = new Color(0.55f, 0.55f, 0.55f, 1f);
+
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string problem));
+            StringAssert.Contains("placeholderColor", problem);
+            StringAssert.Contains("against outlineColor", problem);
+        }
+
+        // ⚠️ AC1's AUTHORING GUARD: the miss colour must still read as RED. The ΔE pairs cannot catch a drift
+        // back to salmon (salmon is ΔE 56-87 from every band), and hue cannot either (salmon and pure red are
+        // 2 degrees apart in Lab hue) — saturation can. Today's salmon must FAIL it, or the check is decoration.
+        [Test]
+        public void Validator_ReportsAMissColourThatNoLongerReadsAsRed()
+        {
+            Assert.IsFalse(_cfg.TryGetConfigProblem(out string clean), clean);
+
+            _cfg.missColor = new Color(1f, 0.55f, 0.45f);          // the salmon Story 1.19 replaced
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string salmon), "the old salmon passed as red");
+            StringAssert.Contains("missColor", salmon);
+            StringAssert.Contains("no longer reads as red", salmon);
+
+            _cfg.missColor = new Color(0.2f, 0.3f, 1f);            // saturated, but blue
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string blue), "a saturated blue passed as red");
+            StringAssert.Contains("no longer reads as red", blue);
+        }
+
+        // Contract: a counted 0 % and a miss SHARE the red on purpose. They must still be apart from every band
+        // that earned something — that part is the existing six-pair test — and identical to each other.
+        [Test]
+        public void ZeroPercentAndMiss_ShareOneRed()
+        {
+            Color zero = _cfg.ColorFor(ShotGrade.Scored(1f, 1f, 0f, StarScale.Default, "D", -3f));
+            Color miss = _cfg.ColorFor(ShotGrade.Missed(GradeMiss.Occluded, "D"));
+            Assert.AreEqual(miss, zero);
         }
     }
 }
