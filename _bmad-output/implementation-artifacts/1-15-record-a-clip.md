@@ -4,7 +4,7 @@ baseline_commit: 1f83710d71035ac335dc7c6726b4a1bd25a92787
 
 # Story 1.15: Record a clip
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -163,14 +163,14 @@ recorded in the result file.
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Settle the nine decisions that GATE THE STORY (AC1–AC6). DO THESE FIRST.**
+- [x] **Task 1 — Settle the nine decisions that GATE THE STORY (AC1–AC6). DO THESE FIRST.**
 
   Each has a recommendation and the evidence that should settle it. Record every choice **with its reason and its
   evidence path** in the Dev Agent Record and in the result file's `decisions`, including the ones where you follow
   the recommendation. Alexv reviews them in one batch and may veto. Where a choice can be settled by measuring,
   measure, as Story 1.10 did for prominence.
 
-  - [ ] **1a. What the Capture input does now, and what happens to the photo shutter.** (AC1, AC4, AC7. Blocks
+  - [x] **1a. What the Capture input does now, and what happens to the photo shutter.** (AC1, AC4, AC7. Blocks
         everything.)
         - **Recommended: re-point only the input adapter.** `OnCapture(InputValue)` calls a new public
           `ToggleRecording()`, and **`Capture()` stays exactly as it is**: same name, same body, same channel. It is
@@ -187,7 +187,7 @@ recorded in the result file.
           throwaway code that 1.16 must rip out.
         - *Alternative C — rename `Capture()` to `TakePhoto()`.* Rejected: churn across three rigs for no
           behaviour change.
-  - [ ] **1b. Where the recorder lives, who drives it, and the dependency direction.** (AC2, AC4.)
+  - [x] **1b. Where the recorder lives, who drives it, and the dependency direction.** (AC2, AC4.)
         - **Recommended:** a `ClipRecorder` MonoBehaviour in `Assets/Scripts/Recording/` (namespace
           `CameraGame.Recording`; the folder does not exist yet). It sits on `main characters` beside
           `PhotoModeController`, or on its own child, whichever keeps the scene diff smallest. `PhotoModeController`
@@ -212,7 +212,7 @@ recorded in the result file.
           device change), with one code path. Keep it synchronous, inside the call that started or stopped the
           recording (NFR2). It can be `PhotoModeController`, which already owns capture feedback and
           `CaptureConfig`, or a small `RecordingFeedback` component. Choose, and record why.
-  - [ ] **1c. The channel's payload, and who owns the footage before a memory card exists.** (AC4, AC6.)
+  - [x] **1c. The channel's payload, and who owns the footage before a memory card exists.** (AC4, AC6.)
         - The architecture leaves the payload type open ("names and exact shapes are finalised by Stories
           1.14–1.17"). **Recommended:** a reference type `RecordedClip` in `CameraGame.Recording`, holding:
           - `Id`: file-name-safe and unique, made like `CapturedShot.MakeId`;
@@ -233,7 +233,7 @@ recorded in the result file.
           arrives, and the architecture names `MemoryCardService` the single owner.
         - *Alternative:* the payload carries no footage. Rejected: the card could reach it only through a reference
           back to the recorder, which reverses AR4.
-  - [ ] **1d. The clip's clock: how ticks and PCM share one timeline.** (AC5. ADR-4 risk 3, `deferred-work.md:303-304`.)
+  - [x] **1d. The clip's clock: how ticks and PCM share one timeline.** (AC5. ADR-4 risk 3, `deferred-work.md:303-304`.)
         - The spike's defects, which must not be inherited:
           - ticks timed by a float `unscaledTime`, with no stored timestamp;
           - the PCM starting at the next audio callback, unrelated to the first tick;
@@ -259,7 +259,7 @@ recorded in the result file.
           pause menu is a screen owner like the gallery: it will use the suppression seam, which lowers the camera,
           which stops the recording (AC2). Write that down in `ClipRecorder`'s header so the pause-menu story finds
           it.
-  - [ ] **1e. How long a clip may run before the card exists, and what is preallocated.** (AC6, NFR2, NFR3.)
+  - [x] **1e. How long a clip may run before the card exists, and what is preallocated.** (AC6, NFR2, NFR3.)
         - **Recommended:** a new `RecordingConfig` ScriptableObject (`Assets/Data/Recording/RecordingConfig.asset`;
           the architecture already plans `Data/Recording/`) with `maxClipSeconds`, starting at **120 s**, the ~2 min
           card the stakeholder confirmed on 2026-11-10.
@@ -278,7 +278,7 @@ recorded in the result file.
           - Choose by measuring memory and GC (Task 10, Phase E), and record it.
         - The tick rate (30 Hz) and the 16-bit sample format are **invariants of the footage format**, not
           tunables. Make them constants with a format version, since a change would break 1.17's persisted clips.
-  - [ ] **1f. Do the start/stop beeps go into the footage?** (AC1, AC5.)
+  - [x] **1f. Do the start/stop beeps go into the footage?** (AC1, AC5.)
         - ADR-4: "the tap records **everything** the listener hears, including … the camcorder's own REC beeps. A
           sound that must stay out of the footage sets `bypassListenerEffects = true` on purpose".
         - **Recommended: keep them out.** It is the same principle as "the footage … with **no UI** … a camcorder
@@ -291,7 +291,7 @@ recorded in the result file.
           you say why.
         - *Alternative:* let the beeps in, as some real camcorders do. Then they also become the A/V marker. Choose
           by evidence, and record it.
-  - [ ] **1g. The beeps and the REC/timecode look.** (AC1. Perceptual, so a human check follows.)
+  - [x] **1g. The beeps and the REC/timecode look.** (AC1. Perceptual, so a human check follows.)
         - *Toolbox: invoke `unity:ui`, then `unity:ui-ugui`, before writing UI code. Invoke `unity:audio-setup-mixers`
           and `unity:optimize-audio` before routing or importing the beeps.*
         - **Beeps: recommended as generated placeholder WAVs**, made by a small committed script (e.g.
@@ -320,7 +320,7 @@ recorded in the result file.
           it would be half-transparent if the player presses record right after raising. **Recommended:** give the
           cluster its own `CanvasGroup` with Ignore Parent Groups, as `CaptureFlash` does (Story 1.5's review fix),
           driven only by `IsRecording`.
-  - [ ] **1h. How AC3's frame rate is measured on this laptop.** (AC3.)
+  - [x] **1h. How AC3's frame rate is measured on this laptop.** (AC3.)
         - Lessons, 1-14:
           - "Measure FPS as a delta against an interleaved baseline in a release build, and flag the absolute 60
             FPS verdict for Alexv."
@@ -341,7 +341,7 @@ recorded in the result file.
         - **Adopting `Unity.PerformanceTesting` in a new PlayMode test assembly is a decision.** Record it if you
           take it. A bench assembly that ships in no plain build is a fence, as the spike's was, so prove the fence
           (Task 11.4).
-  - [ ] **1i. What the track records for each actor, and how it finds them.** (AC5. ADR-4 *Consequences*.)
+  - [x] **1i. What the track records for each actor, and how it finds them.** (AC5. ADR-4 *Consequences*.)
         - ADR-4 and the 1.14 review list the spike's defects:
           - it recorded "the first live actor" and cloned it;
           - it did not name the `EventDefinition`;
@@ -366,8 +366,8 @@ recorded in the result file.
         - Size the per-tick actor slots from a configured maximum (`maxConcurrent` is 1 for the slice, NFR6). Warn
           once if more actors are live than the track can hold. Never allocate per tick.
 
-- [ ] **Task 2 — The footage seam and data model** (AC4, AC5, AC6; Task 1c, 1e)
-  - [ ] 2.1 Create `Assets/Scripts/Recording/` with the narrow seam ADR-4 fixes ("so that a veto swaps the backend
+- [x] **Task 2 — The footage seam and data model** (AC4, AC5, AC6; Task 1c, 1e)
+  - [x] 2.1 Create `Assets/Scripts/Recording/` with the narrow seam ADR-4 fixes ("so that a veto swaps the backend
         and not the design"):
         - `IClipBackend` with `Begin(...)`, `Sample(...)` once per game frame, and `End() → IFootage`, plus an `Abort`
           if you need one;
@@ -375,46 +375,46 @@ recorded in the result file.
         - `ReplayFootage : IFootage`, the first implementation: the track plus the PCM;
         - `RecordedClip` and `StopReason`.
         Keep `IFootage` free of replay specifics, so a different backend can implement it.
-  - [ ] 2.2 Give `ReplayFootage` a small **read API**: tick count, each tick's timestamp, repeats, camera pose and
+  - [x] 2.2 Give `ReplayFootage` a small **read API**: tick count, each tick's timestamp, repeats, camera pose and
         FOV, each tick's actors (definition, serial, liveness, pose, layer states), and PCM access (sample rate,
         channels, frames, read into a caller's buffer). The rig needs it now (Task 10, Phase D), and 1.18's playback
         will need it later. It is **read-only**: nothing outside the backend writes footage.
-  - [ ] 2.3 `ClipRecordedChannel : EventChannel<RecordedClip>` with `[CreateAssetMenu]`, in `Scripts/Recording/`
+  - [x] 2.3 `ClipRecordedChannel : EventChannel<RecordedClip>` with `[CreateAssetMenu]`, in `Scripts/Recording/`
         (architecture §Directory Structure). Create `Assets/Data/Channels/ClipRecordedChannel.asset` and
         `Assets/Data/Recording/RecordingConfig.asset`, with their `.meta` files. **Unity MCP cannot create custom
         ScriptableObject assets**: write the `.asset` YAML using the script's `.meta` GUID (project memory,
         `create-so-asset-via-yaml.md`). Then `refresh_unity` and read the values back through
         `AssetDatabase.LoadAssetAtPath`.
-  - [ ] 2.4 `RecordingConfig`: `maxClipSeconds` and whatever Task 1g/1e settle (beep volumes, blink rate, maximum
+  - [x] 2.4 `RecordingConfig`: `maxClipSeconds` and whatever Task 1g/1e settle (beep volumes, blink rate, maximum
         actors per tick). Each value has a `Safe*` accessor. Non-finite values fall back to the design default and
         out-of-range values are clamped, with the constants shared by the initialiser and the accessor. Problems are
         reported by `TryGetConfigProblem`, which is called once in `Awake` and logged as a warning.
 
-- [ ] **Task 3 — The tick track** (AC5, AC3; Task 1d, 1i)
-  - [ ] 3.1 Sample after the camera's final write. Use a `LateUpdate` with `[DefaultExecutionOrder]` later than
+- [x] **Task 3 — The tick track** (AC5, AC3; Task 1d, 1i)
+  - [x] 3.1 Sample after the camera's final write. Use a `LateUpdate` with `[DefaultExecutionOrder]` later than
         `ThirdPersonCamera` (-100); the spike used 10000. **Prove the ordering**: in the rig, compare each recorded
         camera pose with the pose the camera actually rendered with (read in `RenderPipelineManager.beginCameraRendering`
         on the same frame). Expect 0 difference. A non-zero difference means the track is a frame late.
-  - [ ] 3.2 Record the camera `PhotoModeController` films through: the same `photoCamera` grading uses, injected,
+  - [x] 3.2 Record the camera `PhotoModeController` films through: the same `photoCamera` grading uses, injected,
         not `Camera.main`. GalleryService's tooltip explains why two cameras would be "plausible-looking, completely
         wrong".
-  - [ ] 3.3 30 Hz scheduling with **repeat counts and a timestamp per tick** (Task 1d). A tick is due at each
+  - [x] 3.3 30 Hz scheduling with **repeat counts and a timestamp per tick** (Task 1d). A tick is due at each
         1/30-s boundary of the clip's timeline. The first frame past a boundary takes one tick, whose repeat count
         is the number of boundaries crossed since the last tick (1 at ≥ 30 fps, more below). Tick 0 is taken on
         the start frame. Write the boundary arithmetic as a pure static function, so it can be tested in edit mode
         with no Unity objects.
-  - [ ] 3.4 Actors, per Task 1i. Add only read-only accessors to `EventActor` (`Definition`, the lifecycle serial,
+  - [x] 3.4 Actors, per Task 1i. Add only read-only accessors to `EventActor` (`Definition`, the lifecycle serial,
         and the Animator if you need it). Change **no** existing signature (fact 6).
-  - [ ] 3.5 No per-frame allocation: no LINQ, no boxing, no `GetComponent*` per tick, no strings. Preallocated
+  - [x] 3.5 No per-frame allocation: no LINQ, no boxing, no `GetComponent*` per tick, no strings. Preallocated
         struct arrays only. *Invoke `unity-perf:csharp-zero-gc`.*
 
-- [ ] **Task 4 — The listener PCM tap** (AC5, AC6; Task 1d, 1e, 1f)
-  - [ ] 4.1 A `ListenerTap` MonoBehaviour with `OnAudioFilterRead`, on the **AudioListener's GameObject** (Main Camera,
+- [x] **Task 4 — The listener PCM tap** (AC5, AC6; Task 1d, 1e, 1f)
+  - [x] 4.1 A `ListenerTap` MonoBehaviour with `OnAudioFilterRead`, on the **AudioListener's GameObject** (Main Camera,
         fact 8). `OnAudioFilterRead` hears the mix only from that GameObject. Hold it as a serialized reference in
         `ClipRecorder`. In `Awake`, check that it really shares a GameObject with an enabled `AudioListener`, and
         warn once if not (`deferred-work.md:303`: the spike "assumed the listener is on `Camera.main`" with no
         warning).
-  - [ ] 4.2 Audio-thread rules:
+  - [x] 4.2 Audio-thread rules:
         - no allocation, no Unity API calls other than ones verified safe, and no lock held across a copy;
         - convert float to 16-bit with clamping, on the audio thread or in bounded batches;
         - take the channel count from the callback argument and the sample rate from
@@ -422,18 +422,18 @@ recorded in the result file.
           rate is 0, "the device's rate");
         - when not recording, early-out at near-zero cost. The filter runs on every audio block for the whole
           session.
-  - [ ] 4.3 Hand-off and length. Use volatile or `Interlocked` state between the threads. At `End`, wait for nothing
+  - [x] 4.3 Hand-off and length. Use volatile or `Interlocked` state between the threads. At `End`, wait for nothing
         on the main thread (no `Sleep` loops; that was a 1.14 export-path defect). Pad or trim to the tick timeline.
         Store whether the clip has sound at all, so a clip recorded with no tap still has a valid timeline (silence,
         flagged).
-  - [ ] 4.4 `AudioSettings.OnAudioConfigurationChanged`, a device or sample-rate change mid-clip: stop the clip
+  - [x] 4.4 `AudioSettings.OnAudioConfigurationChanged`, a device or sample-rate change mid-clip: stop the clip
         (`StopReason.AudioDeviceChanged`), keep it, and warn once. Provoke it in the rig with `AudioSettings.Reset`
         on the current configuration, and restore the configuration.
-  - [ ] 4.5 Keep the spike's WAV down-mix bug out of anything shipped: it treats channel 2 as centre (`AudioTap.cs:85`).
+  - [x] 4.5 Keep the spike's WAV down-mix bug out of anything shipped: it treats channel 2 as centre (`AudioTap.cs:85`).
         Only rigs write WAVs in this story. Down-mix properly, or write the native channel count.
 
-- [ ] **Task 5 — `ClipRecorder` and the PhotoModeController wiring** (AC1, AC2, AC4, AC6; Task 1a–1c, 1e)
-  - [ ] 5.1 `ClipRecorder`:
+- [x] **Task 5 — `ClipRecorder` and the PhotoModeController wiring** (AC1, AC2, AC4, AC6; Task 1a–1c, 1e)
+  - [x] 5.1 `ClipRecorder`:
         - `IsRecording`, `ElapsedSeconds` (the footage timeline) and `LastClip`;
         - `Begin()` returns a bool. It is false and logs once when it cannot record, for example with no backend.
           Then no beep plays and no REC shows. *Decide:* is a camera that cannot record silent, or does it give an
@@ -445,7 +445,7 @@ recorded in the result file.
           the ownership rule (Task 1c).
         - **"Log once"** (`deferred-work.md:306`): Info lines for start and stop are milestones, which is fine; a
           missing reference logs once per session, not per press.
-  - [ ] 5.2 `PhotoModeController`:
+  - [x] 5.2 `PhotoModeController`:
         - `OnCapture` → `ToggleRecording()`, which is gated on `IsPhotoMode` (AC4) and does nothing if the recorder
           is unassigned (fail-soft; the existing readiness-flag pattern, `_recordReady`);
         - stop on any transition out of Photo in `SetMode` (Task 1b);
@@ -459,19 +459,19 @@ recorded in the result file.
           (CLAUDE.md). Decide the level on its merits. A camcorder that cannot record in the real game is critical,
           so `Error` is defensible. Then either give those rigs a recorder, or add the line to their list of
           expected messages. Rigs are tools, and changing them is allowed. Record the choice.
-  - [ ] 5.3 Teardown (`deferred-work.md:34`: "No `OnDisable` teardown — disabling mid-Photo leaves the mode … stuck").
+  - [x] 5.3 Teardown (`deferred-work.md:34`: "No `OnDisable` teardown — disabling mid-Photo leaves the mode … stuck").
         If the recorder or `PhotoModeController` is disabled or destroyed mid-recording (scene unload, play-mode
         exit, a rig turning it off), stop with `StopReason.Disabled`. Decide whether to raise or to dispose silently
         during teardown, test both exits, and record the choice. Native or preallocated buffers must be released:
         no "A Native Collection has not been disposed" warning at play-mode exit, if you use `NativeArray`.
-  - [ ] 5.4 Mind the spike's compile (fact 6). After every change, `refresh_unity` and `read_console`: a spike compile
+  - [x] 5.4 Mind the spike's compile (fact 6). After every change, `refresh_unity` and `read_console`: a spike compile
         error blocks Play mode for everyone.
 
-- [ ] **Task 6 — REC indicator, timecode and beeps** (AC1; Task 1f, 1g)
-  - [ ] 6.1 Generate the beep placeholders with the committed script, import them (Task 1g), and add a 2D
+- [x] **Task 6 — REC indicator, timecode and beeps** (AC1; Task 1f, 1g)
+  - [x] 6.1 Generate the beep placeholders with the committed script, import them (Task 1g), and add a 2D
         `AudioSource` for them, with `bypassListenerEffects` set per Task 1f and a comment saying why. Route it, or
         not, per `unity:audio-setup-mixers` and the measurement in Task 1f.
-  - [ ] 6.2 A `RecordingHud` (name it as you see fit) in `Assets/Scripts/UI/`, on the `PhotoViewfinder` canvas:
+  - [x] 6.2 A `RecordingHud` (name it as you see fit) in `Assets/Scripts/UI/`, on the `PhotoViewfinder` canvas:
         - REC dot, `REC` label and timecode;
         - its own `CanvasGroup` (Ignore Parent Groups);
         - it reads `ClipRecorder` state (Task 1b) in `Update`;
@@ -479,22 +479,22 @@ recorded in the result file.
         - a blink, if chosen, on unscaled time;
         - it hides at once on stop.
         Fail-soft: with no recorder, the HUD stays hidden and logs once.
-  - [ ] 6.3 Build the UI objects in the editor through MCP (`manage_ui` / `manage_gameobject`), or in code at
+  - [x] 6.3 Build the UI objects in the editor through MCP (`manage_ui` / `manage_gameobject`), or in code at
         `Awake`. Pick one and say why. Scene edits are unavoidable in this story (the recorder, the tap, the audio
         source and the wiring), so keep them few and deliberate (Task 7).
 
-- [ ] **Task 7 — Scene wiring** (AC4, AC7)
-  - [ ] 7.1 In `SampleScene`, through MCP in the editor: add `ClipRecorder` (wired to the channel, config, camera,
+- [x] **Task 7 — Scene wiring** (AC4, AC7)
+  - [x] 7.1 In `SampleScene`, through MCP in the editor: add `ClipRecorder` (wired to the channel, config, camera,
         `EventManager` and tap), `ListenerTap` on Main Camera, the beep `AudioSource`, the `RecordingHud`, and
         `PhotoModeController.clipRecorder`. **Save the scene in a separate call** before any rig run (project
         memory: a save dialog mid-rig causes six menu retries).
-  - [ ] 7.2 Read the wiring back through the editor (`execute_code`: `GetComponent`, serialized fields not null) before
+  - [x] 7.2 Read the wiring back through the editor (`execute_code`: `GetComponent`, serialized fields not null) before
         trusting a rig. Check the scene diff is only what you meant: `SampleScene.unity` is 16.9 MB and CRLF, and the
         orchestrator merges master into this branch (lessons, 2-2: the "modified externally" modal).
-  - [ ] 7.3 Leave `Video Camera Game 2.0.unity` alone unless it is in the build settings' scene list. Check that list.
+  - [x] 7.3 Leave `Video Camera Game 2.0.unity` alone unless it is in the build settings' scene list. Check that list.
 
-- [ ] **Task 8 — EditMode tests** (AC4–AC6)
-  - [ ] 8.1 Pure logic, no scene:
+- [x] **Task 8 — EditMode tests** (AC4–AC6)
+  - [x] 8.1 Pure logic, no scene:
         - tick scheduling (boundaries, repeat counts at 15/30/60/144 fps, a hitch of 0.5 s, tick 0 on the start
           frame);
         - the PCM pad/trim length rule;
@@ -504,24 +504,24 @@ recorded in the result file.
           shipped asset passes its own validator";
         - `RecordedClip` claim and dispose (idempotent, a second claim refused, `Bytes` after dispose);
         - `ClipRecordedChannel` dispatch isolation is inherited. Do not re-test the base class.
-  - [ ] 8.2 **Prove the tests can fail** (mutation, as 1.19 and 1.14 did): break the repeat-count rule or the
+  - [x] 8.2 **Prove the tests can fail** (mutation, as 1.19 and 1.14 did): break the repeat-count rule or the
         culture pin, watch the test go red, and restore. Record it.
-  - [ ] 8.3 Keep `RecordingSpikeFenceTests` green. If you add a bench assembly (Task 11), give it the same four
+  - [x] 8.3 Keep `RecordingSpikeFenceTests` green. If you add a bench assembly (Task 11), give it the same four
         guards: no game assembly references it, it is not compiled into a plain player, and a positive control.
 
-- [ ] **Task 9 — Architecture, deferred work and docs** (AC7)
-  - [ ] 9.1 `game-architecture.md` §Clip Recording: replace "names and exact shapes are finalised by Stories 1.14–1.17"
+- [x] **Task 9 — Architecture, deferred work and docs** (AC7)
+  - [x] 9.1 `game-architecture.md` §Clip Recording: replace "names and exact shapes are finalised by Stories 1.14–1.17"
         with what was built (types, payload, ownership rule, clock). Add the `UI → Recording` read to
         §Architectural Boundaries if Task 1b took it. Add `RecordingConfig.asset` to §Directory Structure.
         **Leave ADR-4's decision text alone.** It is accepted, and only its "What Story 1.15 builds" paragraph may
         gain a pointer to the built code.
-  - [ ] 9.2 `deferred-work.md`: mark `:303`, `:304` and `:306` (the 1.15 actions) resolved, with how, and `:34` if Task
+  - [x] 9.2 `deferred-work.md`: mark `:303`, `:304` and `:306` (the 1.15 actions) resolved, with how, and `:34` if Task
         5.3 settled it. Add new entries for what you defer (for example "Capture() is unbound from input until 1.16
         decides its fate").
-  - [ ] 9.3 Do not edit `loop/` (the orchestrator's), and do not change `RaiseSuppressed` into a refcount. That is
+  - [x] 9.3 Do not edit `loop/` (the orchestrator's), and do not change `RaiseSuppressed` into a refcount. That is
         required only when a *second* suppressor appears (`deferred-work.md:144`), and this story adds none.
 
-- [ ] **Task 10 — Verify by running it: the Record Clip rig** (AC1–AC6)
+- [x] **Task 10 — Verify by running it: the Record Clip rig** (AC1–AC6)
 
   An editor `[MenuItem]`, e.g. `Tools/Recording/Record Clip Shoot (Play)`. Follow `PhotoShootRig` / `GradeHudShootRig`:
   a `SessionState`-armed runner in the **runtime** assembly behind `#if UNITY_EDITOR` (CLAUDE.md trap: an
@@ -532,12 +532,12 @@ recorded in the result file.
   on every run. Use rig-chosen vantages: read the eye height from `PlayerConfig`, **never** the spike's vantages
   (fact 6). At the top of each output, say which errors the run provokes on purpose.
 
-  - [ ] **Phase 0 — controls.** Before trusting an image, prove:
+  - [x] **Phase 0 — controls.** Before trusting an image, prove:
         - a frame with known 3D content is not uniform or near-white;
         - a full-screen Overlay marker dominates, then returns to zero when switched off (1.12 measured 100.00 % and
           0.00 %);
         - one live frame passes between a grab and any `timeScale = 0` freeze (lessons, 1-19).
-  - [ ] **Phase A — through the real input (AC1, AC4).** Drive a **virtual Gamepad** (`InputSystem.AddDevice<Gamepad>()`,
+  - [x] **Phase A — through the real input (AC1, AC4).** Drive a **virtual Gamepad** (`InputSystem.AddDevice<Gamepad>()`,
         removed afterwards) with queued state events: LT to raise, RT to record, RT to stop, LT released. In the
         editor, mouse and keyboard input only reaches the game while the Game View has focus (the Input System's
         default `editorInputBehaviorInPlayMode`, and this project has no input-settings asset), so a queued mouse
@@ -554,16 +554,16 @@ recorded in the result file.
           `AudioSettings.GetDSPBufferSize`.
         Report each part. Save REC-visible frames (raised and idle, recording at 0:00:0x, stopped) for the human
         check, plus the beeps as WAVs.
-  - [ ] **Phase B — every way a recording ends (AC2, AC6).** Press, press; press, then release LT; press, then
+  - [x] **Phase B — every way a recording ends (AC2, AC6).** Press, press; press, then release LT; press, then
         `SetRaiseSuppressed(true)` (and release it again); press with `maxClipSeconds` temporarily set to ~3 s
         (**restore the asset value and read it back**); rapid press, press, press; ten consecutive clips. For each:
         exactly one channel raise, the `StopReason`, the duration against the wall-clock time between the presses,
         the footage not disposed when kept, and the previous unclaimed clip disposed (Task 1c). Bugs in this project
         hide in the second cycle onward, so look hardest at clips 2–10.
-  - [ ] **Phase C — aim and zoom while recording (AC3).** While recording, drive Look (right stick) and Zoom (dpad)
+  - [x] **Phase C — aim and zoom while recording (AC3).** While recording, drive Look (right stick) and Zoom (dpad)
         through the same virtual gamepad. Log the camera's rotation and FOV per frame and compare them with the
         track's ticks. Capture frames before and after the zoom with REC showing.
-  - [ ] **Phase D — fidelity (AC5).** One ~30-s clip framing the drunk through his peak, and one ~60–90-s clip that
+  - [x] **Phase D — fidelity (AC5).** One ~30-s clip framing the drunk through his peak, and one ~60–90-s clip that
         spans a despawn and the next spawn (respawn delay 2 s). For both:
         - **Poses:** the track against an independent per-frame log taken at render time. Expect 0 for the
           camera. For the actor, compare at the tick's own frame.
@@ -584,11 +584,11 @@ recorded in the result file.
         - **The beep's absence** (or presence) in the PCM, per Task 1f.
         - **The respawn clip:** two lifecycles with different serials, liveness false in between, and no stale pose
           carried over.
-  - [ ] **Phase E — memory and allocation (AC6).** Over the ten clips and a clip that reaches the length limit:
+  - [x] **Phase E — memory and allocation (AC6).** Over the ten clips and a clip that reaches the length limit:
         `Profiler.GetTotalAllocatedMemoryLong`, `GetTotalReservedMemoryLong`, and `ProfilerRecorder` "GC Allocated In
         Frame" while recording (expect 0 B per frame) and while idle. Report footage `Bytes` against your preallocated
         capacity, before and after dispose. Look for a ramp, not just the endpoints.
-  - [ ] **Phase F — fail-soft (AC6). These are provoked errors: name them at the top of the output.** On a throwaway
+  - [x] **Phase F — fail-soft (AC6). These are provoked errors: name them at the top of the output.** On a throwaway
         recorder, or by temporarily clearing a field and restoring it:
         - no channel (it records, keeps `LastClip`, logs once);
         - no tap (track only, flagged silent, logs once);
@@ -598,19 +598,19 @@ recorded in the result file.
         - the recorder disabled mid-clip, and play mode exited mid-clip (Task 5.3).
         Each must give one log line, no exception and a running game. Then **re-check the console is clean in a
         normal run** (NFR5).
-  - [ ] **Look at every capture yourself** (the Read tool shows images). Draw the invisible values onto them: the
+  - [x] **Look at every capture yourself** (the Read tool shows images). Draw the invisible values onto them: the
         timecode the recorder held, the tick index, and the stop reason. Suspect the rig first if every case
         passes, every case fails identically, a number is suspiciously round, or a capture is blank.
-  - [ ] **Before every rig run:** call `refresh_unity`, wait for the compile, and read the config values and the
+  - [x] **Before every rig run:** call `refresh_unity`, wait for the compile, and read the config values and the
         wiring back through the editor (CLAUDE.md trap). Check that `mcpforunity://editor/state` shows
         `external_changes_dirty: false`.
-  - [ ] **After every run, restore and read back:** the scene is not dirty and has no rig objects; `timeScale` is 1;
+  - [x] **After every run, restore and read back:** the scene is not dirty and has no rig objects; `timeScale` is 1;
         the Game View size is back; the config assets match git; the virtual gamepad is removed; the audio
         configuration is unchanged; no rig `SessionState` keys remain; and `git status` is clean apart from your
         work.
 
-- [ ] **Task 11 — AC3 in a Windows release build** (AC3, AC7; Task 1h)
-  - [ ] 11.1 A **fenced bench**, built only into the bench build. Copy the spike's pattern:
+- [x] **Task 11 — AC3 in a Windows release build** (AC3, AC7; Task 1h)
+  - [x] 11.1 A **fenced bench**, built only into the bench build. Copy the spike's pattern:
         - a define-constrained asmdef (e.g. `CAMERA_RECORDING_BENCH`) with `autoReferenced: false`;
         - the define set only through `BuildPlayerOptions.extraScriptingDefines`.
         The bench takes a command-line flag; loads SampleScene; places the player at a vantage with a clear view of
@@ -621,25 +621,25 @@ recorded in the result file.
         - The bench may reference game code. Game code must never reference the bench.
         - Do **not** extend the spike instead: it is pinned to the old scale, and its harness measures the spike's
           own `ReplayTrack`, not this story's recorder.
-  - [ ] 11.2 Compute the difference-in-differences. No committed script does it today (`analyse.py` does not), so add
+  - [x] 11.2 Compute the difference-in-differences. No committed script does it today (`analyse.py` does not), so add
         one under `tools/verification/` that reads the CSVs. Report the recorder's cost per round, the mean and the
         range, raw absolute fps, and frames dropped or repeated, as ADR-4 did. Also sample process memory from
         outside the build (`procmem.ps1`; Mono's `PrivateMemorySize64` reads 0).
-  - [ ] 11.3 Build into `Builds/1-15-record-a-clip/` (git-ignored) with the Unity MCP build tool. Run windowed at
+  - [x] 11.3 Build into `Builds/1-15-record-a-clip/` (git-ignored) with the Unity MCP build tool. Run windowed at
         1920×1080 on mains power. Kill the exe when done. If the workstation is locked, `gdigrab` fails with
         "error 8" (lessons, 1-14): the bench does not need gdigrab, so do not depend on it.
-  - [ ] 11.4 Prove the fence:
+  - [x] 11.4 Prove the fence:
         - list a **plain** build's `Managed/` folder and check the bench DLL is absent;
         - run the fence tests (Task 8.3);
         - check that `CompilationPipeline.GetAssemblies(PlayerWithoutTestAssemblies)` does not include the bench
           (lessons, 1-14).
-  - [ ] 11.5 **The first Windows build re-serialises settings**: PC_RPAsset prefilter flags, URP global settings,
+  - [x] 11.5 **The first Windows build re-serialises settings**: PC_RPAsset prefilter flags, URP global settings,
         ProjectSettings preloadedAssets and batching, UnityConnectSettings (lessons, 1-14). Restore them from HEAD
         and reimport after every build. Check with `git status` / `git diff` that only your intended files changed.
 
-- [ ] **Task 12 — Regression, restore, close** (AC7)
-  - [ ] 12.1 Run the EditMode suite with `run_tests` (it was 297/297 on 2026-11-15), the fence tests included.
-  - [ ] 12.2 Re-run the rigs whose code paths this story touches. Decide by diffing (lessons, 1-19: "diff shipped code
+- [x] **Task 12 — Regression, restore, close** (AC7)
+  - [x] 12.1 Run the EditMode suite with `run_tests` (it was 297/297 on 2026-11-15), the fence tests included.
+  - [x] 12.2 Re-run the rigs whose code paths this story touches. Decide by diffing (lessons, 1-19: "diff shipped code
         from each rig run's commit to HEAD, then grep who calls the changed members"). Expect at least:
         - `Tools/Grading/Photo Shoot (Play)`, `Tools/Gallery/Gallery Shoot (Play)` and
           `Tools/HUD/Grade HUD Shoot (Play)`: they call `Capture()` and `SetPhotoMode`, and `SetMode` changes;
@@ -647,11 +647,11 @@ recorded in the result file.
           Walk.
         Rigs write into their own evidence folders, so copy those aside before a re-run and diff them back
         (lessons, 2-2). Record why any rig was not re-run.
-  - [ ] 12.3 `read_console` is clean: only the known baseline lines, such as the standing "Head bone not found!"
+  - [x] 12.3 `read_console` is clean: only the known baseline lines, such as the standing "Head bone not found!"
         warning, if it is still present.
-  - [ ] 12.4 Look at the evidence as a sceptic would (the verification plan below). Fix what it finds before queueing
+  - [x] 12.4 Look at the evidence as a sceptic would (the verification plan below). Fix what it finds before queueing
         any human check. A human check is never a place to park a defect (`loop/prompts/_rules.md`).
-  - [ ] 12.5 Commit on `loop/1-15-record-a-clip`, staging files by name with every new asset's `.meta`. Update the
+  - [x] 12.5 Commit on `loop/1-15-record-a-clip`, staging files by name with every new asset's `.meta`. Update the
         sprint status line (Dev Agent Record, File List, Change Log).
 
 ### Review Findings
@@ -871,14 +871,193 @@ The ADR-4 approval is **done** (it was 1.14's gate). Do not queue it again.
 
 ### Agent Model Used
 
+Claude Opus 5.5 (`claude-opus-5-5`), loop DEV phase, attempt 1, 2026-11-15.
+
 ### Debug Log References
+
+- Rig: `Tools/Recording/Record Clip Shoot (Play)` (`Assets/Scripts/Editor/RecordClipShootRig.cs` →
+  `Assets/Scripts/Recording/RecordClipShootRunner.cs`). Evidence: `_bmad-output/verification/1-15-record-a-clip/`
+  - `rig-run3/` — the evidence run on the final recorder code, all phases (`report.txt`, captures, WAVs, tracks).
+  - `rig/` — Phase D re-run after the rig's ghost-skinning fix (pictures and bones), `analysis.txt`, sheets.
+  - `rig-run1/`, `rig-run2/` — earlier runs, kept because they show the rig defects found and fixed (below).
+  - `survey/` — vantage survey with route markers; `bench/` — AC3 builds and the release-build bench.
+  - `regression-before/` — Photo/Gallery/Grade HUD Shoot evidence copied aside before their re-runs.
+- `Editor.log` holds every `[RecordClipShoot]` line; provoked faults sit between `PHASE F BEGIN` and `PHASE F END`.
+
+### Decisions (Task 1, all settled by measuring where a measurement could settle them)
+
+1a. **Capture input re-points to Record; `Capture()` unchanged and unbound.** `OnCapture` → `ToggleRecording()`.
+    Interim consequence, stated plainly: until 1.16/1.17 a player's clip shows **no grade** and stores **no photo**.
+1b. **`ClipRecorder` on `main characters`, driven by `PhotoModeController`.** `SetMode` stops the clip on every
+    way out of Photo, **after** `Mode` changes (a stop listener sees the camera already down, matching
+    `CameraLowered`). The REC indicator reads the recorder (new read-only `UI → Recording`, recorded in
+    §Architectural Boundaries). The **beeps are played by `RecordingHud`** from the recorder's `Started` /
+    `Stopped(StopReason)` C# events, so every stop beeps (length limit and device change included) through one
+    synchronous path, and `PhotoModeController` stays free of recording feedback.
+1c. **`RecordedClip` with an explicit `Claim(owner)`.** Listeners that keep footage claim during the raise; the
+    recorder claims the rest and holds one `LastClip`, disposing the one before. Measured: B6 ten cycles, every
+    previous clip disposed, storages created stays 2; B7 a claimed clip is not held by the recorder, and its
+    disposal hands the block back.
+1d. **Clock:** `AudioSettings.dspTime` at the press is the PCM's time zero; every PCM block is placed by the DSP
+    time read **inside `OnAudioFilterRead`** (verified: scheduled clicks land at exactly their DSP time, 5 of 5,
+    including after a 200-ms busy press frame). Ticks use `Time.realtimeSinceStartupAsDouble` anchored at the
+    same instant, because main-thread `dspTime` steps in 21.3-ms blocks (measured sawtooth of (dsp − realtime):
+    −38 … +35 ms; drift ≤ 6 ms over 30 s). Pause: the clip follows real time; a pause menu must suppress the
+    raise (written in `ClipRecorder`'s header).
+1e. **`RecordingConfig.maxClipSeconds` 120 s** (min 1, cap 300), reaching it stops with `LengthLimit` and keeps the
+    clip (B4: exactly 3.000 s with the limit at 3). **Preallocated at `Awake`: two contiguous storage blocks**
+    (23.1 MB each at 120 s, 48 kHz stereo) rather than a chunk pool: no allocation on the press frame or per frame,
+    memory flat over the ten cycles (run 3: allocated 1272.5–1272.8 MB, reserved 1786.3 MB throughout; run 2: 1273.6–1274.1 MB). Tick rate, 16-bit
+    and `FootageFormat.Version = 1` are constants.
+1f. **Beeps kept out of the footage** (`bypassListenerEffects = true`, not routed to a mixer). Measured: 2.7 kHz
+    power at the clip's start −62 … −77 dB, while the **same beep through a non-bypassed source** reads +9.8 dB in
+    the clip (positive control). The beep is heard at its own source (peak 0.159).
+1g. **Beeps:** generated placeholders (`tools/audio/make_camcorder_beeps.py`): start = one 75-ms 2.7-kHz tone,
+    stop = two (burst counter: 1 and 2). **Look:** red `● REC` and a white `H:MM:SS` timecode, top-right,
+    **steady dot** (no blink), **`STBY`** while raised and not recording, 44/36 px at the 1920×1080 reference
+    with a 1.5-px dark outline. **Deviation from Task 6.2's "on the PhotoViewfinder canvas":** it has its own
+    Overlay canvas (`RecordingHudCanvas`, sorting 50, CanvasScaler 1920×1080 match 0.5), because PhotoViewfinder's
+    scaler is Constant Pixel Size and its group fades in over 0.15 s. UI built in code at `Awake` (one scene
+    object; layout reviewable in one file).
+1h. **AC3 measured in a fenced Windows release build** (`Assets/Bench/RecordingBench`, define
+    `CAMERA_RECORDING_BENCH` through `extraScriptingDefines` only), same 24-s segment of the drunk's lifecycle
+    recording and not, 3 rounds, order rotated, difference-in-differences. `Unity.PerformanceTesting` was **not**
+    adopted: a CSV from the build answers the question, and no PlayMode test assembly was needed.
+1i. **Track per actor:** `EventDefinition`, a session-wide lifecycle serial (`EventActor.LifecycleSerial`, taken in
+    `Begin`), liveness, transform, and per Animator layer state/time/transition with its `DurationUnit`. Read live
+    every tick; Animator cached by `EventActor`; actors and layers per tick from config (2 and 2); a Recordability
+    warning once if an Animator has parameters or extra weighted layers.
+5.1 A recorder that cannot record **refuses silently** (no error beep, no REC) and logs once per session.
+5.2 A missing `clipRecorder` on `PhotoModeController` is an **Error** (the core verb is gone). The isolated
+    Photo/Gallery Shoot worlds announce that one expected line; the Grade HUD runner's placeholder copies the recorder.
+5.3 Disabled or destroyed mid-clip → the clip is **kept and announced** (`Disabled`), never disposed silently
+    (F6 a throwaway recorder; F7 leaving play mode mid-clip, through `PhotoModeController.OnDisable`; no exception).
 
 ### Completion Notes List
 
+**What was built.** `Assets/Scripts/Recording/`: `ClipRecorder`, `IClipBackend`, `IFootage`, `ReplayBackend`,
+`ReplayFootage` (read API: ticks, actors, layers, PCM), `ListenerTap` (audio thread: one interlocked state,
+no allocation, no lock across a copy), `RecordedClip`, `StopReason`, `ClipRecordedChannel`, `RecordingConfig`,
+`FootageFormat` (tick/PCM arithmetic, 16-bit clamp, `ClipTimecode`). `UI/RecordingHud`. `EventActor` gained
+read-only `Definition`, `Animator`, `LifecycleSerial`. `PhotoModeController`: `ToggleRecording`, stop in `SetMode`
+and `OnDisable`. SampleScene wired (additions only). Assets: `RecordingConfig.asset`, `ClipRecordedChannel.asset`,
+two beep WAVs.
+
+**How it was verified** (Record Clip Shoot, run 3 + Phase D re-run, real SampleScene, 1920×1080, virtual gamepad
+through PlayerInput):
+- *Controls:* 3D frame luma sd 43 (not blank); Overlay marker 100.00 % on / 0.00 % off.
+- *AC1/AC4 (real input):* RT in Walk — the Capture action arrived (+1) and nothing happened (0 starts, 0 clips, no
+  beep, 0 REC pixels). Press → handler 5.6 ms, handler → first frame with REC 12.2 ms, handler → beep's first
+  sample in the mix 2.0 ms (+ ≤ 85 ms of output buffers): **press → REC on screen ≈ 18 ms, press → beep at the
+  speaker ≤ ~93 ms** (budget 200 ms; reported, not asserted). Timecode `0:00:02` at 2.433 s. Stop beep 2 bursts,
+  start 1.
+- *AC2:* every route ends with one raise and the clip kept: press/press (`PlayerPressed`), LT release and gallery
+  suppression (`CameraLowered`), the limit (`LengthLimit`, 3.000 s), rapid ×3, ten cycles, a claimed clip.
+- *AC3 (aim/zoom):* right stick and dpad during a clip — live yaw 331.4 → 339.2°, FOV 60 → 34.8, the track the
+  same; every tick's camera equals the pose rendered on its frame (0.000 cm, 0.0000°, 0.0000 FOV) against a
+  previous-tick control of 0.30° / 3.2 FOV / 8 cm actor.
+- *AC5 (fidelity):* camera and actor poses 0.000 cm on every tick (806 + 737 + 236 in run 2, the same in run 3);
+  **ghost bones from the track vs live bones 0.000 cm on every tick, transitions included** (control 8.5–12 cm);
+  **10/10 live vs re-rendered frames pixel-identical** (SSIM 1.0000, controls 0.61–0.99) after the rig fix below;
+  PCM exactly the tick duration (1,448,000 frames for 905 slots, etc.); clicks sample-exact; picture within one
+  tick of the click (slot − click 0 or ±33.3 ms, heavy start included); loudness vs the drunk's distance
+  r −0.74 … −0.91 in 2-s windows (1.14: −0.58 … −0.73); respawn clips show two lifecycles (e.g. 4 → 5) with 32–58
+  actor-less ticks between and the new lifecycle starting at the spawn point (31.80, 19.00), no stale pose.
+- *AC6:* zero allocation — heap growth over 9,000 calls of the **full sampling path with the live drunk** (9,000
+  ticks, actor and layer samples) **0 B**, the recorder's `LateUpdate` 0 B, positive control (`new object()`)
+  73,728 B, no GC; footage `Bytes` 0 after dispose; storages 2 throughout. Fail-soft: no channel / no config / no
+  tap / no EventManager / `maxClipSeconds` 0, NaN, 1e9 / audio reset mid-clip / disabled mid-clip / play-mode exit
+  mid-clip — one line per fault, no exception, the game kept running; a clip recorded after the audio reset has
+  sound (click at 0.086 s).
+- *EditMode:* 297 → 364 (61 recording tests, 5 bench fence tests); mutation-proven on the repeat rule (6 red).
+  The culture mutation of the timecode survived: Mono prints whole-number `H:MM:SS` identically in all 7 cultures
+  tried, so the invariant pin there is a safeguard, not a fix.
+
+**Rig defects found by controls and fixed (not product defects):** an edit-mode line-of-sight check passed through
+pine canopies (no colliders) → vantage surveyed visually; `GC.GetAllocatedBytesForCurrentThread` reads 0 around
+`new byte[1000]` in this Mono (the first zero-allocation test and probe were blind) → heap growth with a positive
+control; the shifted pose control compared a frame with itself (Main Camera renders more than once a frame in the
+editor) → compare with the previous tick; a procedural click made before `AudioSettings.Reset` plays silent
+afterwards → rebuilt after the reset; the ghost replayed fixed-time crossfades with the next state at time 0
+(6.4 cm on transition ticks) and rendered stale skinning → normalized crossfade with the next state's time,
+`forceMatrixRecalculationPerRender`.
+
+**Left for Alexv (human checks):** the camcorder look and the beeps (AC1); 60 FPS at 1080p on a mid-range desktop
+(AC3, a hardware limit here); whether the recorded sound is clean and feels in sync (AC5); optionally whether the
+toggle feels instant.
+
+**AC3 in a Windows release build (Task 11)** — `bench/run1/` (`did.txt`, `bench-frames.csv`, `bench-summary.txt`,
+`procmem.csv`, `player.log`). Laptop: i7-1165G7, GeForce MX350, 1920×1080 windowed, vSync off. Same 24-s segment
+of the drunk's lifecycle from each spawn, recording through the real `ToggleRecording()` and not, 3 rounds,
+order rotated:
+- round 0 +0.30, round 1 +1.87, round 2 −1.88 ms/frame → **recorder cost +0.10 ms/frame (−1.88 … +1.87, n = 3)**,
+  not distinguishable from 0 against this laptop's noise (round 2's baseline segment alone had 80 hitches).
+- Absolute: 38.0–45.6 fps per segment, 42.2 fps over 6,082 frames. **NFR1's 60 FPS cannot be judged here**; it is
+  queued for a mid-range desktop. Every rec-phase frame was really recording (0 frames not); 0 gen-0 GCs in the three
+  recording segments; three 24.000-s clips recorded with sound in the build; no error in `player.log`.
+- Fence: the bench build's `Managed/` holds `CameraGame.Bench.RecordingBench.dll`, the **plain build's holds only
+  `CameraGame.dll`**; `PlayerWithoutTestAssemblies` excludes the bench (`bench/build-result.txt`); the 4 fence tests
+  pass. The builds re-serialised `PC_RPAsset`, `UniversalRenderPipelineGlobalSettings`, `GraphicsSettings`,
+  `ProjectSettings` and `UnityConnectSettings`: restored from HEAD (byte-identical, CRLF) and reimported.
+
+**Regression (Task 12)** — shipped code changed under the rigs: `PhotoModeController` (`SetMode`, `OnCapture`,
+`Awake`, `OnDisable`) and `EventActor.Begin`. Re-run on HEAD, previous evidence copied to `regression-before/`:
+- Photo Shoot: 15 of 16 verdicts identical; `i_from_behind` 34 % → 44 %, both 2★ (lesson 42: that shot swings on
+  real-time schedule drift alone). Its one expected `[PhotoMode] ClipRecorder unassigned` error is announced first.
+- Gallery Shoot: every stored grade, miss reason, the cap (5 of 5, +5 textures vs baseline) and identity across 3
+  cycles identical; only timestamps and instance ids differ.
+- Grade HUD Shoot (1920×1080): Phase B 12 thumbnails, 0 contaminated; pooled cycles agree; its provoked lines only.
+- Normal SampleScene session: raise, record 4.6 s, lower → clip kept (`CameraLowered`); gallery opened in Walk
+  suppresses the raise and Record does nothing while it is up; console: only the standing "Head bone not found!".
+- EditMode 364/364. Editor restored: SampleScene clean with no rig objects, `maxClipSeconds` 120, `timeScale` 1,
+  Game View index 0, no rig SessionState keys, no virtual pad, input settings and audio configuration as before.
+
+**Human checks queued (never self-certified):**
+1. **AC1 — camcorder look and sound.** `rig-run3/a2_raised_standby.png` (STBY), `a3_first_rec_frame.png`,
+   `a4_recording_0002.png`, `a5_stopped.png`, `rig-run2/c2_after_look_zoom.png`; beeps
+   `Assets/Audio/SFX/Rec*BeepPlaceholder.wav` and as heard at the source `rig-run3/a3_start_beep_at_source.wav`,
+   `a5_stop_beep_at_source.wav`. Do they read as a 2000s camcorder, and is the beep level right against the game?
+2. **AC3 — 60 FPS at 1080p on a mid-range desktop.** Build with `Tools/Recording/Build Recording Bench (Windows)`, then
+   `powershell -ExecutionPolicy Bypass -File tools/verification/run_recording_bench.ps1 Builds/1-15-record-a-clip/bench/RecordingBench.exe <out> 3`
+   and `python -I tools/verification/recording_bench_did.py <out> <out>/procmem.csv`.
+3. **AC5 — the recorded sound.** `rig/d1_clip.wav` (30 s through the drunk's peak and a respawn; three marker clicks at
+   4, 12 and 21 s), `rig/d2_clip.wav`, with `rig/d1_live_vs_ghost_sheet.png`. Is it the game's sound, clean, and does
+   it feel in sync?
+4. *Optional:* does the Record toggle feel instant in the hand (measured ≈ 18 ms to REC on screen)?
+
 ### File List
+
+New:
+- `Assets/Scripts/Recording/ClipRecorder.cs`, `IClipBackend.cs`, `IFootage.cs`, `ReplayBackend.cs`, `ReplayFootage.cs`,
+  `ListenerTap.cs`, `RecordedClip.cs`, `StopReason.cs`, `ClipRecordedChannel.cs`, `RecordingConfig.cs`, `FootageFormat.cs`
+  (and `Assets/Scripts/Recording.meta` and every `.meta`)
+- `Assets/Scripts/Recording/RecordClipShootRunner.cs`, `RecordClipShootBeepProbe.cs`, `RecordClipShootBoneLog.cs`
+  (rig, `#if UNITY_EDITOR`)
+- `Assets/Scripts/UI/RecordingHud.cs`
+- `Assets/Scripts/Editor/RecordClipShootRig.cs`, `Assets/Scripts/Editor/RecordingBenchBuild.cs`
+- `Assets/Bench/RecordingBench/CameraGame.Bench.RecordingBench.asmdef`, `RecordingBench.cs` (+ `Assets/Bench.meta`,
+  `Assets/Bench/RecordingBench.meta`)
+- `Assets/Data/Recording/RecordingConfig.asset` (+ `Assets/Data/Recording.meta`), `Assets/Data/Channels/ClipRecordedChannel.asset`
+- `Assets/Audio/SFX/RecStartBeepPlaceholder.wav`, `Assets/Audio/SFX/RecStopBeepPlaceholder.wav`
+- `Assets/Tests/EditMode/RecordingTests.cs`, `Assets/Tests/EditMode/RecordingBenchFenceTests.cs`
+- `tools/audio/make_camcorder_beeps.py`, `tools/verification/record_clip_report.py`,
+  `tools/verification/recording_bench_did.py`, `tools/verification/run_recording_bench.ps1`
+
+Modified:
+- `Assets/Scripts/PhotoMode/PhotoModeController.cs` (Record toggle, stop in `SetMode` and `OnDisable`, docs; `Capture()` unchanged)
+- `Assets/Scripts/Events/EventActor.cs` (read-only `Definition`, `Animator`, `LifecycleSerial`)
+- `Assets/Scenes/SampleScene.unity` (additions only: `ClipRecorder` on `main characters`, `ListenerTap` on Main Camera,
+  `RecordingHudCanvas`, `PhotoModeController.clipRecorder`)
+- `Assets/Scripts/Editor/PhotoShootRig.cs`, `Assets/Scripts/Editor/GalleryShootRig.cs`, `Assets/Scripts/UI/GradeHudShootRunner.cs`
+  (rigs: the expected ClipRecorder error announced, or the recorder copied)
+- `_bmad-output/planning-artifacts/game-architecture.md`, `_bmad-output/implementation-artifacts/deferred-work.md`,
+  `_bmad-output/implementation-artifacts/sprint-status.yaml`, this story file
 
 ## Change Log
 
 - 2026-11-15: Story context created by the loop CREATE phase (ready-for-dev). ADR-4 changed to Accepted in
   `game-architecture.md`, citing `loop/runtime/approvals.txt` line 1. The Recordability rule was added under
   Cross-cutting Concerns, as ADR-4 asked once it was approved.
+- 2026-11-15: Loop DEV phase (attempt 1). Implemented the recorder (ADR-4 replay footage behind `IClipBackend`), the
+  Record toggle, the REC indicator and beeps, the Record Clip Shoot rig, 67 EditMode tests and the fenced AC3 bench;
+  verified per the Dev Agent Record. Status -> review; the perceptual and desktop checks are queued for Alexv.
