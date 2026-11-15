@@ -57,6 +57,36 @@ def main(rig):
         out.append(f"{tag}: pairs {len(pairs)}, SSIM mean {np.mean(scores):.4f} (min {np.min(scores):.4f}); "
                    f"shifted control mean {np.nanmean(controls):.4f} -> {path}")
 
+    # Loudness against the drunk's distance, in 0.5-2 s windows (a 1/30-s tick is shorter than one of his mumbled
+    # syllables, so per-tick RMS mostly measures the syllables). Distance from the track; windows with a marker click
+    # (|sample| > 0.5) are left out.
+    import csv
+    import wave
+    for tag in ("d1", "d2", "d3"):
+        wp, tp = os.path.join(rig, f"{tag}_clip.wav"), os.path.join(rig, f"{tag}_track.csv")
+        if not (os.path.exists(wp) and os.path.exists(tp)):
+            continue
+        w = wave.open(wp)
+        n, ch, sr = w.getnframes(), w.getnchannels(), w.getframerate()
+        x = np.frombuffer(w.readframes(n), dtype="<i2").reshape(-1, ch).astype(float).mean(1) / 32767
+        slot, ticks = 0, []
+        for r in csv.DictReader(open(tp)):
+            d = np.hypot(float(r["actor_x"]) - float(r["cam_x"]), float(r["actor_z"]) - float(r["cam_z"])) if r["live"] == "True" else np.nan
+            ticks.append((slot / 30.0, d))
+            slot += int(r["repeats"])
+        for win in (0.5, 1.0, 2.0):
+            xs, ys, t = [], [], 0.0
+            while t + win <= n / sr:
+                seg = x[int(t * sr):int((t + win) * sr)]
+                ds = [d for (s, d) in ticks if t <= s < t + win and not np.isnan(d)]
+                if ds and np.abs(seg).max() < 0.5:
+                    xs.append(np.mean(ds))
+                    ys.append(20 * np.log10(np.sqrt((seg ** 2).mean()) + 1e-9))
+                t += win
+            if len(xs) > 2:
+                out.append(f"{tag} loudness in {win} s windows: r(dBFS, distance) = {np.corrcoef(xs, ys)[0, 1]:+.2f} over {len(xs)} windows, "
+                           f"distance {min(xs):.1f}-{max(xs):.1f} m, level {min(ys):.1f}..{max(ys):.1f} dBFS")
+
     caps = sorted(glob.glob(os.path.join(rig, "a*.png")) + glob.glob(os.path.join(rig, "c*.png")))
     if caps:
         cols = 3

@@ -618,24 +618,40 @@ namespace CameraGame.Recording
             yield return Raise(true);
             yield return Wait(0.3f);
 
-            // EXACT: two probes bracket the recorder's LateUpdate (execution orders 9999 and 10001 around its 10000)
-            // and read GC.GetAllocatedBytesForCurrentThread, so each delta is what the recorder's frame allocated.
-            var before = gameObject.AddComponent<RecordClipShootAllocBefore>();
-            var after = gameObject.AddComponent<RecordClipShootAllocAfter>();
-            long probeControl = RecordClipShootAllocAfter.Control();
+            // GC.GetAllocatedBytesForCurrentThread reads 0 around a new byte[1000] in this Mono (run 2 of this rig showed
+            // it; its "0 B" proved nothing), and GC.GetTotalMemory moves in 4 KB blocks. So the paths run thousands of
+            // times inside one frame: any managed allocation is >= 16 B, so an allocating path would grow the heap by
+            // >= 16 B per call. A positive control proves the measurement sees that.
+            int n = 9000;
+            var keep = new object[n];
+            long ctl = HeapGrowth(() => { for (int i = 0; i < n; i++) keep[i] = new object(); }, out int ctlGc);
+            GC.KeepAlive(keep);
+
+            // (a) the FULL sampling path with the live drunk: a rig-owned backend on the real camera and EventManager,
+            //     every call taking a tick, so camera, actor and Animator-layer sampling all run.
+            var backend = new ReplayBackend(cam, manager, null, RecordingConfig.MaxActorsPerTickOf(shippedConfig),
+                                            RecordingConfig.MaxAnimatorLayersOf(shippedConfig));
+            backend.Prepare(n / 30f + 1f);
+            backend.Begin(AudioSettings.dspTime, n / 30f + 1f);
+            backend.Sample(0.001);
+            long full = HeapGrowth(() => { for (int i = 1; i < n; i++) { backend.Sample(i / 30.0 + 0.001); backend.TryGetStopRequest(out _); } }, out int fullGc);
+            var ff = (ReplayFootage)backend.End();
+            int actors = ff.ActorSampleCount, layers = ff.LayerSampleCount, ticks = ff.TickCount;
+            ff.Dispose();
+            backend.Destroy();
+
+            // (b) the real recorder's own LateUpdate, called through a delegate while it records.
             yield return PressRecord();
-            for (int i = 0; i < 20; i++) yield return null;
-            after.Arm(600);
-            while (after.Count < 600) yield return null;
-            string recLine = after.Summary();
+            for (int i = 0; i < 5; i++) yield return null;
+            var late = (Action)Delegate.CreateDelegate(typeof(Action), recorder, "LateUpdate");
+            late();
+            long recGrowth = HeapGrowth(() => { for (int i = 0; i < n; i++) late(); }, out int recGc);
             yield return PressRecord();
-            for (int i = 0; i < 20; i++) yield return null;
-            after.Arm(300);
-            while (after.Count < 300) yield return null;
-            Line($"Recorder LateUpdate, bracketed: RECORDING {recLine}; IDLE {after.Summary()}. Positive control: the same " +
-                 $"counter read {probeControl} B around one new byte[1000].");
-            Destroy(before);
-            Destroy(after);
+
+            Line($"Heap growth over {n} calls (GetTotalMemory, 4 KB blocks; >= {n * 16} B if a call allocated): " +
+                 $"positive control (new object() each call) {ctl} B, GCs {ctlGc}; FULL sampling path with the live drunk " +
+                 $"({ticks} ticks, {actors} actor samples, {layers} layer samples) {full} B, GCs {fullGc}; the recorder's " +
+                 $"LateUpdate while recording {recGrowth} B, GCs {recGc}.");
 
             Line("Whole-frame view (ProfilerRecorder 'GC Allocated In Frame'); in the editor it includes the editor's own allocations:");
             using (var gc = Unity.Profiling.ProfilerRecorder.StartNew(Unity.Profiling.ProfilerCategory.Memory, "GC Allocated In Frame", 1))
@@ -655,6 +671,18 @@ namespace CameraGame.Recording
                      "The HUD's timecode builds one short string per displayed second (by design, not per frame).");
             }
             yield return Raise(false);
+        }
+
+        private static long HeapGrowth(Action body, out int collections)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            int gc0 = GC.CollectionCount(0);
+            long before = GC.GetTotalMemory(false);
+            body();
+            long after = GC.GetTotalMemory(false);
+            collections = GC.CollectionCount(0) - gc0;
+            return after - before;
         }
 
         private static string Summ(long[] v)
@@ -910,11 +938,14 @@ namespace CameraGame.Recording
                 anim.Play(s.StateHash, l, s.StateTime);
                 if (s.InTransition)
                 {
+                    // The ghost's clock is FROZEN (speed 0), so a crossfade's pose depends only on the two states'
+                    // normalized times and the transition's progress, never on its duration or unit. The normalized
+                    // CrossFade takes the next state's NORMALIZED time, which is what the track holds; the fixed-time
+                    // overload wants that offset in seconds (the next state's length is not recorded), and passing 0
+                    // put the next state at its start: 6.4 cm mean bone error on transition ticks (run 2). A playback
+                    // whose clock RUNS between ticks (Story 1.18) must honour TransitionUnit instead (ADR-4).
                     anim.Update(0f);
-                    if (s.TransitionUnit == DurationUnit.Fixed)
-                        anim.CrossFadeInFixedTime(s.NextStateHash, s.TransitionDuration, l, 0f, s.TransitionTime);
-                    else
-                        anim.CrossFade(s.NextStateHash, s.TransitionDuration, l, s.NextStateTime, s.TransitionTime);
+                    anim.CrossFade(s.NextStateHash, s.TransitionDuration, l, s.NextStateTime, s.TransitionTime);
                 }
             }
             anim.Update(0f);

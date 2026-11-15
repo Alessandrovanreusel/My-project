@@ -401,34 +401,71 @@ namespace CameraGame.Tests
             }
         }
 
+        // AC6: "recording allocates nothing on the managed heap per frame". This is the AC itself, not a performance
+        // threshold.
+        //
+        // ⚠️ HOW IT CAN SEE AN ALLOCATION AT ALL. In Unity's Mono, GC.GetAllocatedBytesForCurrentThread() reads 0
+        // around a new byte[1000] (measured 2026-11-15: the first version of this test used it and could not fail),
+        // and GC.GetTotalMemory moves in 4 KB blocks. So the path runs 9,000 times, each taking a full tick: any
+        // managed allocation is at least 16 B, so an allocating path would add at least 144 KB, ~35 blocks. The
+        // positive control below proves the same measurement sees exactly that.
+        private const int Calls = 9000;
+
+        private static long HeapGrowth(Action body, out int collections)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            int gc0 = GC.CollectionCount(0);
+            long before = GC.GetTotalMemory(false);
+            body();
+            long after = GC.GetTotalMemory(false);
+            collections = GC.CollectionCount(0) - gc0;
+            return after - before;
+        }
+
         [Test]
         public void Sampling_AllocatesNothing()
         {
-            // AC6: "recording allocates nothing on the managed heap per frame". This is the AC itself, not a
-            // performance threshold: the same path the recorder calls in LateUpdate, measured in bytes.
             Camera cam = NewCamera(out GameObject go);
             var backend = new ReplayBackend(cam, null, null, 2, 2);
             try
             {
-                backend.Prepare(30f);
-                backend.Begin(0d, 30f);
+                backend.Prepare(Calls / 30f + 1f);
+                backend.Begin(0d, Calls / 30f + 1f);
                 backend.Sample(0.001);   // first call outside the measurement (JIT)
-                long before = GC.GetAllocatedBytesForCurrentThread();
-                for (int i = 1; i < 600; i++)
+                long grown = HeapGrowth(() =>
                 {
-                    backend.Sample(i / 60.0);
-                    backend.TryGetStopRequest(out _);
-                    _ = backend.RecordedSeconds;
-                }
-                long after = GC.GetAllocatedBytesForCurrentThread();
-                Assert.AreEqual(0, after - before, "bytes allocated by 599 frames of sampling");
-                backend.Abort();
+                    for (int i = 1; i < Calls; i++)
+                    {
+                        backend.Sample(i / 30.0 + 0.001);   // a tick is due on every call: the full path
+                        backend.TryGetStopRequest(out _);
+                        _ = backend.RecordedSeconds;
+                    }
+                }, out int collections);
+                Assert.AreEqual(0, collections, "a collection during the loop would hide allocations");
+                Assert.Less(grown, 4096, $"heap grew {grown} B over {Calls} sampled frames (any allocation would be >= {Calls * 16} B)");
+                IFootage f = backend.End();
+                Assert.AreEqual(Calls, ((ReplayFootage)f).TickCount, "every call took a tick: the full path ran");
+                f.Dispose();
             }
             finally
             {
                 backend.Destroy();
                 Object.DestroyImmediate(go);
             }
+        }
+
+        [Test]
+        public void Sampling_AllocationCheck_PositiveControl()
+        {
+            // The same measurement around the same number of calls that DO allocate must move far beyond the 4 KB bound
+            // the zero test uses. Mono's GetTotalMemory undercounts (it read 69,632 B for 9,000 new object(), ~144 KB
+            // real, on 2026-11-15), so the bar is "clearly more than a few blocks", not the exact byte count.
+            var keep = new object[Calls];
+            long grown = HeapGrowth(() => { for (int i = 0; i < Calls; i++) keep[i] = new object(); }, out int collections);
+            Assert.AreEqual(0, collections);
+            Assert.Greater(grown, 4 * 4096, $"the measurement saw only {grown} B for {Calls} allocations");
+            GC.KeepAlive(keep);
         }
     }
 }

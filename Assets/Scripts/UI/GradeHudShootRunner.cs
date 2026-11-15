@@ -796,6 +796,7 @@ namespace CameraGame.UI
             CopyPrivate(photo, ph, "shutterClip");
             CopyPrivate(photo, ph, "captureFlash");
             CopyPrivate(photo, ph, "viewfinderRoot");
+            CopyPrivate(photo, ph, "clipRecorder");   // Story 1.15: keeps this scenario's console to its one [Grading] line
             SetPrivate(ph, "gradingConfig", null);
             SetPrivate(ph, "eventManager", null);
 

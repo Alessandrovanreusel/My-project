@@ -241,8 +241,43 @@ Holding RMB still raises the camera into the Viewfinder state; the code keeps th
 **Dependency direction:** `PhotoMode` → `Recording` → `Grading` and `Events` (through `ISubject` only). The
 memory card (`Gallery`) and `UI` listen through `ClipRecordedChannel` and never the reverse.
 
-*The names and exact shapes are finalised by Stories 1.14–1.17. This section fixes the responsibilities and
-the dependency direction.*
+**As built by Story 1.15 (2026-11-15).** Stories 1.16–1.17 add the grade and the card; the shapes below are
+the seams they plug into.
+
+- **Recording** (`Scripts/Recording/`): `ClipRecorder` (MonoBehaviour on `main characters`, execution order
+  10000 so it samples after `ThirdPersonCamera`'s final camera write) talks to an `IClipBackend` (`Begin`,
+  `Sample` once per frame, `End → IFootage`, `Abort`). `ReplayBackend` is the first backend: a 30 Hz track of
+  the camera the player films through and of every live event actor, read live from
+  `EventManager.ActiveActors` on every tick (its `EventDefinition`, a session-wide lifecycle serial from
+  `EventActor.LifecycleSerial`, liveness, transform, and per Animator layer the state, time and transition
+  with its `DurationUnit`), plus the listener's PCM through `ListenerTap` (on the AudioListener's GameObject).
+  `ReplayFootage : IFootage` is read-only. The tick rate, the 16-bit format and a format version are
+  constants in `FootageFormat`, not tunables.
+- **The clock:** time zero is `AudioSettings.dspTime` read at the press. Each PCM block lands at its own DSP
+  time, so a heavy press frame moves nothing. Each tick is stamped with the realtime clock since the same
+  instant (dspTime only steps in whole DSP blocks on the main thread) and carries a repeat count (1/30-s
+  slots it stands for), so a game below 30 fps still yields a true-duration clip. At the end the PCM is
+  padded or trimmed to exactly the ticks' duration. The clip follows real time, not `Time.timeScale`; a
+  pause menu must suppress the raise, which stops the recording.
+- **Payload and channel:** `ClipRecordedChannel : EventChannel<RecordedClip>`, raised once per finished clip,
+  after the recorder's own `Stopped` event. `RecordedClip { Id; IFootage Footage; StartedAtUtc;
+  DurationSeconds; StopReason; Owner }`, with `StopReason` = PlayerPressed, CameraLowered, LengthLimit,
+  AudioDeviceChanged or Disabled. Every reason keeps the clip.
+- **Ownership (NFR3):** a listener that keeps the footage calls `RecordedClip.Claim(owner)` during the raise
+  and disposes it later. The recorder claims whatever nobody claimed and holds one (`LastClip`), disposing
+  the one before. Footage storage is preallocated at `Awake` (two clips' worth, sized from
+  `RecordingConfig.maxClipSeconds`) and returned to the pool on dispose, so nothing is allocated on the
+  press frame or per frame. Story 1.17's card claims every clip, and the recorder then holds nothing.
+- **Driving it:** `PhotoModeController.OnCapture` → `ToggleRecording()` (a no-op in Walk); `SetMode` stops the
+  recording on every way out of Photo (`CameraLowered`); `OnDisable` stops it (`Disabled`). `Capture()`, the
+  still shutter, stays unchanged but unbound from input, for the regression rigs and Story 1.16.
+- **Feedback:** `UI/RecordingHud` (its own Overlay canvas) reads `IsRecording` and `ElapsedSeconds` and plays
+  the REC beeps from `Started`/`Stopped`. The beeps bypass listener effects, so they stay out of the footage.
+- **Config:** `Data/Recording/RecordingConfig.asset` (`maxClipSeconds` 120, the stand-in for the card until
+  1.17; `maxActorsPerTick`; `maxAnimatorLayers`; `beepVolume`), `Safe*` accessors plus `TryGetConfigProblem`.
+
+*The section above fixes the responsibilities and the dependency direction; Stories 1.16–1.17 finalise the
+grade and the card.*
 
 ### Event-Actor System (reusable engine)
 
@@ -511,7 +546,7 @@ added later without reshaping the model.
   this machine. Its no-recording baseline runs 33–52 fps in the recording window, so it waits for a
   mid-range desktop.
 
-  **What Story 1.15 builds.** A *narrow backend seam* in `Scripts/Recording/`, so that a veto swaps the
+  **What Story 1.15 builds** *(built 2026-11-15: see **Clip Recording** above)*. A *narrow backend seam* in `Scripts/Recording/`, so that a veto swaps the
   backend and not the design: `ClipRecorder` talks to an `IClipBackend` (`Begin`, `Sample` once per game
   frame, `End → IFootage`). `IFootage { float Seconds; long Bytes; void Dispose(); }` is the
   `<footage handle>` of `CapturedClip`, and `ReplayFootage` is the first implementation. Export sits behind
@@ -771,7 +806,7 @@ My project/
 │   │   ├── Grading/         # ShotGrader, ShotGrade, GradingConfig (SO)
 │   │   ├── Events/          # EventActor, EventManager, EventDefinition (SO), lifecycle states, ISubject
 │   │   ├── Gallery/         # GalleryService → MemoryCardService, CapturedShot (2026-11-10)
-│   │   ├── Recording/       # ClipRecorder, ClipGrader, CapturedClip, ClipRecordedChannel (added 2026-11-10)
+│   │   ├── Recording/       # ClipRecorder, IClipBackend, IFootage, ReplayBackend, ReplayFootage, ListenerTap, RecordedClip, StopReason, ClipRecordedChannel, RecordingConfig (SO), FootageFormat (Story 1.15); ClipGrader (1.16); RecordClipShoot* rigs (#if UNITY_EDITOR)
 │   │   ├── World/           # TownBoundsConfig (SO), FallRecovery, ColliderRule; TownRigRunner rigs (#if UNITY_EDITOR) (added 2026-11-11, Story 2.2)
 │   │   ├── Editor/          # AddMeshColliders, ColorCharacter (existing); MapCheck, TownNavMeshBaker, TownBoundsBuilder, TownRig (Story 2.2)
 │   │   └── CameraGame.asmdef
@@ -779,7 +814,7 @@ My project/
 │   │   ├── Events/          #   TownDrunk.asset (EventDefinition)
 │   │   ├── Grading/         #   GradingConfig.asset
 │   │   ├── Camera/          #   CameraConfig.asset
-│   │   ├── Recording/       #   MemoryCardConfig.asset (added 2026-11-10)
+│   │   ├── Recording/       #   RecordingConfig.asset (Story 1.15); MemoryCardConfig.asset (1.17)
 │   │   ├── World/           #   TownBoundsConfig.asset (added 2026-11-11, Story 2.2)
 │   │   └── Channels/        #   ShotCapturedChannel.asset, EventPeakedChannel.asset, ClipRecordedChannel.asset
 │   ├── Models/              # FBX (existing: game scneen.fbx, main characters.fbx)
@@ -795,6 +830,7 @@ My project/
 │   ├── Input/               # InputSystem_Actions (existing)
 │   ├── Scenes/              # existing (SampleScene, Video Camera Game 2.0)
 │   ├── Settings/            # URP assets PC_RPAsset / Mobile_RPAsset (existing)
+│   ├── Bench/RecordingBench/ # fenced AC3 frame-cost bench (UNITY_EDITOR || CAMERA_RECORDING_BENCH), Story 1.15
 │   └── Tests/
 │       ├── EditMode/        #   ShotGrader math, lifecycle timing (EditMode.asmdef)
 │       └── PlayMode/        #   capture flow, event spawn/despawn (PlayMode.asmdef)
@@ -856,6 +892,14 @@ My project/
   everyone (recorded in `deferred-work.md`).
   The same reasoning extends to `Gallery` → `Player` (`ThirdPersonController.SetInputSuppressed`),
   which is already covered by the "may depend on `Player`" clause above.
+- **`PhotoMode` → `Recording` → `Events` (read-only accessors) and `Core`** (added 2026-11-15, Story 1.15).
+  `Recording` never references `PhotoMode`, `UI` or `Gallery`; they reach it through `ClipRecordedChannel`
+  or by reading.
+- **`UI` → `Recording` is a READ-ONLY dependency** (added 2026-11-15, Story 1.15). The REC indicator needs live
+  state (recording or not, for how long), which a channel raised once per finished clip cannot give, so
+  `RecordingHud` reads `ClipRecorder.IsRecording` / `ElapsedSeconds` and listens to its `Started`/`Stopped`
+  C# events, exactly as `GradeHud` reads `PhotoModeController.IsPhotoMode`. It never calls anything on the
+  recorder.
 - **Grading ↔ Events decoupling:** Grading reads subjects through an `ISubject` interface
   (`Bounds`, `IsAtPeak`), so it never hard-references concrete event types.
 - **One assembly** (`CameraGame.asmdef`) for the slice; `Editor/` and `Tests/` are
