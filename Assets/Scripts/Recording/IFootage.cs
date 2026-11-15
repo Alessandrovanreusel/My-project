@@ -12,7 +12,10 @@ namespace CameraGame.Recording
         /// <summary>How long the clip plays for, in seconds. 0 once disposed.</summary>
         float Seconds { get; }
 
-        /// <summary>The memory the footage holds, in bytes. 0 once disposed.</summary>
+        /// <summary>The bytes of footage RECORDED (ticks, actors, layers and PCM up to the clip's length), which is
+        /// what the clip will cost once it is stored. 0 once disposed. ⚠️ Not the memory held while it lives: a replay
+        /// clip sits in a whole preallocated block (~23 MB at 120 s, 48 kHz stereo) however short it is (code review
+        /// 2026-11-15; deferred-work, Story 1.17).</summary>
         long Bytes { get; }
 
         /// <summary>True once <see cref="Dispose"/> has run. A disposed footage reads as empty.</summary>

@@ -659,7 +659,8 @@ recorded in the result file.
 *Loop REVIEW phase, 2026-11-15 (Claude Opus 5.5). Diff `1f83710..83c74fe`, shipped code only; rigs were run, not
 reviewed. Layers: Blind Hunter (diff only), Edge Case Hunter (diff + project), Acceptance Auditor (diff + this
 story + game-architecture.md), and a standards / zero-GC pass (`unity-perf:code-standards`,
-`unity-perf:csharp-zero-gc`, `unity-perf:unity-performance`). Every finding below marked **reproduced** was
+`unity-perf:csharp-zero-gc`, `unity-perf:unity-performance`; it confirmed the zero-allocation and audio-thread
+claims line by line). Every finding below marked **reproduced** was
 triggered in SampleScene play mode through the real path (`PhotoModeController.ToggleRecording`, `SetPhotoMode`,
 Send Messages, `AudioSettings.Reset`, a 440 Hz tone source as the known signal) before it was fixed, and
 re-run after the fix. Evidence: `_bmad-output/verification/1-15-record-a-clip/review/` (`runtime.txt` holds
@@ -720,6 +721,7 @@ every probe's before and after numbers).*
   - `ListenerTap` said "never a Sleep" (`SpinWait` can yield up to `Sleep(1)` if the audio thread is
     preempted mid-copy).
   - `IFootage.Dispose` is now marked main-thread-only.
+  - `IFootage.Bytes` said "the memory the footage holds"; it is the recorded size (the standards pass).
   - `RecordingConfig` now says memory scales with the device's rate.
   - `game-architecture.md` said Recording reads Events "through ISubject only", and that "nothing is
     allocated on the press frame".
@@ -732,6 +734,10 @@ every probe's before and after numbers).*
 - config read only at Awake;
 - the stale held clip once claimers exist;
 - an editor Pause mid-clip (hypothesis).
+- the channel count taken from the callback itself (the clamp fixes every case reproducible here);
+- a PlayMode zero-allocation guard for the full path (today only the rig's Phase E measures it);
+- `IClipBackend` not yet used as a seam (no runtime effect);
+- `IFootage.Bytes` is the recorded size, not the memory held (doc corrected; 1.17 sizes the card).
 
 **Dismissed:**
 - *The zero-allocation EditMode test covers the camera-only path.* The rig's Phase E measured the full path
@@ -748,8 +754,17 @@ every probe's before and after numbers).*
   `PhotoModeController`'s existing pattern for `ShotCapturedChannel`.
 - *Listed-but-inactive actors are recorded as `Live = false`.* AC5 asks for liveness; there are 2 slots
   against `maxConcurrent` 1.
+- *The timecode string allocates once per displayed second.* That is what the story asks for ("only when
+  the displayed second changes").
 - *Interlocked state machine replaced by a lock.* Not needed: the CAS protocol was re-read by two layers and
   holds.
+- *Task 8.1 test gaps (a per-tick case at exactly 30 fps; `beepVolume` at ±∞).* 30 fps is covered by the
+  repeat-sum test, and `beepVolume` goes through the same `ClampFinite` that the `maxClipSeconds` cases pin. The
+  real gaps (zero-fill in `End`, the tap through the backend) now have tests.
+- *Regression rigs (Photo, Gallery and Grade HUD Shoot) not re-run.* The shipped changes they reach are
+  equivalent: `SetMode` gained `&& clipRecorder != null` after `_recordReady`, `Capture()` changed only its
+  comment, and none of them calls `ToggleRecording` or reads the REC HUD. Record Clip Shoot, which does,
+  was re-run in full (`review/rig-run-review/`).
 
 ## Dev Notes
 
@@ -1154,3 +1169,7 @@ Modified:
 - 2026-11-15: Loop DEV phase (attempt 1). Implemented the recorder (ADR-4 replay footage behind `IClipBackend`), the
   Record toggle, the REC indicator and beeps, the Record Clip Shoot rig, 67 EditMode tests and the fenced AC3 bench;
   verified per the Dev Agent Record. Status -> review; the perceptual and desktop checks are queued for Alexv.
+- 2026-11-15: Loop REVIEW phase (attempt 1). Three review layers plus a standards and zero-GC pass. 7 defects
+  reproduced in SampleScene play mode and fixed, with 7 new mutation-proven EditMode tests (364 -> 371). Record Clip
+  Shoot re-run in full on the fix. 11 items deferred, 12 dismissed. Status stays review: AC1, AC3 and AC5 have
+  perceptual and hardware checks queued for Alexv.
