@@ -153,3 +153,37 @@ or a pattern that worked, concrete enough to act on.
 - Before making a shipped component re-apply config on every event, check whether a rig writes that component's state directly. Here the Story 1.19 candidate sweep would have measured 1.5 px for every candidate, with no error.
 - At close, decide which regression rigs to re-run by diffing shipped code from each rig run's commit to HEAD (git diff <commit>..HEAD -- Assets/), then grepping who calls the changed members; re-run every rig that reaches them and record why the others were skipped.
 - Grade HUD Shoot Phase E absolute shutter times drift a lot between sessions on this laptop (dev mean 25-39 ms, close mean 58 ms, same code): judge the HUD's cost only by listening against disabled within one run.
+
+## From 1-15-record-a-clip (2026-11-15)
+
+- PhotoShootRig.cs:375, GalleryShootRig.cs:218 and GradeHudShootRunner.cs:788 each AddComponent<PhotoModeController> in an isolated world. Any new required [SerializeField] on PhotoModeController that logs an Error in Awake adds an error line to every one of those regression runs.
+- No Input System settings asset exists in this project, so the default editorInputBehaviorInPlayMode applies: queued mouse or keyboard events need Game View focus. Drive an unattended rig's real input path with a virtual Gamepad (InputSystem.AddDevice<Gamepad>) and prove the press arrived.
+- unity_docs (MCP for Unity 10.3.0) returned empty descriptions for AudioSettings.dspTime, AudioSource.bypassListenerEffects and MonoBehaviour.OnAudioFilterRead on 2026-11-15. unity_reflect works: use it for member existence, and measure the behaviour.
+- loop/runtime/approvals.txt is readable only with the Read tool: the loop guard blocks any shell command that names it, even cat.
+- In Unity 6000.3's Mono, GC.GetAllocatedBytesForCurrentThread reads 0 around new byte[1000] and GC.GetTotalMemory moves in 4 KB blocks: prove zero allocation by heap growth over ~9,000 calls of the full path, with a positive control that allocates.
+- The editor renders Main Camera more than once per frame, so a 'previous frame's render' control can compare a frame with itself: compare against the render of the previous TICK's frame.
+- cam.Render() right after posing a SkinnedMeshRenderer draws the previous skinning pass; set forceMatrixRecalculationPerRender (or let a frame pass) before photographing a posed ghost.
+- A frozen replay ghost (Animator.speed 0) reproduces a crossfade exactly with the normalized CrossFade and the next state's normalized time; CrossFadeInFixedTime with offset 0 puts the next state at its start (6.4 cm bone error).
+- AudioSettings.Reset invalidates clips made with AudioClip.Create (they play silent afterwards) while asset clips and OnAudioFilterRead keep working: rebuild procedural clips after a reset.
+- AudioSettings.dspTime read inside OnAudioFilterRead is the block's own DSP time (PlayScheduled clicks land sample-exact in a tap); main-thread dspTime steps in DSP blocks, a -38..+35 ms sawtooth against realtime.
+- Edit-mode Physics.Linecast line-of-sight passes through the town's pine canopies (no colliders): survey vantages by rendering markers on the route and looking.
+- A virtual Gamepad through PlayerInput on an unattended editor needs InputSystem.settings.backgroundBehavior = IgnoreFocus for the run (restore it); prove arrival with the action's performed count.
+- A Python heredoc in Git Bash mangles non-ASCII (an em-dash), so an exact-match replace silently misses: write patch scripts with the Write tool.
+- The loop guard blocks 'git add -A <paths>' as bulk staging; list every file by name.
+- Restoring the 5 settings files a Windows build re-serialises: git show HEAD:path > path, then convert LF back to CRLF so git status is clean.
+- PlayerInput Send Messages reaches DISABLED MonoBehaviours, so a disabled controller still handles presses. Gate input handlers on isActiveAndEnabled.
+- SendMessage("OnCapture", null) never reaches OnCapture(InputValue): an InputValue probe needs FormatterServices.GetUninitializedObject(typeof(InputValue)), proven first with an enabled-component control.
+- Unity's == on a destroyed MonoBehaviour skips plain-C# cleanup that touches no Unity API (here, disarming the audio tap). Use ReferenceEquals for that call.
+- On a stereo-only device, AudioSettings.Reset to Quad or 5.1 succeeds, but OnAudioFilterRead does not deliver 4 or 6 channels. Size listener buffers from min(speakerMode, driverCapabilities).
+- To make a mid-clip device change race deterministic, call AudioSettings.Reset followed by Thread.Sleep(200) in one execute_code. The audio thread then delivers post-change blocks before the next LateUpdate.
+- execute_code runs outside the player loop: Begin and Stop in one call make a 1-tick clip. Put them in separate calls to record over real frames.
+- Judge recorded PCM against a known signal. A 2D 440 Hz sine at 0.25 reads RMS 0.125 per channel; a silent scene made the first lost-audio probe inconclusive.
+- Record Clip Shoot writes into rig/ on top of older files. Copy rig/ aside, restore it, and drop files byte-identical to the copy before analysing a re-run, or old frames get scored as new.
+- Never simulate 'no audio device' from inside the editor: toggling AudioManager m_DisableAudio through SerializedObject.ApplyModifiedPropertiesWithoutUndo re-initialises FMOD and crashed the editor in FMOD::System::releaseOutput (and the first toggle did not even change AudioSettings.outputSampleRate within the call).
+- After an editor crash, the relaunch stops at a 'Recovering Scene Backups' modal (#32770, buttons Yes/No; the backup is Temp/__Backupscenes/0.backup). If the scene was clean and git shows no diff, PostMessage BM_CLICK to 'No'.
+- In edit mode, AddComponent does not call Awake on a plain MonoBehaviour (no [ExecuteAlways]). An EditMode test never sees Awake's warnings or initialisation: measured with a GameLog.Warn positive control.
+- A test helper that creates objects and then runs Assume or Assert must clean up itself: the caller's try/finally only starts once the helper returns, and an Assume throws InconclusiveException.
+- The Test Framework runs EditMode tests in its own scene and reopens the previous scene setup at the end (RestoreSceneSetupTask in Editor.log), so objects a test leaks vanish after the run: count them from a later test in the same run, not afterwards.
+- A bench's mean difference-in-differences can hide a steady cost behind runs of slow frames: report the per-round median delta too (1.15: mean +0.10 ms, median +0.78 ms in all 3 rounds).
+- Record Clip Shoot's report header prints LOCAL time with a 'Z' suffix (its clip ids hold the true UTC). Use the clip ids or file mtimes when ordering evidence against commits.
+- Record Clip Shoot always writes into the dev's rig/ folder: park and collect it with _bmad-output/verification/1-15-record-a-clip/close-a1/swap_rig_dir.py, then check rig/ with diff -rq.
