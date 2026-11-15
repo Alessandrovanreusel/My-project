@@ -838,6 +838,85 @@ only in EditMode, or not at all:*
   grading failure.* Editor-only, and only rigs subscribe. The failure line names the exception and its stack, which
   points at the rig.
 
+### Close Gate
+
+*Loop CLOSE phase, attempt 1, 2026-11-15 (Claude Opus 5.5), on `4f8753e`. Each check was run, not read. Evidence:
+`_bmad-output/verification/1-16-grade-a-clip/close-a1/`.*
+
+1. **Compile and console.** A forced `refresh_unity` with a recompile, then `read_console`: 0 errors, 0 warnings. The
+   console was proven live by an ordinary log line. Editor.log holds no `warning CS` line, so each assembly was also
+   recompiled with Unity's own Roslyn at `-warn:4` (`compile_warnings.py`): `CameraGame` (69 sources),
+   `CameraGame.Editor` and `CameraGame.Tests.EditMode` compile with **no warning apart from CS0649**, the
+   `[SerializeField] private` noise that Unity suppresses (`warn-*.txt`).
+2. **Tests.** EditMode **424/424**, the spike and bench fence tests included. They ran again after the close's
+   rig-text edit, still 424/424. The project has no PlayMode test assembly.
+3. **Every AC, re-run on HEAD.** The review changed shipped code after the dev phase's full run. So the Grade Clip rig
+   ran again with every phase (`0SHEFRG`, 52 clips, 21:46-22:00), in SampleScene at 1920x1080 through the real wiring.
+   Output: `close-a1/rig/`, with `report.txt`, `clips.csv`, `ticks.csv` and 93 frames.
+   - **AC1.** The still `Capture()` and the clip's tick sample agree exactly on 6 of 6 compared ticks, three counted
+     (composition 0.991537631 both) and three OutsideFrustum. Graded seconds equal footage seconds on all 50 graded
+     clips, the 1-tick S11 and the 120-s R5 (2929 ticks) included. The two exceptions are F1 and F2, the not-graded
+     fail-soft clips, which grade 0 s by design, as in run3.
+   - **AC2 and AC3.** S1 99 %, 5★, peak 100 %. S2 and S3 30 %, 2★, amber. The partials are 64 %. S5 off-centre 89 %,
+     4★. S6 at 5 s and 20 s are 86 % and 79 %, 4★. S8 91 %, 5★.
+     - **No star count and no miss reason moved against run3**, apart from one. `S9_stopped_by_suppression` went
+       4★ → 3★ (71.0 % → 68.4 %), because this run's stop caught 55.5 % of the window, against 59.2 % in run3. That is
+       the live stop instant, and its readout stays hidden in both (`clips-vs-run3.txt`).
+     - Against the review's own run nothing moved (`clips-vs-review-fix.txt`).
+   - **AC4.**
+     - The misses name their reasons: NoSubject, TooSmall, OutsideFrustum, Occluded.
+     - The real input path was proven (the RT press arrived). Stop to readout took 33.5 ms on RT and 29.4 ms on LT
+       release.
+     - The readout stays up after lowering, and is hidden under suppression.
+     - Captures opened and checked against their scenarios: `S7_nobody_hud`, `H_stop_by_LT_release_hud`,
+       `R5_full_length_hud`. None is blank, and the 3D control frame has luma sd 30.4 with 0.00 % near-white.
+   - **AC5.**
+     - `ShotGrader.Grade` costs 45.8 µs per call and `SampleTick` 49.0 µs per tick.
+     - Heap growth is 0 B over 3 × 9,000 ticks, against a 49,152 B control.
+     - Allocation was also counted by the profiler (Phase G): the 9,000-tick frame reads 21,589 B in all three
+       rounds. That is inside the equally long busy-wait's 21,679-23,377 B frame noise, while the string control
+       reads 430-436 KB.
+     - Fail-soft F1-F8: one line each and no exception.
+     - The R stress phase: 50/50, 220/220, 87/87, 2929/2929, 77/77 and 79/79 ticks have equal actor sets between the
+       footage and the grader.
+   - **Editor.log of the whole run** (`close-a1/log-levels.txt`, `log_levels.py`): **0 exceptions**. Only six
+     warnings and one error appear:
+     - the standing "Head bone not found!" warning;
+     - the three Phase F lines, announced as provoked;
+     - the three R6 cap lines, the same set as the review's `review-a1-fix` run.
+   - **Human checks.** Each queued check's own read was re-read. None says an AC is likely unmet. The glimpse (2★) and
+     the visible-peak lag are design questions for Alexv, with their numbers, not measured shortfalls. All four stay
+     queued.
+4. **Regression rigs.** Lesson 154 says to re-run a regression rig when the review changed code it reaches. None
+   needed a re-run here, because each dev-time run still covers the merged code:
+   - `PhotoModeController.Awake` now validates the clip config in every shape. It only adds a line for an INVALID
+     config, every rig uses the shipped asset, and the shipped asset passes its own validator (EditMode test). Photo
+     Shoot and Gallery Shoot wire no recorder at all.
+   - The actor-cap change in `ClipGrader` is reachable only with more listed actors than the cap. Record Clip Shoot
+     never changes `maxConcurrent` (1) against `maxActorsPerTick` (2).
+   - `GradeText.ClipMissLong`, the validator's new low-floor check and the warning texts are clip-only, or fire only
+     on bad values.
+   - The second review commit (`4f8753e`) changed visibility and comments only.
+5. **Story file and git.** Tasks ticked honestly, with the Dev Agent Record, Review Findings, File List and Change Log
+   all present. `git status` is clean apart from `.codex/`, which is not this story's. Nothing untracked is under
+   `Assets/` or the artifact folders. `Assets/_Recovery/` is git-ignored and dates from June-July.
+6. **Restored and read back** against a snapshot taken before the rig:
+   - SampleScene, not dirty, with no rig objects;
+   - `timeScale` 1;
+   - input background `ResetAndDisableNonBackgroundDevices` and 0 gamepads;
+   - `maxClipSeconds` 120 and `maxActorsPerTick` 2;
+   - `clipPeakFloor` 0.3, `clipAbsenceWeight` 0.25 and `maxConcurrent` 1;
+   - the Game View back at index 0, 952.67 x 475.67;
+   - no rig `SessionState` keys.
+
+**Changed by the close (rig only, no game code):** `GradeClipShootRunner.PhaseR`'s header named "the two 'More event
+actors are live' warnings", but R6 provokes three lines. One says "live" ([Recording], once). Two say "active"
+([Grading]): one from the recorder's grader and one from R6's throwaway allocation grader. The header now names all
+three exactly, so a later clean-console check can tell them from findings. The change compiled with a clean console
+and EditMode stayed at 424/424. It was not re-run through Phase R, because only that string changed.
+
+**Stays `review`:** the four perceptual human checks are still Alexv's.
+
 ## Dev Notes
 
 ### What already exists — reuse it, do not rebuild it
@@ -1358,6 +1437,8 @@ Modified:
 - Review phase (2026-11-15): `ClipGrader.cs`, `ClipGradeBuilder.cs`, `ClipGrade.cs`, `GradeText.cs`, `GradingConfig.cs`,
   `PhotoModeController.cs`, `ClipRecorder.cs` (comment; `Grader` internal), `GradeHud.cs` (tooltip), `ClipGradeTests.cs`;
   the rig `GradeClipShootRunner.cs` gained the stress phase `R` and the counted-allocation phase `G`
+- Close phase (2026-11-15): `Assets/Scripts/Recording/GradeClipShootRunner.cs` (rig only: Phase R's header names its
+  three provoked lines)
 - `Assets/Tests/EditMode/RecordingTests.cs` (the `RecordedClip` construction site)
 - `Assets/Data/Grading/GradingConfig.asset` (`clipPeakFloor` 0.3, `clipAbsenceWeight` 0.25)
 - `Assets/Scenes/SampleScene.unity` (two references: `ClipRecorder.gradingConfig`, `GradeHud.clipRecordedChannel`)
@@ -1394,3 +1475,11 @@ Not in git (evidence): `_bmad-output/verification/1-16-grade-a-clip/`; `Builds/1
   - Also fixed: the silent low floor (now warned), "photograph" in a clip's miss line, and seven false comments.
   - One design consequence is flagged for Alexv: a single framed tick earns 2★.
   - 7 deferred, 16 dismissed. EditMode 424/424. The console is clean in normal play.
+- 2026-11-15: Loop CLOSE phase (attempt 1). Stays **review**, because Alexv's four perceptual checks are still open.
+  See Close Gate.
+  - The compile and the console are clean. Roslyn at `-warn:4` finds no warning apart from CS0649.
+  - EditMode 424/424.
+  - The Grade Clip rig was re-run on HEAD with every phase: 52 clips, 0 exceptions, only announced lines. No star or
+    miss move against run3 except one, explained by the live stop instant.
+  - The editor was restored and read back.
+  - The rig's Phase R header now names the three cap lines it provokes.

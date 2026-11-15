@@ -1192,7 +1192,11 @@ namespace CameraGame.Recording
 
         private IEnumerator PhaseR()
         {
-            Line("\n== Phase R — code review stress (PROVOKED, R6 only: the two 'More event actors are live' warnings) ==");
+            // The three cap lines R6 provokes, named exactly as the console prints them (close gate 2026-11-15: the
+            // header named two lines, while three appear and two of them say "active").
+            Line("\n== Phase R — code review stress (PROVOKED, R6 only, three warnings: [Recording] 'More event actors are live " +
+                 "than a tick can hold' once; [Grading] 'More event actors are active than a clip records and grades per tick' " +
+                 "twice, once from the recorder's grader and once from R6's throwaway allocation grader) ==");
             float D = PeakLength;
             const float Prominent = 0.55f;
             photo.SetPhotoMode(true);
