@@ -476,17 +476,30 @@ namespace CameraGame.Tests
             return nz;
         }
 
+        // The callers' try/finally only starts once this returns, so an Assume that fails in here would skip it and
+        // leave both GameObjects in the test scene for the rest of the run (cross-review 2026-11-15, on a machine with
+        // no audio device). So: the device check runs before anything exists, and a later Assume cleans up first.
         private static ReplayBackend TapBackend(out GameObject camGo, out GameObject tapGo, out ListenerTap tap)
         {
+            Assume.That(AudioSettings.outputSampleRate, Is.GreaterThan(0), "needs an audio device");
             Camera cam = NewCamera(out camGo);
             tapGo = new GameObject("RecordingTests Tap");
             tap = tapGo.AddComponent<ListenerTap>();
             var backend = new ReplayBackend(cam, null, tap, 2, 2);
-            backend.Prepare(2f);
-            Assume.That(AudioSettings.outputSampleRate, Is.GreaterThan(0), "needs an audio device");
-            Assume.That(backend.Begin(AudioSettings.dspTime, 2f), Is.True);
-            Assume.That(tap.IsArmed, Is.True, "the backend armed the tap");
-            return backend;
+            try
+            {
+                backend.Prepare(2f);
+                Assume.That(backend.Begin(AudioSettings.dspTime, 2f), Is.True);
+                Assume.That(tap.IsArmed, Is.True, "the backend armed the tap");
+                return backend;
+            }
+            catch
+            {
+                backend.Destroy();
+                Object.DestroyImmediate(tapGo);
+                Object.DestroyImmediate(camGo);
+                throw;
+            }
         }
 
         [Test]

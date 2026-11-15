@@ -766,6 +766,35 @@ every probe's before and after numbers).*
   comment, and none of them calls `ToggleRecording` or reads the REC HUD. Record Clip Shoot, which does,
   was re-run in full (`review/rig-run-review/`).
 
+#### Cross-review (loop FIX phase, 2026-11-15)
+
+*An independent read-only reviewer on another model (`loop/runtime/results/1-15-record-a-clip/cross-review-findings-20261115-165011.md`)
+read all 21 changed source files and reported one finding. Evidence:
+`_bmad-output/verification/1-15-record-a-clip/fix-a1/`.*
+
+- [x] [Cross-review][Patch] **`TapBackend` could leak its objects past the caller's `try/finally`** [RecordingTests.cs
+  `TapBackend`, low]. **Confirmed by its code path.** The helper created the camera GameObject, the tap GameObject
+  and the backend, then ran three `Assume` checks. An `Assume` that fails throws `InconclusiveException` out of the
+  helper before the caller's `try` has started, so its `finally` never runs. The concrete input is a machine with no
+  audio device (`outputSampleRate == 0`). It was **not triggered live**: this laptop always reports 48 kHz. The one
+  editor-side way to remove the device, toggling *Disable Unity Audio* through `SerializedObject`, crashed the
+  editor in `FMOD::System::releaseOutput` (`fix-a1/editor-crash-disableaudio-20261115.log`). Two parts of the
+  finding were measured and are smaller than stated:
+  - **No memory leaks.** The storage is managed arrays (`ReplayStorage`: `new short[...]`), and
+    `ReplayBackend.Destroy` only drops the pool's references to it. An unreachable backend is collected by the GC
+    like any other.
+  - **The GameObjects do not stay in "the edit-mode scene".** They would stay in the Test Framework's own scene
+    until its `RestoreSceneSetupTask` reopens SampleScene at the end of the run (seen in the run's `Editor.log`).
+  - **Dismissed sub-claim: "`ListenerTap.Awake` also logs its no-listener warning each time".** In edit mode Unity
+    does not call `Awake` on a plain MonoBehaviour added by `AddComponent`. Measured: a `ListenerTap` was added with
+    no `AudioListener` beside it. The console showed the positive control (`GameLog.Warn` called directly) and no
+    tap warning, and `OnListener` read its default `False`.
+
+  **Fix:** the device check now runs before anything is created. The two later `Assume`s run inside a `catch` that
+  destroys the backend and both GameObjects, then rethrows. **After:** EditMode 371/371, with all three `Tap_*`
+  tests passed (not inconclusive), the console clean, and no `RecordingTests*` objects left in the editor. The
+  `catch` path itself cannot run on this machine (it needs the missing device); that gap is in `deferred-work.md`.
+
 ## Dev Notes
 
 ### What already exists — reuse it, do not rebuild it
@@ -1173,3 +1202,7 @@ Modified:
   reproduced in SampleScene play mode and fixed, with 7 new mutation-proven EditMode tests (364 -> 371). Record Clip
   Shoot re-run in full on the fix. 11 items deferred, 12 dismissed. Status stays review: AC1, AC3 and AC5 have
   perceptual and hardware checks queued for Alexv.
+- 2026-11-15: Loop FIX phase after the cross-review (attempt 1). Its one finding was confirmed by its code path and
+  fixed: the tap tests' helper now cleans up when an `Assume` fails. Its sub-claim about `ListenerTap.Awake` was
+  disproven by measurement. EditMode 371/371, console clean. No shipped code changed, so no rig needed a re-run.
+  Status stays review.
