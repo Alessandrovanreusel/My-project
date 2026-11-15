@@ -506,8 +506,12 @@ namespace CameraGame.Tests
                     string printed = GradeText.Percent(g.Percent01);
                     bool isRed = _cfg.ColorFor(g) == red;
 
-                    Assert.AreEqual(GradeText.Percent(g.Percent01) == zero, GradeText.PrintsZero(g.Percent01),
-                        $"PrintsZero disagrees with the printed text at {p}");
+                    // An oracle INDEPENDENT of PrintsZero's own definition (which IS `Percent(p) == Percent(0)`,
+                    // so comparing the two was a tautology — Story 1.19 code review): read the number back out
+                    // of the printed text and ask whether it is zero.
+                    bool printedNumberIsZero = printed.Replace("%", string.Empty).Trim() == "0";
+                    Assert.AreEqual(printedNumberIsZero, GradeText.PrintsZero(g.Percent01),
+                        $"PrintsZero disagrees with the printed text '{printed}' at {p}");
                     Assert.AreEqual(printed == zero, isRed,
                         $"score {p}: the readout prints '{printed}' but is {(isRed ? "" : "NOT ")}red");
 
@@ -562,9 +566,15 @@ namespace CameraGame.Tests
 
         // Contract: every outline mistake is REPORTED at Awake and names its field — repaired is not enough,
         // or the repair is silent. The explanation must fit the mistake (the WhyHold rule).
-        [TestCase(0f, "below zero")]
-        [TestCase(-2f, "below zero")]
-        [TestCase(float.NaN, "non-finite")]
+        // The expected words are what uGUI WOULD DO with that value, checked on rendered pixels by the Story
+        // 1.19 code review: zero hides the copies under the text, a negative value draws its mirror image
+        // (identical pixels to +2), NaN passes the setter, and infinity is clamped to 600 — ghost copies, not
+        // "no outline". The first wording claimed "no outline at all" for negatives and NaN-like failure for ∞.
+        [TestCase(0f, "of zero")]
+        [TestCase(-2f, "negative")]
+        [TestCase(float.NaN, "NaN")]
+        [TestCase(float.PositiveInfinity, "600")]
+        [TestCase(float.NegativeInfinity, "600")]
         [TestCase(99f, "heavy box")]
         [TestCase(0.3f, "anti-aliasing")]
         public void Validator_ReportsAnUnusableOutlineThickness(float authored, string because)
@@ -587,6 +597,13 @@ namespace CameraGame.Tests
             _cfg.outlineColor = new Color(0f, 0f, 0f, 0.3f);
             Assert.IsTrue(_cfg.TryGetConfigProblem(out string weak), "a mostly transparent outline went unreported");
             StringAssert.Contains("outlineColor", weak);
+
+            // A NaN colour channel with a valid alpha IS drawn (that channel converts to 0), so it must not be
+            // reported as "would not be drawn" — the message has to match the mistake (Story 1.19 code review).
+            _cfg.outlineColor = new Color(float.NaN, 0f, 0f, 1f);
+            Assert.IsTrue(_cfg.TryGetConfigProblem(out string nanChannel), "a NaN outline channel went unreported");
+            StringAssert.Contains("NaN channel", nanChannel);
+            StringAssert.DoesNotContain("not be drawn", nanChannel);
         }
 
         // Contract: an outline authored too light for the text on it is reported, naming the text colour.
@@ -602,7 +619,7 @@ namespace CameraGame.Tests
 
         // ⚠️ AC1's AUTHORING GUARD: the miss colour must still read as RED. The ΔE pairs cannot catch a drift
         // back to salmon (salmon is ΔE 56-87 from every band), and hue cannot either (salmon and pure red are
-        // 2 degrees apart in Lab hue) — saturation can. Today's salmon must FAIL it, or the check is decoration.
+        // 1.3 degrees apart in Lab hue) — saturation can. Today's salmon must FAIL it, or the check is decoration.
         [Test]
         public void Validator_ReportsAMissColourThatNoLongerReadsAsRed()
         {

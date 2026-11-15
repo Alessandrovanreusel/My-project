@@ -181,9 +181,15 @@ namespace CameraGame.Grading
 
             // Positive is EARLY and negative is LATE (ISubject.PeakOffset). Stated as the player's mistake
             // rather than as a signed number: "-1.4s" is a debug value, "1.4s late" is feedback.
+            //
+            // ⚠️ INVARIANT CULTURE, LIKE <see cref="Percent"/>. `{x:0.0}` follows the player's locale, so in
+            // fr-FR, de-DE or tr-TR this line printed "2,4s late" directly under a breakdown that Percent
+            // prints invariantly — one readout in two cultures (reproduced by the Story 1.19 code review).
+            // In en-US the text is byte-identical to before.
+            string seconds = (offset > 0f ? offset : -offset).ToString("0.0", CultureInfo.InvariantCulture);
             return offset > 0f
-                ? $"{offset:0.0}s early — wait for it"
-                : $"{-offset:0.0}s late — shoot sooner";
+                ? seconds + "s early — wait for it"
+                : seconds + "s late — shoot sooner";
         }
     }
 }

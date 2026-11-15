@@ -320,8 +320,9 @@ namespace CameraGame.UI
             // The size measurement (HeightFraction) lives only in the editor-only GradeDetail and is not
             // available here at all.
             //
-            // Through GradeText.Percent like the rating, so the whole readout prints in one culture: the
-            // player's locale used to decide it, and fr-FR prints U+066A (Story 1.19).
+            // Through GradeText.Percent like the rating, and TimingAdvice's seconds are pinned the same way, so
+            // the whole readout prints in one culture: the player's locale used to decide it, fr-FR printed
+            // U+066A for the percent sign and "2,4s late" for the advice (Story 1.19 and its code review).
             SetText(axesLabel,
                 $"composition {GradeText.Percent(grade.Composition01)}   ×   timing {GradeText.Percent(grade.Timing01)}" +
                 $"      ·      seen {GradeText.Percent(grade.Subject01)}");
@@ -385,9 +386,16 @@ namespace CameraGame.UI
         /// <c>Shadow.effectDistance</c> setter lets NaN straight through. A label that is missing disables
         /// only its own outline, exactly as it disables only its own line.
         ///
-        /// uGUI's built-in <see cref="Outline"/>: four copies of the text mesh at (±d, ±d), drawn behind it,
-        /// faded with the CanvasGroup (useGraphicAlpha). The mesh is rebuilt when the text changes — once per
-        /// shutter press — never per frame.
+        /// uGUI's built-in <see cref="Outline"/>: four copies of the text mesh at (±d, ±d), drawn behind it.
+        /// It fades with the text because the CanvasGroup's alpha applies to the whole canvas renderer,
+        /// outline copies included; <c>useGraphicAlpha</c> is a different thing — it multiplies the copies by
+        /// the TEXT COLOUR's own alpha, so a translucent readout colour gets an equally translucent outline.
+        /// The mesh is rebuilt when the text changes — once per shutter press — never per frame.
+        ///
+        /// ⚠️ APPLIED ONCE, HERE — NOT LIVE. Unlike the colours and the hold, which are read on every shutter
+        /// press, editing outlineColor or outlineDistance during Play mode changes nothing until the next
+        /// Play. Deliberate for now: the Story 1.19 candidate sweep sets each candidate thickness on these
+        /// Outline components and relies on a shutter press not overwriting it (deferred-work.md).
         /// </summary>
         private void ApplyOutline()
         {
@@ -409,6 +417,12 @@ namespace CameraGame.UI
             // object for a missing component, which `??` treats as present.
             if (!label.TryGetComponent(out Outline outline)) outline = label.gameObject.AddComponent<Outline>();
 
+            // ⚠️ SWITCHED ON, NOT ONLY CONFIGURED. An Outline the label already carries is reused, and one
+            // that was unticked in the Inspector (or arrives disabled on a cloned HUD) used to stay
+            // disabled: Outline.ModifyMesh returns at `!IsActive()`, so that line drew with NO outline and
+            // a clean console while its colour and thickness read back perfectly. The 2026-11-15 code review
+            // reproduced it: 1,324 outline pixels on a fresh label, 0 on one that carried a disabled Outline.
+            outline.enabled = true;
             outline.effectColor = colour;
             outline.effectDistance = new Vector2(distance, -distance);
             outline.useGraphicAlpha = true;

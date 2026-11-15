@@ -264,6 +264,37 @@ namespace CameraGame.Tests
             }
         }
 
+        // ⚠️ THE SAME PIN FOR THE ADVICE LINE (Story 1.19 code review). TimingAdvice used `{x:0.0}`, which follows
+        // the player's locale: in fr-FR, de-DE and tr-TR the why line printed "2,4s late" under a breakdown that
+        // Percent prints invariantly — one readout in two cultures. Reproduced through the real GradeHud.
+        [TestCase("en-US")]
+        [TestCase("fr-FR")]
+        [TestCase("de-DE")]
+        [TestCase("tr-TR")]
+        [TestCase("")]
+        public void TimingAdvice_DoesNotFollowThePlayersLocale(string culture)
+        {
+            CultureInfo previous = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = culture.Length == 0
+                    ? CultureInfo.InvariantCulture
+                    : new CultureInfo(culture);
+
+                // Late and early, both scored below full timing so there is advice to give at all.
+                ShotGrade late = ShotGrade.Scored(1f, 1f, 0.2f, StarScale.Default, "TownDrunk", -2.4f);
+                // 1.4, not a midpoint like 1.25: this pins the CULTURE, not Mono's rounding of a tie.
+                ShotGrade early = ShotGrade.Scored(1f, 1f, 0.2f, StarScale.Default, "TownDrunk", 1.4f);
+
+                Assert.AreEqual("2.4s late — shoot sooner", GradeText.TimingAdvice(late));
+                Assert.AreEqual("1.4s early — wait for it", GradeText.TimingAdvice(early));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previous;
+            }
+        }
+
         // The agreement half lives in GradeHudConfigTests (ColorFor_IsRedExactlyWhenTheReadoutPrintsZero),
         // because the colour is a UI decision and Grading must not reference UI.
 

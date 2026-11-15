@@ -73,8 +73,9 @@ namespace CameraGame.UI
                  "earned nothing', and the WORDS say which it was (MISSED and dashes, against a breakdown and " +
                  "the timing advice).\n\n" +
                  "Must read as clearly RED, not salmon: what separates the two is saturation and chroma, not " +
-                 "hue (salmon and pure red are 2 degrees apart in hue). The validator warns when this drifts " +
-                 "back towards salmon. Chosen by measuring the rendered pixels at 1080p with the outline on " +
+                 "hue (salmon and pure red are 1.3 degrees apart in Lab hue). The validator warns when this " +
+                 "drifts back towards salmon: HSV saturation under 0.65, or an HSV hue more than 15 degrees " +
+                 "from red (salmon sits at 11, so the hue window alone would not catch it). Chosen by measuring the rendered pixels at 1080p with the outline on " +
                  "the brightest real backgrounds (tools/verification/measure_hud_legibility.py) — re-measure " +
                  "if you retune it.")]
         public Color missColor = new Color(1f, 0.33f, 0.28f);
@@ -89,17 +90,22 @@ namespace CameraGame.UI
         [Tooltip("Colour of the thin outline drawn behind every readout line (Story 1.19). Near-black and " +
                  "opaque by design: the outline is what keeps a colour readable where the translucent panel " +
                  "cannot — on bright ground no red reaches 4.5:1 against the panel alone.\n\n" +
-                 "Applied by GradeHud.Awake to each label as a uGUI Outline, so it shows in PLAY MODE ONLY, " +
-                 "not in the Scene view. An alpha at (or near) 0 is repaired to opaque and reported: an " +
-                 "invisible outline looks perfectly normal in the Inspector.")]
+                 "Applied ONCE by GradeHud.Awake to each label as a uGUI Outline, so it shows in PLAY MODE " +
+                 "ONLY, not in the Scene view, and editing it during Play changes nothing until the next " +
+                 "Play. An alpha at (or near) 0 is repaired to opaque and reported: an invisible outline " +
+                 "looks perfectly normal in the Inspector. Below 0.5 it is warned about. Softer is not free: " +
+                 "alpha 0.85 measured 4.23:1 for the red on the brightest background, under the 4.5:1 floor.")]
         public Color outlineColor = new Color(0f, 0f, 0f, 1f);
 
         [Tooltip("Thickness of the outline in canvas units (1920x1080 reference, so 1 unit is 1 px at 1080p; " +
                  "the CanvasScaler scales it with the screen). Kept THIN on purpose — Alexv asked for an " +
-                 "outline, not a box. Below the minimum it is sub-pixel and partly vanishes; above the " +
-                 "maximum uGUI's four diagonal copies separate on small glyphs and it reads as a heavy box " +
-                 "(photographed at 1080p: 1.5 ships, 2 is the limit, 3 is doubled). 0, negative " +
-                 "or NaN is repaired and reported, never applied: uGUI's Outline lets NaN straight through.")]
+                 "outline, not a box. Photographed at 1080p (Story 1.19): 1.5 ships and is the only value " +
+                 "measured to clear 4.5:1 for every readout colour on the brightest background; 1 is still " +
+                 "visible but the red measured 4.36:1 there; at 2 uGUI's four diagonal copies already split " +
+                 "the smallest glyphs (the '·' becomes four dots); at 3 every line reads doubled. Re-measure " +
+                 "(tools/verification/measure_hud_legibility.py) before shipping anything but 1.5. Applied " +
+                 "ONCE at Awake, like outlineColor. 0, negative or non-finite is repaired and reported, " +
+                 "never applied.")]
         [Range(MinOutlineDistance, MaxOutlineDistance)] public float outlineDistance = DefaultOutlineDistance;
 
         // --- Design defaults and clamp bounds ---------------------------------------------------------
@@ -139,11 +145,12 @@ namespace CameraGame.UI
         /// the silent-nothing shape again, with a value that looks like a deliberate choice.</summary>
         public const float MinOutlineDistance = 1f;
 
-        /// <summary>Thickest outline before it stops being "thin" (Alexv's word: an outline, not a heavy
-        /// box). Measured, not assumed (Story 1.19, decision 1b): photographed at 1, 1.5, 2 and 3 px at 1080p,
-        /// uGUI's four DIAGONAL copies already separate at 2 on the smallest glyphs (the "·" separator turns
-        /// into four dots) and at 3 every line reads doubled. 2 is the last thickness that is still one
-        /// outline on the text; 1.5 ships.</summary>
+        /// <summary>The ceiling the clamp allows — NOT a recommended value. Measured, not assumed (Story 1.19,
+        /// decision 1b): photographed at 1, 1.5, 2 and 3 px at 1080p, uGUI's four DIAGONAL copies already
+        /// separate on the smallest glyphs at 2 (the "·" separator turns into four dots, the "×" frays) while
+        /// the letters still carry one outline, and at 3 every line reads doubled. So 2 is where the defect
+        /// starts, kept as the bound because nothing between 1.5 and 2 was photographed; 1.5 ships. Narrowing
+        /// the range is a deferred tuning decision (deferred-work.md, Story 1.19 code review).</summary>
         public const float MaxOutlineDistance = 2f;
 
         /// <summary>Below this outline alpha the "outline" is mostly the world behind it, so it no longer
@@ -253,8 +260,10 @@ namespace CameraGame.UI
         /// <summary>
         /// The colour for a counted shot of <paramref name="stars"/> stars, by grade band ALONE. Callers want
         /// <see cref="ColorFor(bool, bool, int, float)"/>, which sends a counted shot that prints "0 %" to the
-        /// miss red before it ever gets here (Story 1.19): every 0 % shot is 1★, but not every 1★ shot earned
-        /// nothing, and a shot printing "1 %" keeps this band's amber.
+        /// miss red before it ever gets here (Story 1.19): with the default star thresholds a 0 % shot is 1★,
+        /// but not every 1★ shot earned nothing, and a shot printing "1 %" keeps this band's amber. (Star
+        /// thresholds are GradingConfig data: a threshold under 0.5 % would make a "0 %" shot 2★ — still red,
+        /// because the red follows the printed text, not the stars.)
         ///
         /// ⚠️ THIS EXISTS BECAUSE ALEXV COULD NOT TELL A 5★ READOUT FROM A 0% ONE AT A GLANCE (AC3,
         /// 2026-09-11). Shown the three panels with the world cropped away he said the MISS was "obvious"
@@ -415,11 +424,14 @@ namespace CameraGame.UI
                                $"{MinOutlineDistance} to {MaxOutlineDistance} — using {SafeOutlineDistance}. " +
                                WhyOutlineDistance(outlineDistance));
 
-            if (!(outlineColor.a >= MinVisibleAlpha) || float.IsNaN(outlineColor.r) ||
-                float.IsNaN(outlineColor.g) || float.IsNaN(outlineColor.b))
+            if (!(outlineColor.a >= MinVisibleAlpha))
                 all = Add(all, $"outlineColor is {ColorText(outlineColor)}, so the outline would not be drawn " +
                                "at all — and it is what keeps the readout readable on bright ground — while " +
-                               "reading as a perfectly valid colour in the Inspector. Repairing it.");
+                               "reading as a perfectly valid colour in the Inspector. Repairing it to opaque.");
+            else if (float.IsNaN(outlineColor.r) || float.IsNaN(outlineColor.g) || float.IsNaN(outlineColor.b))
+                all = Add(all, $"outlineColor is {ColorText(outlineColor)}: a NaN channel draws as whatever the " +
+                               "conversion happens to produce rather than the colour that was meant. Repairing " +
+                               "that channel to 0.");
             else if (outlineColor.a < MinOutlineAlpha)
                 all = Add(all, $"outlineColor is alpha {outlineColor.a}, under {MinOutlineAlpha}: the outline is " +
                                "mostly the world behind it, so on bright ground it no longer separates the " +
@@ -525,8 +537,10 @@ namespace CameraGame.UI
         ///   designer never typed, with nothing to connect the two.
         /// - The distance is TRUNCATED, not rounded: 24.97 rounded prints "ΔE 25.0 apart (needs 25)", a
         ///   message that contradicts itself.
-        /// - The reason is the caller's (<see cref="WhyBand"/> or <see cref="WhyMiss"/>): a counted shot
-        ///   that reads like a miss is a different failure from two grades that read alike.
+        /// - The reason is the caller's (<see cref="WhyBand"/> or <see cref="WhyMiss"/>): a shot that earned
+        ///   something reading like one that earned nothing is a different failure from two grades that read
+        ///   alike. (A counted 0 % shot reading exactly like a miss is no longer a failure: since Story 1.19
+        ///   they share missColor on purpose.)
         /// </summary>
         private static string ReportConfusable(string all, Color a, string fieldA, Color b, string fieldB,
                                                string why)
@@ -551,12 +565,20 @@ namespace CameraGame.UI
         /// <see cref="WhyHold"/> rule.</summary>
         private static string WhyOutlineDistance(float authored)
         {
-            if (float.IsNaN(authored) || float.IsInfinity(authored))
-                return "A non-finite thickness reaches uGUI's Outline unclamped (its setter lets NaN through), " +
-                       "and the outline is not drawn.";
-            if (authored <= 0f)
-                return "A thickness at or below zero draws the outline's copies on top of each other under " +
-                       "the text — no outline at all, with a clean console.";
+            // ⚠️ EACH SENTENCE SAYS WHAT uGUI WOULD ACTUALLY DO WITH THAT VALUE — checked by the Story 1.19 code
+            // review on rendered pixels, because the first wording was wrong for two of the four cases.
+            if (float.IsNaN(authored))
+                return "uGUI's Outline lets a NaN thickness straight through its setter, and the outline is " +
+                       "not drawn.";
+            if (float.IsInfinity(authored))
+                return "uGUI clamps an infinite thickness to 600 canvas units, so the outline would leave the " +
+                       "text altogether and draw four dark ghost copies of the readout at the screen's edge.";
+            if (authored == 0f)
+                return "A thickness of zero draws the outline's copies exactly under the text — no outline at " +
+                       "all, with a clean console.";
+            if (authored < 0f)
+                return "A negative thickness is not a thickness: uGUI happens to draw it as its mirror image, " +
+                       "so it reads as a typo rather than a choice.";
             return authored < MinOutlineDistance
                 ? "Thinner than a pixel at 1080p, the outline hides inside the text's anti-aliasing."
                 : "An outline this thick reads as a heavy box rather than a thin camcorder outline.";
