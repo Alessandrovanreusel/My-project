@@ -131,3 +131,25 @@ or a pattern that worked, concrete enough to act on.
 - For a content's frame cost, an edit-mode ABBA render A/B (camera.Render into an RT, synced by a 1-pixel ReadPixels, toggling Renderer.forceRenderingOff) measures to ~1 ms in 15 s; the play-mode editor tour had 17-75 ms of noise. forceRenderingOff never dirties the scene.
 - The cross-review walls instrument cannot set up poses against the ring's edge rocks on slopes (it finds the slope, or a neighbouring rock stops the body): 0 valid poses is an instrument limit there, not a pass.
 - A Scene struct captured before EditorSceneManager.OpenScene(Single) reads path "" afterwards: copy the path string before calling a rig that reopens the scene.
+
+## From 1-19-a-shot-that-earns-nothing-reads-red (2026-11-15)
+
+- Unity 6000.3's Mono prints float P0 in en-US as '0 %' (with a space), rounds 0.005f up to '1 %', and never prints -0. Its fr-FR culture prints U+066A (the Arabic percent sign). Pin InvariantCulture for any player-facing percentage.
+- Mathf.Clamp01(-0f) returns -0f with the sign bit kept, so ShotGrade.Percent01 can be negative zero through the real factory. A test of -0 must check the sign bit of its fixture first.
+- The Grade HUD rig's evidence on disk (verification/hud, 2026-11-11) was shot at the Game View's 953x476. Legibility numbers taken from it do not carry over to 1080p, where the 22 px lines and a 1-2 px outline actually render.
+- On authored colours, the Lab hue angle does not separate salmon from red (38.7 vs 36-40 degrees). Chroma and HSV saturation do (salmon C* 52.6 and s 0.55, against C* 72-105 and s 0.68-1.0 for reds).
+- Setting Time.timeScale = 0 right after a control grab makes the next rendered frame the SAME simulation instant: a frozen-vs-unfrozen control reads 0/255 unless one live frame passes in between.
+- PhotoModeController's editor-only debug overlay holds 1.5 s on UNSCALED time; editor captures at 1080p run ~6 fps, so it can vanish mid-way through a multi-grab rig. Judge a freeze control near the region you measure.
+- At a 1920x1080 Game View the editor delivers ~0.16 s per frame with CaptureScreenshotAsTexture each frame: six grabs eat ~1 s of the HUD's 2.2 s unscaled hold, so record the alpha at every grab.
+- The Standalone Game View group ships a built-in 'Full HD' 1920x1080 preset (index 3); GameView.SizeSelectionCallback(index, null) via reflection selects it and back without touching user prefs (test-helper's SetResolution adds a custom size).
+- Painting uGUI text marker-magenta and its Outline pure green on the same frozen frame gives exact glyph and outline masks with no detector: solve coverage per pixel against a labels-off frame.
+- python -I ignores PYTHONIOENCODING: scripts that print star glyphs must call sys.stdout.reconfigure(encoding='utf-8') themselves.
+- Mid-fade, 'panel minus outline' rises above its full-alpha value because the translucent panel fades too. Test whether an element fades with a compositing model ((1-a)*P_a vs 0), not with normalised differences.
+- An Overlay uGUI HUD can be pixel-checked synchronously from execute_code with no coroutine. After Awake, switch the throwaway canvas to ScreenSpaceCamera, disable its CanvasScaler, call Canvas.ForceUpdateCanvases, then cam.Render into an RT and count pixels.
+- To drive a MonoBehaviour's real Awake on your own wiring from execute_code, build the GameObject inactive, set its [SerializeField] privates with FieldInfo.SetValue, then SetActive(true); invoke private handlers by reflection.
+- A Monitor grepping Editor.log for 'Exception' fires on ordinary UIElements stack frames ('System.Exception&'). Match '^[A-Za-z_.]+Exception: ' for a thrown exception.
+- In Git Bash, grep -c $'\r' matched every line and reported LF files as CRLF. Use 'git ls-files --eol' or count bytes in Python. The Edit tool keeps each file's own line endings.
+- Mono rounds midpoints in custom formats ('0.0' turns 1.25 into 1.3). Pin culture tests on non-midpoint values, or the test pins the rounding instead of the culture.
+- Before making a shipped component re-apply config on every event, check whether a rig writes that component's state directly. Here the Story 1.19 candidate sweep would have measured 1.5 px for every candidate, with no error.
+- At close, decide which regression rigs to re-run by diffing shipped code from each rig run's commit to HEAD (git diff <commit>..HEAD -- Assets/), then grepping who calls the changed members; re-run every rig that reaches them and record why the others were skipped.
+- Grade HUD Shoot Phase E absolute shutter times drift a lot between sessions on this laptop (dev mean 25-39 ms, close mean 58 ms, same code): judge the HUD's cost only by listening against disabled within one run.
