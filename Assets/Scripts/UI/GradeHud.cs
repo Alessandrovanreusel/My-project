@@ -180,6 +180,7 @@ namespace CameraGame.UI
                         && (ratingLabel != null || axesLabel != null || whyLabel != null);
 
             ApplyFont();
+            ApplyOutline();
 
             if (fadeGroup != null)
             {
@@ -248,6 +249,12 @@ namespace CameraGame.UI
         /// The three shapes AC2 requires, and they are visibly different from each other. What separates
         /// them is not the stars — a MISS and an off-peak COUNTED shot both read 1★, which Story 1.10's
         /// review settled as designed — it is the breakdown and the reason.
+        ///
+        /// ⚠️ EVERY COLOUR COMES FROM ONE RULE, <see cref="GradeHudConfig.ColorFor(ShotGrade)"/>, AND EVERY
+        /// PERCENTAGE FROM ONE FORMATTER, <see cref="GradeText.Percent"/> (Story 1.19). Colour says whether the
+        /// shot EARNED anything — a miss and a counted shot printing "0 %" share one red on purpose — and the
+        /// words say which it was. Because the red is decided from the printed text, the readout cannot
+        /// show "1 %" in red or "0 %" in amber.
         /// </summary>
         private void Format(ShotGrade grade)
         {
@@ -279,7 +286,7 @@ namespace CameraGame.UI
                 SetText(ratingLabel, "NOT GRADED");
                 SetText(axesLabel, NotMeasuredAxes);
                 SetText(whyLabel, GradeText.MissLong(GradeMiss.Unevaluated));
-                SetColor(config.SafePlaceholderColor);
+                SetColor(config.ColorFor(grade));
                 return;
             }
 
@@ -291,12 +298,13 @@ namespace CameraGame.UI
                 // overlay was patched to do (PhotoModeController.cs:469-478).
                 //
                 // The overall percentage is dropped too: it is genuinely 0, but "0%" beside "1★" is the one
-                // thing a counted-but-late shot also shows, and telling those two apart at a glance IS the
-                // acceptance criterion.
+                // thing a counted-but-late shot also shows. Since Story 1.19 the two share a colour on
+                // purpose (both earned nothing), so these WORDS — MISSED and dashes, against a breakdown and
+                // the timing advice — are what tell a miss from a 0 % shot.
                 SetText(ratingLabel, $"{GradeText.Stars(grade.Stars)}   MISSED");
                 SetText(axesLabel, NotMeasuredAxes);
                 SetText(whyLabel, GradeText.MissLong(grade.MissReason));
-                SetColor(config.SafeMissColor);
+                SetColor(config.ColorFor(grade));
                 return;
             }
 
@@ -305,15 +313,19 @@ namespace CameraGame.UI
             // 24 shots in the town placement study read "counted — 0% 1★"). The breakdown is what makes it
             // different from a miss: "composition 92% x timing 0%" says "you were late", which is exactly
             // the "why" NFR10 asks for.
-            SetText(ratingLabel, $"{GradeText.Stars(grade.Stars)}   {grade.Percent01:P0}");
+            SetText(ratingLabel, $"{GradeText.Stars(grade.Stars)}   {GradeText.Percent(grade.Percent01)}");
 
             // ⚠️ "seen", NOT "how big he was". Subject01 is the fraction of line-of-sight samples that were
             // clear — a REPORT, not a multiplier; the subject check is a pass/fail gate (ShotGrade.cs:78-84).
             // The size measurement (HeightFraction) lives only in the editor-only GradeDetail and is not
             // available here at all.
+            //
+            // Through GradeText.Percent like the rating, and TimingAdvice's seconds are pinned the same way, so
+            // the whole readout prints in one culture: the player's locale used to decide it, fr-FR printed
+            // U+066A for the percent sign and "2,4s late" for the advice (Story 1.19 and its code review).
             SetText(axesLabel,
-                $"composition {grade.Composition01:P0}   ×   timing {grade.Timing01:P0}" +
-                $"      ·      seen {grade.Subject01:P0}");
+                $"composition {GradeText.Percent(grade.Composition01)}   ×   timing {GradeText.Percent(grade.Timing01)}" +
+                $"      ·      seen {GradeText.Percent(grade.Subject01)}");
 
             // Empty when the subject reported no usable timing — the line simply says nothing rather than
             // inventing "0.0s late". GradeText.TimingAdvice guards that.
@@ -322,7 +334,9 @@ namespace CameraGame.UI
             // ⚠️ BANDED BY GRADE, NOT ONE COLOUR FOR EVERY COUNTED SHOT. Alexv's AC3 check (2026-09-11)
             // found the miss "obvious" and the 5★-versus-0% pair "not obvious which one is which" — because
             // the miss changed colour and the two counted shots did not. See GradeHudConfig.CountedColorFor.
-            SetColor(config.CountedColorFor(grade.Stars));
+            // And a counted shot that PRINTS "0 %" earned nothing, so it reads in the miss's red, while one
+            // printing "1 %" keeps its band (Story 1.19). ColorFor decides both from the printed text.
+            SetColor(config.ColorFor(grade));
         }
 
         /// <summary>The axis line for a shot whose axes were never scored. Dashes, not zeroes — "the
@@ -356,6 +370,62 @@ namespace CameraGame.UI
             if (ratingLabel != null && ratingLabel.font == null) ratingLabel.font = font;
             if (axesLabel != null && axesLabel.font == null) axesLabel.font = font;
             if (whyLabel != null && whyLabel.font == null) whyLabel.font = font;
+        }
+
+        /// <summary>
+        /// Gives every label a thin dark outline, once, at Awake (Story 1.19).
+        ///
+        /// ⚠️ WHY CODE AND NOT THE SCENE: the same call <see cref="Awake"/> makes for the render mode — the
+        /// requirement is not negotiable (on bright ground no readout red reaches 4.5:1 against the
+        /// translucent panel alone; the outline is what keeps it readable), so the code owns it rather than
+        /// trusting each label in a 17 MB scene asset to carry the component. It also covers labels built in
+        /// code. The cost is that the outline shows in Play mode only, not in the Scene view.
+        ///
+        /// Colour and thickness come from <see cref="GradeHudConfig"/> through its Safe* accessors, so a 0,
+        /// NaN or alpha-0 value is repaired (and reported at Awake), never applied: uGUI's
+        /// <c>Shadow.effectDistance</c> setter lets NaN straight through. A label that is missing disables
+        /// only its own outline, exactly as it disables only its own line.
+        ///
+        /// uGUI's built-in <see cref="Outline"/>: four copies of the text mesh at (±d, ±d), drawn behind it.
+        /// It fades with the text because the CanvasGroup's alpha applies to the whole canvas renderer,
+        /// outline copies included; <c>useGraphicAlpha</c> is a different thing — it multiplies the copies by
+        /// the TEXT COLOUR's own alpha, so a translucent readout colour gets an equally translucent outline.
+        /// The mesh is rebuilt when the text changes — once per shutter press — never per frame.
+        ///
+        /// ⚠️ APPLIED ONCE, HERE — NOT LIVE. Unlike the colours and the hold, which are read on every shutter
+        /// press, editing outlineColor or outlineDistance during Play mode changes nothing until the next
+        /// Play. Deliberate for now: the Story 1.19 candidate sweep sets each candidate thickness on these
+        /// Outline components and relies on a shutter press not overwriting it (deferred-work.md).
+        /// </summary>
+        private void ApplyOutline()
+        {
+            if (config == null) return;
+
+            Color colour = config.SafeOutlineColor;
+            float d = config.SafeOutlineDistance;
+
+            OutlineLabel(ratingLabel, colour, d);
+            OutlineLabel(axesLabel, colour, d);
+            OutlineLabel(whyLabel, colour, d);
+        }
+
+        private static void OutlineLabel(Text label, Color colour, float distance)
+        {
+            if (label == null) return;
+
+            // TryGetComponent, not GetComponent + `??`: in the editor GetComponent returns a fake-null
+            // object for a missing component, which `??` treats as present.
+            if (!label.TryGetComponent(out Outline outline)) outline = label.gameObject.AddComponent<Outline>();
+
+            // ⚠️ SWITCHED ON, NOT ONLY CONFIGURED. An Outline the label already carries is reused, and one
+            // that was unticked in the Inspector (or arrives disabled on a cloned HUD) used to stay
+            // disabled: Outline.ModifyMesh returns at `!IsActive()`, so that line drew with NO outline and
+            // a clean console while its colour and thickness read back perfectly. The 2026-11-15 code review
+            // reproduced it: 1,324 outline pixels on a fresh label, 0 on one that carried a disabled Outline.
+            outline.enabled = true;
+            outline.effectColor = colour;
+            outline.effectDistance = new Vector2(distance, -distance);
+            outline.useGraphicAlpha = true;
         }
 
         private static void SetText(Text label, string value)

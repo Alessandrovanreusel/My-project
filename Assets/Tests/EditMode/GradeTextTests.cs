@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using NUnit.Framework;
 using CameraGame.Grading;
 
@@ -186,5 +187,118 @@ namespace CameraGame.Tests
             Assert.IsFalse(advice.Contains("late"), $"'{advice}' criticises a shot taken on the peak");
             Assert.IsFalse(string.IsNullOrEmpty(advice), "a perfectly timed shot should still be told so");
         }
+
+        // =====================================================================================================
+        // Story 1.19 — "prints 0 %" decides the red, so the printed text has to be pinned.
+        // =====================================================================================================
+
+        // ⚠️ AC2's FOUR CASES, THROUGH THE REAL FACTORY (never a hand-built struct): 0, 0.4 %, 0.6 % and −0.
+        // The strings are what this runtime prints — Mono's percent pattern is "n %", with a space, measured
+        // 2026-11-15 — and 0.6 % printing "1 %" is the case a threshold like `< 0.01f` gets wrong.
+        [TestCase(0f, "0 %", true)]
+        [TestCase(0.004f, "0 %", true)]
+        [TestCase(0.006f, "1 %", false)]
+        public void Percent_TheAcCasesThroughTheRealFactory(float timing01, string printed, bool zero)
+        {
+            ShotGrade g = ShotGrade.Scored(1f, 1f, timing01, StarScale.Default, "TownDrunk", -2f);
+
+            Assert.AreEqual(printed, GradeText.Percent(g.Percent01));
+            Assert.AreEqual(zero, GradeText.PrintsZero(g.Percent01));
+            Assert.AreEqual(1, g.Stars, "every one of these is a 1-star shot; colour is what tells them apart");
+        }
+
+        // ⚠️ −0 IS A REAL INPUT, AND A TEST OF IT MUST PROVE IT IS −0. Mathf.Clamp01(-0f) keeps the sign bit,
+        // so Scored(1, 1, -0f) carries Percent01 == −0 — but −0 == +0 in C#, so a fixture that silently
+        // became +0 would pass every assertion below and test nothing. The sign bit is checked FIRST.
+        [Test]
+        public void Percent_NegativeZero_PrintsZeroWithNoMinusSign()
+        {
+            ShotGrade g = ShotGrade.Scored(1f, 1f, -0f, StarScale.Default, "TownDrunk", -2f);
+
+            Assert.IsTrue(IsNegativeZero(g.Percent01),
+                "fixture precondition: the factory must carry −0 through, or this test is testing +0");
+            Assert.AreEqual("0 %", GradeText.Percent(g.Percent01));
+            Assert.IsTrue(GradeText.PrintsZero(g.Percent01));
+        }
+
+        // Contract: the readout never states a sign, a NaN or more than 100 %, whatever reaches it.
+        [TestCase(float.NaN, "0 %")]
+        [TestCase(float.NegativeInfinity, "0 %")]
+        [TestCase(-1f, "0 %")]
+        [TestCase(-0.004f, "0 %")]
+        [TestCase(-0f, "0 %")]
+        [TestCase(float.PositiveInfinity, "100 %")]
+        [TestCase(1.7f, "100 %")]
+        public void Percent_NeverPrintsAMinusSignOrAnImpossibleNumber(float raw, string printed)
+        {
+            string text = GradeText.Percent(raw);
+
+            Assert.AreEqual(printed, text);
+            Assert.IsFalse(text.Contains("-"), $"'{text}' states a negative percentage");
+        }
+
+        // ⚠️ THE CULTURE PIN. {x:P0} follows the player's locale, and Mono's fr-FR prints U+066A, the Arabic
+        // percent sign — on the player's screen, in a font that may not have the glyph. Percent is pinned to
+        // the invariant culture, so the output must not move whatever the thread's culture is.
+        [TestCase("en-US")]
+        [TestCase("fr-FR")]
+        [TestCase("")]
+        public void Percent_DoesNotFollowThePlayersLocale(string culture)
+        {
+            CultureInfo previous = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = culture.Length == 0
+                    ? CultureInfo.InvariantCulture
+                    : new CultureInfo(culture);
+
+                Assert.AreEqual("0 %", GradeText.Percent(0f));
+                Assert.AreEqual("37 %", GradeText.Percent(0.37f));
+                Assert.AreEqual("100 %", GradeText.Percent(1f));
+                Assert.IsTrue(GradeText.PrintsZero(0.004f));
+                Assert.IsFalse(GradeText.PrintsZero(0.006f));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previous;
+            }
+        }
+
+        // ⚠️ THE SAME PIN FOR THE ADVICE LINE (Story 1.19 code review). TimingAdvice used `{x:0.0}`, which follows
+        // the player's locale: in fr-FR, de-DE and tr-TR the why line printed "2,4s late" under a breakdown that
+        // Percent prints invariantly — one readout in two cultures. Reproduced through the real GradeHud.
+        [TestCase("en-US")]
+        [TestCase("fr-FR")]
+        [TestCase("de-DE")]
+        [TestCase("tr-TR")]
+        [TestCase("")]
+        public void TimingAdvice_DoesNotFollowThePlayersLocale(string culture)
+        {
+            CultureInfo previous = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = culture.Length == 0
+                    ? CultureInfo.InvariantCulture
+                    : new CultureInfo(culture);
+
+                // Late and early, both scored below full timing so there is advice to give at all.
+                ShotGrade late = ShotGrade.Scored(1f, 1f, 0.2f, StarScale.Default, "TownDrunk", -2.4f);
+                // 1.4, not a midpoint like 1.25: this pins the CULTURE, not Mono's rounding of a tie.
+                ShotGrade early = ShotGrade.Scored(1f, 1f, 0.2f, StarScale.Default, "TownDrunk", 1.4f);
+
+                Assert.AreEqual("2.4s late — shoot sooner", GradeText.TimingAdvice(late));
+                Assert.AreEqual("1.4s early — wait for it", GradeText.TimingAdvice(early));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previous;
+            }
+        }
+
+        // The agreement half lives in GradeHudConfigTests (ColorFor_IsRedExactlyWhenTheReadoutPrintsZero),
+        // because the colour is a UI decision and Grading must not reference UI.
+
+        internal static bool IsNegativeZero(float f) =>
+            f == 0f && (BitConverter.ToInt32(BitConverter.GetBytes(f), 0) & int.MinValue) != 0;
     }
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using UnityEngine;
 
 namespace CameraGame.Grading
@@ -31,6 +32,50 @@ namespace CameraGame.Grading
             int filled = Mathf.Clamp(stars, 0, 5);
             return new string('★', filled) + new string('☆', 5 - filled);
         }
+
+        /// <summary>
+        /// A 0–1 score as the player reads it: "0 %", "37 %", "100 %". The ONE place the readout turns a
+        /// number into a percentage (Story 1.19), so the text and anything decided from the text — the red
+        /// of "this earned nothing" — cannot disagree.
+        ///
+        /// ⚠️ THE CULTURE IS PINNED TO INVARIANT, AND THAT IS NOT COSMETIC. <c>{x:P0}</c> follows the
+        /// player's locale, and in Unity's Mono the fr-FR culture prints "0 ٪" with U+066A, the ARABIC
+        /// percent sign (measured 2026-11-15), a glyph <c>LegacyRuntime.ttf</c> may not even contain. In
+        /// this editor (en-US) invariant output is byte-identical to what shipped before: Mono prints the
+        /// percent pattern "n %", with a space.
+        ///
+        /// ⚠️ SANITISED FIRST: NaN, negatives and −0 print "0 %", never "-0 %" or "NaN %". −0 is a real input
+        /// here, not a curiosity: <c>Mathf.Clamp01(-0f)</c> keeps the sign bit, so
+        /// <c>ShotGrade.Scored(1, 1, -0f, …)</c> carries a <c>Percent01</c> of −0 through the real factory.
+        /// <c>!(p > 0f)</c> is true for all three (NaN compares false with everything).
+        ///
+        /// It ROUNDS, as the readout always has (0.4 % prints "0 %", 0.6 % prints "1 %"). Whether 99.6 %
+        /// should print "100 %" is a separate, deferred question (deferred-work.md); it is deliberately not
+        /// folded in here, because changing the rounding would also change which shots read red.
+        /// </summary>
+        public static string Percent(float percent01)
+        {
+            float p = percent01;
+            if (!(p > 0f)) p = 0f;
+            else if (p > 1f) p = 1f;
+            return p.ToString("P0", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// True when the readout PRINTS "0 %" for this score — the shot earned nothing (Story 1.19, AC2).
+        ///
+        /// ⚠️ DEFINED BY THE PRINTED STRING, NOT BY A THRESHOLD, because that is literally what AC2 says:
+        /// "the choice follows the printed text, not the raw number". A threshold writes the rounding rule
+        /// down a second time, and the obvious ones are wrong in this runtime: Mono rounds the float's
+        /// shortest form half away from zero, so 0.0049 prints "0 %" while 0.005 prints "1 %" (measured
+        /// 2026-11-15), and a rule like <c>percent01 &lt; 0.01f</c> would paint a shot red while it reads
+        /// "1 %". Comparing the two strings cannot disagree with the text, whatever the runtime rounds.
+        ///
+        /// Called once per shutter press (never per frame); the comparison string is built once.
+        /// </summary>
+        public static bool PrintsZero(float percent01) => Percent(percent01) == ZeroPercent;
+
+        private static readonly string ZeroPercent = Percent(0f);
 
         /// <summary>
         /// Plain words for a miss reason, SHORT — the gallery's wording, unchanged.
@@ -136,9 +181,15 @@ namespace CameraGame.Grading
 
             // Positive is EARLY and negative is LATE (ISubject.PeakOffset). Stated as the player's mistake
             // rather than as a signed number: "-1.4s" is a debug value, "1.4s late" is feedback.
+            //
+            // ⚠️ INVARIANT CULTURE, LIKE <see cref="Percent"/>. `{x:0.0}` follows the player's locale, so in
+            // fr-FR, de-DE or tr-TR this line printed "2,4s late" directly under a breakdown that Percent
+            // prints invariantly — one readout in two cultures (reproduced by the Story 1.19 code review).
+            // In en-US the text is byte-identical to before.
+            string seconds = (offset > 0f ? offset : -offset).ToString("0.0", CultureInfo.InvariantCulture);
             return offset > 0f
-                ? $"{offset:0.0}s early — wait for it"
-                : $"{-offset:0.0}s late — shoot sooner";
+                ? seconds + "s early — wait for it"
+                : seconds + "s late — shoot sooner";
         }
     }
 }

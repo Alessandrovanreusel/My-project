@@ -1,10 +1,12 @@
 using UnityEngine;
+using CameraGame.Grading;
 
 namespace CameraGame.UI
 {
     /// <summary>
     /// Designer-facing tunables for the grade-feedback HUD (Story 1.12): how long the readout stays up, how
-    /// long it takes to fade, whether it goes away when the camera comes down, and the three text colours.
+    /// long it takes to fade, whether it goes away when the camera comes down, the text colours, and the
+    /// thin dark outline that keeps them readable on bright ground (Story 1.19).
     /// Lives as a ScriptableObject asset (Assets/Data/UI/GradeHudConfig.asset) assigned to
     /// <see cref="GradeHud"/> in the Inspector, so the feel re-tunes WITHOUT a recompile
     /// (architecture §Configuration). Mirrors <c>CaptureConfig</c> for shape and <c>GalleryConfig</c> for
@@ -48,32 +50,63 @@ namespace CameraGame.UI
         [Header("Colours")]
 
         [Tooltip("Text colour for a COUNTED shot of 3 stars — the middle of the grade. The counted readout " +
-                 "is BANDED: 4-5 stars use strongColor, 3 stars this one, 1-2 stars weakColor. Colour was " +
-                 "already what made a MISS unmistakable and was doing nothing for the grade, so a 5-star " +
-                 "and a 0% shot read alike (AC3, 2026-09-11). See GradeHudConfig.CountedColorFor.")]
+                 "is BANDED: 4-5 stars use strongColor, 3 stars this one, 1-2 stars weakColor, and a shot " +
+                 "that prints 0 % uses missColor (it earned nothing). Banding exists because a 5-star and a " +
+                 "0% shot used to read alike (1.12 AC3, 2026-09-11). See GradeHudConfig.ColorFor.")]
         public Color countedColor = new Color(0.94f, 0.94f, 0.90f);
 
         [Tooltip("Text colour for a STRONG counted shot (4-5 stars). See countedColor for why the counted " +
                  "readout is banded by grade at all.")]
         public Color strongColor = new Color(0.55f, 0.93f, 0.62f);
 
-        [Tooltip("Text colour for a WEAK counted shot (1-2 stars). Must not be confusable with missColor: " +
-                 "a weak shot and a miss both read 1 star, so colour is most of what separates them.\n\n" +
+        [Tooltip("Text colour for a WEAK counted shot (1-2 stars) that still earned something: it prints " +
+                 "1 % or more. Must not be confusable with missColor: amber says 'weak, but it counted', red " +
+                 "says 'this earned nothing', and both can read 1 star, so colour is what separates them.\n\n" +
                  "Bright on purpose: it is drawn on a translucent panel with the live world behind it, and " +
                  "must clear 4.5:1 contrast there on a bright background. A darker amber measured below " +
                  "that off the real captures (2026-09-12). If you retune it, re-measure a capture with " +
                  "tools/verification/build_hud_panel_sheet.py --rect rather than judging by eye.")]
         public Color weakColor = new Color(1.00f, 0.88f, 0.31f);
 
-        [Tooltip("Text colour for a MISSED shot. Distinct from the counted colour on purpose: a miss and " +
-                 "an off-peak counted shot both read 1 star, so colour is one of the few things that can " +
-                 "separate them at a glance.")]
-        public Color missColor = new Color(1f, 0.55f, 0.45f);
+        [Tooltip("Text colour for ANYTHING THAT EARNED NOTHING: a MISSED shot, and a counted shot whose " +
+                 "readout prints 0 % (Story 1.19). The two share this red on purpose — the colour says 'this " +
+                 "earned nothing', and the WORDS say which it was (MISSED and dashes, against a breakdown and " +
+                 "the timing advice).\n\n" +
+                 "Must read as clearly RED, not salmon: what separates the two is saturation and chroma, not " +
+                 "hue (salmon and pure red are 1.3 degrees apart in Lab hue). The validator warns when this " +
+                 "drifts back towards salmon: HSV saturation under 0.65, or an HSV hue more than 15 degrees " +
+                 "from red (salmon sits at 11, so the hue window alone would not catch it). Chosen by measuring the rendered pixels at 1080p with the outline on " +
+                 "the brightest real backgrounds (tools/verification/measure_hud_legibility.py) — re-measure " +
+                 "if you retune it.")]
+        public Color missColor = new Color(1f, 0.33f, 0.28f);
 
         [Tooltip("Text colour for a shot that was never graded at all (grading unconfigured). Muted, " +
                  "because this is not a verdict on the photograph — it is the game saying it did not score " +
                  "one.")]
         public Color placeholderColor = new Color(0.62f, 0.62f, 0.66f);
+
+        [Header("Outline")]
+
+        [Tooltip("Colour of the thin outline drawn behind every readout line (Story 1.19). Near-black and " +
+                 "opaque by design: the outline is what keeps a colour readable where the translucent panel " +
+                 "cannot — on bright ground no red reaches 4.5:1 against the panel alone.\n\n" +
+                 "Applied ONCE by GradeHud.Awake to each label as a uGUI Outline, so it shows in PLAY MODE " +
+                 "ONLY, not in the Scene view, and editing it during Play changes nothing until the next " +
+                 "Play. An alpha at (or near) 0 is repaired to opaque and reported: an invisible outline " +
+                 "looks perfectly normal in the Inspector. Below 0.5 it is warned about. Softer is not free: " +
+                 "alpha 0.85 measured 4.23:1 for the red on the brightest background, under the 4.5:1 floor.")]
+        public Color outlineColor = new Color(0f, 0f, 0f, 1f);
+
+        [Tooltip("Thickness of the outline in canvas units (1920x1080 reference, so 1 unit is 1 px at 1080p; " +
+                 "the CanvasScaler scales it with the screen). Kept THIN on purpose — Alexv asked for an " +
+                 "outline, not a box. Photographed at 1080p (Story 1.19): 1.5 ships and is the only value " +
+                 "measured to clear 4.5:1 for every readout colour on the brightest background; 1 is still " +
+                 "visible but the red measured 4.36:1 there; at 2 uGUI's four diagonal copies already split " +
+                 "the smallest glyphs (the '·' becomes four dots); at 3 every line reads doubled. Re-measure " +
+                 "(tools/verification/measure_hud_legibility.py) before shipping anything but 1.5. Applied " +
+                 "ONCE at Awake, like outlineColor. 0, negative or non-finite is repaired and reported, " +
+                 "never applied.")]
+        [Range(MinOutlineDistance, MaxOutlineDistance)] public float outlineDistance = DefaultOutlineDistance;
 
         // --- Design defaults and clamp bounds ---------------------------------------------------------
         //
@@ -105,6 +138,47 @@ namespace CameraGame.UI
         /// valid colour in the Inspector — the silent-nothing shape, in a channel nobody thinks to check.</summary>
         public const float MinVisibleAlpha = 0.05f;
 
+        private const float DefaultOutlineDistance = 1.5f;
+
+        /// <summary>Thinnest outline worth authoring: one canvas unit is one pixel at 1080p. Thinner than
+        /// that, the copies sit inside the glyph's own anti-aliasing and the outline partly vanishes —
+        /// the silent-nothing shape again, with a value that looks like a deliberate choice.</summary>
+        public const float MinOutlineDistance = 1f;
+
+        /// <summary>The ceiling the clamp allows — NOT a recommended value. Measured, not assumed (Story 1.19,
+        /// decision 1b): photographed at 1, 1.5, 2 and 3 px at 1080p, uGUI's four DIAGONAL copies already
+        /// separate on the smallest glyphs at 2 (the "·" separator turns into four dots, the "×" frays) while
+        /// the letters still carry one outline, and at 3 every line reads doubled. So 2 is where the defect
+        /// starts, kept as the bound because nothing between 1.5 and 2 was photographed; 1.5 ships. Narrowing
+        /// the range is a deferred tuning decision (deferred-work.md, Story 1.19 code review).</summary>
+        public const float MaxOutlineDistance = 2f;
+
+        /// <summary>Below this outline alpha the "outline" is mostly the world behind it, so it no longer
+        /// does its job on bright ground. Warned about, not repaired: a softer outline is a legitimate
+        /// look, it just has to be a choice made knowingly.</summary>
+        public const float MinOutlineAlpha = 0.5f;
+
+        /// <summary>Alexv's legibility floor (Story 1.12), applied by the validator to each readout colour
+        /// against the OUTLINE colour as authored. Authored-only: the rendered number also depends on
+        /// anti-aliasing, the panel and the world, and is measured off captures
+        /// (tools/verification/measure_hud_legibility.py).</summary>
+        public const float MinTextOutlineContrast = 4.5f;
+
+        /// <summary>
+        /// What "missColor still reads as RED" means to the validator: HSV saturation at least this, and a
+        /// hue within <see cref="MissMaxHueOffset"/> degrees of pure red.
+        ///
+        /// ⚠️ SATURATION, BECAUSE HUE CANNOT TELL SALMON FROM RED. Measured on the authored colours for Story
+        /// 1.19: salmon (1, 0.55, 0.45) and pure red are 38.7 and 40.0 degrees in Lab hue — the same hue.
+        /// What separates them is saturation (salmon 0.55, the candidate reds 0.68-1.0) and chroma. 0.65
+        /// sits between the salmon this story replaced and the least saturated red that was shortlisted, so
+        /// the old salmon fails it and the shipped red passes with room.
+        /// </summary>
+        public const float MissMinSaturation = 0.65f;
+
+        /// <summary>See <see cref="MissMinSaturation"/>. Amber is ~50 degrees from red, salmon ~11.</summary>
+        public const float MissMaxHueOffset = 15f;
+
         /// <summary>
         /// How far apart two readout colours must be, in CIE-Lab ΔE, to count as tellable apart at a glance.
         ///
@@ -119,8 +193,9 @@ namespace CameraGame.UI
         /// colours (see <see cref="PerceptualDistance"/>). Both are logged in deferred-work.md.
         ///
         /// 25 is the floor, not the target. On the six pairs the validator checks, the shipped palette sits
-        /// at ΔE 50-87 (measured 2026-09-27) and should stay well clear of it. This exists to catch an
-        /// authoring mistake, not to police tuning.
+        /// at ΔE 50-113 (re-measured 2026-11-15 with Story 1.19's red; the miss pairs moved from 57-87 to
+        /// 80-113) and should stay well clear of it. This exists to catch an authoring mistake, not to police
+        /// tuning.
         /// </summary>
         public const float MinBandSeparation = 25f;
 
@@ -146,8 +221,49 @@ namespace CameraGame.UI
         public Color SafeMissColor => Visible(missColor);
         public Color SafePlaceholderColor => Visible(placeholderColor);
 
+        /// <summary>The outline colour, guaranteed drawn: an alpha at or near 0 (or NaN) is forced back to
+        /// opaque, exactly like the text colours, and <see cref="TryGetConfigProblem"/> says so.</summary>
+        public Color SafeOutlineColor => Visible(outlineColor);
+
+        /// <summary>The outline thickness, guaranteed usable however the asset was authored: non-finite falls
+        /// back to the design default, out of range clamps to the nearest bound. This matters more than it
+        /// looks: uGUI's <c>Shadow.effectDistance</c> setter clamps to ±600 but lets NaN straight through.</summary>
+        public float SafeOutlineDistance => ClampFinite(outlineDistance, MinOutlineDistance, MaxOutlineDistance,
+                                                        DefaultOutlineDistance);
+
         /// <summary>
-        /// The colour for a counted shot of <paramref name="stars"/> stars.
+        /// THE colour rule for a readout (Story 1.19). Takes primitives rather than a <see cref="ShotGrade"/>
+        /// so a clip's grade (Story 1.16's <c>ClipGrade</c>) can use the same rule without knowing what a shot
+        /// grade is. In order:
+        ///   - not counted and not a miss (a placeholder, or the zeroed fourth state) → the muted grey;
+        ///   - a miss → red;
+        ///   - counted, but the readout PRINTS "0 %" → the same red: it earned nothing;
+        ///   - otherwise → its grade band (<see cref="CountedColorFor"/>), so a shot printing "1 %" stays
+        ///     amber.
+        ///
+        /// ⚠️ "PRINTS 0 %" IS DECIDED BY <see cref="GradeText.PrintsZero"/>, the same formatter that writes
+        /// the number on screen, never by a threshold here. Two rules would be two places to disagree, and
+        /// the bug is a readout printing "1 %" in red, or "0 %" in amber.
+        /// </summary>
+        public Color ColorFor(bool counted, bool isMiss, int stars, float percent01)
+        {
+            if (!counted && !isMiss) return SafePlaceholderColor;
+            if (isMiss) return SafeMissColor;
+            if (GradeText.PrintsZero(percent01)) return SafeMissColor;
+            return CountedColorFor(stars);
+        }
+
+        /// <summary>The colour for a shot's readout. See <see cref="ColorFor(bool, bool, int, float)"/>.</summary>
+        public Color ColorFor(ShotGrade grade) =>
+            ColorFor(grade.Counted, grade.IsMiss, grade.Stars, grade.Percent01);
+
+        /// <summary>
+        /// The colour for a counted shot of <paramref name="stars"/> stars, by grade band ALONE. Callers want
+        /// <see cref="ColorFor(bool, bool, int, float)"/>, which sends a counted shot that prints "0 %" to the
+        /// miss red before it ever gets here (Story 1.19): with the default star thresholds a 0 % shot is 1★,
+        /// but not every 1★ shot earned nothing, and a shot printing "1 %" keeps this band's amber. (Star
+        /// thresholds are GradingConfig data: a threshold under 0.5 % would make a "0 %" shot 2★ — still red,
+        /// because the red follows the printed text, not the stars.)
         ///
         /// ⚠️ THIS EXISTS BECAUSE ALEXV COULD NOT TELL A 5★ READOUT FROM A 0% ONE AT A GLANCE (AC3,
         /// 2026-09-11). Shown the three panels with the world cropped away he said the MISS was "obvious"
@@ -170,7 +286,8 @@ namespace CameraGame.UI
         ///
         /// 1★ and 2★ deliberately SHARE the weak band (Alexv's call, 2026-09-12): the readout is meant to
         /// say "this shot was weak", not to rank one weak shot against another — the stars and the
-        /// percentage already do that.
+        /// percentage already do that. A weak shot that earned something keeps that amber; one that earned
+        /// nothing reads red (Alexv, Story 1.12's fourth look question: "missed and 0% should be red").
         /// </summary>
         public Color CountedColorFor(int stars) =>
             stars >= 4 ? SafeStrongColor :
@@ -299,6 +416,41 @@ namespace CameraGame.UI
             all = ReportInvisible(all, missColor, nameof(missColor));
             all = ReportInvisible(all, placeholderColor, nameof(placeholderColor));
 
+            // --- The outline (Story 1.19) — the same silent-nothing discipline as the numbers above. A
+            // thickness of 0, a NaN, or an alpha-0 colour switches the outline off with a clean console and a
+            // value that looks deliberate, and the readout goes back to being unreadable on bright ground.
+            if (!Mathf.Approximately(outlineDistance, SafeOutlineDistance))
+                all = Add(all, $"outlineDistance is {outlineDistance}, outside the usable range " +
+                               $"{MinOutlineDistance} to {MaxOutlineDistance} — using {SafeOutlineDistance}. " +
+                               WhyOutlineDistance(outlineDistance));
+
+            if (!(outlineColor.a >= MinVisibleAlpha))
+                all = Add(all, $"outlineColor is {ColorText(outlineColor)}, so the outline would not be drawn " +
+                               "at all — and it is what keeps the readout readable on bright ground — while " +
+                               "reading as a perfectly valid colour in the Inspector. Repairing it to opaque.");
+            else if (float.IsNaN(outlineColor.r) || float.IsNaN(outlineColor.g) || float.IsNaN(outlineColor.b))
+                all = Add(all, $"outlineColor is {ColorText(outlineColor)}: a NaN channel draws as whatever the " +
+                               "conversion happens to produce rather than the colour that was meant. Repairing " +
+                               "that channel to 0.");
+            else if (outlineColor.a < MinOutlineAlpha)
+                all = Add(all, $"outlineColor is alpha {outlineColor.a}, under {MinOutlineAlpha}: the outline is " +
+                               "mostly the world behind it, so on bright ground it no longer separates the " +
+                               "text from the background.");
+
+            // Authored-only: each readout colour against the outline colour, both opaque. It catches an
+            // outline authored too light (a grey outline under the grey placeholder text) — not whether the
+            // readout is legible on screen, which depends on the panel and the world and is measured off
+            // captures (deferred-work.md: the panel colour is scene data this asset cannot see).
+            all = ReportOutlineContrast(all, countedColor, nameof(countedColor));
+            all = ReportOutlineContrast(all, strongColor, nameof(strongColor));
+            all = ReportOutlineContrast(all, weakColor, nameof(weakColor));
+            all = ReportOutlineContrast(all, missColor, nameof(missColor));
+            all = ReportOutlineContrast(all, placeholderColor, nameof(placeholderColor));
+
+            // "Anything that earned nothing reads RED" (Story 1.19, AC1). The ΔE pairs below cannot catch a
+            // miss colour drifting back to salmon: salmon is ΔE 56-87 from every band. Saturation can.
+            all = ReportNotRed(all);
+
             // ⚠️ THE BANDING'S RUNTIME DEFENCE — THE ONE THAT SEES WHATEVER CONFIG THE HUD IS ACTUALLY GIVEN.
             //
             // The 2026-09-12 review set strongColor = weakColor in the SHIPPED .asset and ran the suite:
@@ -312,10 +464,12 @@ namespace CameraGame.UI
             all = ReportConfusable(all, weakColor, nameof(weakColor), countedColor, nameof(countedColor), WhyBand);
             all = ReportConfusable(all, strongColor, nameof(strongColor), weakColor, nameof(weakColor), WhyBand);
 
-            // A COUNTED shot and a MISS are different outcomes, and colour is most of what separates them —
-            // both can read 1★. That requirement is older than the banding, so these three explain
-            // themselves differently. The weak/miss pair is the one that was nearly lost: the amber shipped
-            // on 2026-09-11 sat ΔE 45.5 from the miss, on a metric (RGB) that called it borderline.
+            // EARNED SOMETHING against EARNED NOTHING. Since Story 1.19 missColor is the red of every
+            // readout that earned nothing (a MISS and a counted shot printing 0 %), so these three pairs keep
+            // every band that earned something apart from it — colour is what says "it counted", while the
+            // words say whether a red readout was a miss or a 0 % shot. The weak/miss pair is the one that
+            // was nearly lost: the amber shipped on 2026-09-11 sat ΔE 45.5 from the old salmon, on a metric
+            // (RGB) that called it borderline.
             all = ReportConfusable(all, weakColor, nameof(weakColor), missColor, nameof(missColor), WhyMiss);
             all = ReportConfusable(all, countedColor, nameof(countedColor), missColor, nameof(missColor), WhyMiss);
             all = ReportConfusable(all, strongColor, nameof(strongColor), missColor, nameof(missColor), WhyMiss);
@@ -383,8 +537,10 @@ namespace CameraGame.UI
         ///   designer never typed, with nothing to connect the two.
         /// - The distance is TRUNCATED, not rounded: 24.97 rounded prints "ΔE 25.0 apart (needs 25)", a
         ///   message that contradicts itself.
-        /// - The reason is the caller's (<see cref="WhyBand"/> or <see cref="WhyMiss"/>): a counted shot
-        ///   that reads like a miss is a different failure from two grades that read alike.
+        /// - The reason is the caller's (<see cref="WhyBand"/> or <see cref="WhyMiss"/>): a shot that earned
+        ///   something reading like one that earned nothing is a different failure from two grades that read
+        ///   alike. (A counted 0 % shot reading exactly like a miss is no longer a failure: since Story 1.19
+        ///   they share missColor on purpose.)
         /// </summary>
         private static string ReportConfusable(string all, Color a, string fieldA, Color b, string fieldB,
                                                string why)
@@ -402,8 +558,69 @@ namespace CameraGame.UI
             "counted readout is banded by grade.";
 
         private const string WhyMiss =
-            "a player could not tell that counted shot from a MISS at a glance — both can read 1 star, so " +
-            "colour is most of what separates them.";
+            "a player could not tell a shot that earned something from one that earned nothing at a glance — " +
+            "both can read 1 star, and that colour is what says 'it counted'.";
+
+        /// <summary>Why a bad outline thickness matters, in the terms of the value actually typed — the
+        /// <see cref="WhyHold"/> rule.</summary>
+        private static string WhyOutlineDistance(float authored)
+        {
+            // ⚠️ EACH SENTENCE SAYS WHAT uGUI WOULD ACTUALLY DO WITH THAT VALUE — checked by the Story 1.19 code
+            // review on rendered pixels, because the first wording was wrong for two of the four cases.
+            if (float.IsNaN(authored))
+                return "uGUI's Outline lets a NaN thickness straight through its setter (its ±600 clamp compares " +
+                       "false against NaN), so the outline's copies would be placed at NaN — not an outline.";
+            if (float.IsInfinity(authored))
+                return "uGUI clamps an infinite thickness to 600 canvas units, so the outline would leave the " +
+                       "text altogether: four dark ghost copies of the readout drawn 600 px away from it, which " +
+                       "can land mid-screen or off it.";
+            if (authored == 0f)
+                return "A thickness of zero draws the outline's copies exactly under the text — no outline at " +
+                       "all, with a clean console.";
+            if (authored < 0f)
+                return "A negative thickness is not a thickness: uGUI happens to draw it as its mirror image, " +
+                       "so it reads as a typo rather than a choice.";
+            return authored < MinOutlineDistance
+                ? "Thinner than a pixel at 1080p, the outline hides inside the text's anti-aliasing."
+                : "An outline this thick reads as a heavy box rather than a thin camcorder outline.";
+        }
+
+        /// <summary>Each readout colour against the outline colour, as authored and opaque. See the call
+        /// site for what this does and does not answer.</summary>
+        private string ReportOutlineContrast(string all, Color text, string field)
+        {
+            float c = Contrast(Visible(text), SafeOutlineColor);
+            return c < MinTextOutlineContrast
+                ? Add(all, $"{field} {Rgb(Visible(text))} against outlineColor {Rgb(SafeOutlineColor)} is only " +
+                           $"{Mathf.Floor(c * 100f) / 100f:0.00}:1 as authored (needs {MinTextOutlineContrast}:1) — " +
+                           "the outline is what keeps that line readable on bright ground. Authored-only: " +
+                           "measure the rendered number off a capture.")
+                : all;
+        }
+
+        /// <summary>missColor must still read as red: see <see cref="MissMinSaturation"/>.</summary>
+        private string ReportNotRed(string all)
+        {
+            Color m = SafeMissColor;
+            Color.RGBToHSV(m, out float h, out float s, out _);
+            float hueOffset = Mathf.Min(h, 1f - h) * 360f;
+            if (s >= MissMinSaturation && hueOffset <= MissMaxHueOffset) return all;
+
+            return Add(all, $"missColor {Rgb(m)} no longer reads as red (HSV saturation {s:0.00}, needs " +
+                            $"{MissMinSaturation:0.00}; hue {hueOffset:0} degrees from red, allows " +
+                            $"{MissMaxHueOffset:0}) — it is the colour of every readout that earned nothing, " +
+                            "and a pale or off-hue red reads as salmon or as a different grade.");
+        }
+
+        /// <summary>WCAG contrast ratio between two opaque sRGB colours.</summary>
+        private static float Contrast(Color a, Color b)
+        {
+            float la = RelativeLuminance(a), lb = RelativeLuminance(b);
+            return (Mathf.Max(la, lb) + 0.05f) / (Mathf.Min(la, lb) + 0.05f);
+        }
+
+        private static float RelativeLuminance(Color c) =>
+            0.2126f * Linear(c.r) + 0.7152f * Linear(c.g) + 0.0722f * Linear(c.b);
 
         private static string Rgb(Color c) => $"({c.r:0.00}, {c.g:0.00}, {c.b:0.00})";
 

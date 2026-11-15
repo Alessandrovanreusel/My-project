@@ -36,7 +36,7 @@ namespace CameraGame.UI
     /// Overlay canvas is composited after every camera and is absent from <c>cam.Render()</c> by
     /// construction. Phase 0 settles the replacement technique with control shots before anything else runs.
     /// </summary>
-    public class GradeHudShootRunner : MonoBehaviour
+    public partial class GradeHudShootRunner : MonoBehaviour
     {
         [HideInInspector] public GradeHud hud;
         [HideInInspector] public Canvas hudCanvas;
@@ -160,6 +160,13 @@ namespace CameraGame.UI
                 yield break;
             }
 
+            // Story 1.19: the legibility measurement (GradeHudShootRunner.Legibility.cs).
+            if (legibilityOnly)
+            {
+                yield return PhaseL_Legibility();
+                yield break;
+            }
+
             yield return PhaseA_EveryHudState();
             yield return PhaseB_TheHudMustNeverReachAPhotograph();
             yield return PhaseC_StressAndReuse();
@@ -193,6 +200,9 @@ namespace CameraGame.UI
             _log.AppendLine("   · [Grading] 'GradingConfig, EventManager or Camera unassigned' — Phase A's");
             _log.AppendLine("     placeholder scenario needs a genuinely unconfigured PhotoModeController.");
             _log.AppendLine("   · [GradeHud] missing-reference errors — Phase D's whole purpose.");
+            _log.AppendLine("   · [GradeHud] 'GradeHudConfig: outlineDistance ...' and '... outlineColor ...' warnings —");
+            _log.AppendLine("     Phase D's outline boundaries (Story 1.19): thickness 0, negative, NaN and huge,");
+            _log.AppendLine("     and an outline colour at alpha 0. One warning each, from a throwaway HUD.");
             _log.AppendLine("   Any OTHER error is a finding.");
             _log.AppendLine();
 
@@ -214,9 +224,14 @@ namespace CameraGame.UI
                                 $"   (raw field: {shippedHudConfig.fadeSeconds})");
                 _log.AppendLine($"    hideOnCameraLowered  {shippedHudConfig.hideOnCameraLowered}");
                 _log.AppendLine($"    total on screen      {shippedHudConfig.SafeVisibleSeconds}s");
+                _log.AppendLine($"    strongColor          {shippedHudConfig.strongColor}");
                 _log.AppendLine($"    countedColor         {shippedHudConfig.countedColor}");
+                _log.AppendLine($"    weakColor            {shippedHudConfig.weakColor}");
                 _log.AppendLine($"    missColor            {shippedHudConfig.missColor}");
                 _log.AppendLine($"    placeholderColor     {shippedHudConfig.placeholderColor}");
+                _log.AppendLine($"    outlineColor         {shippedHudConfig.outlineColor}");
+                _log.AppendLine($"    outlineDistance      {shippedHudConfig.SafeOutlineDistance}" +
+                                $"   (raw field: {shippedHudConfig.outlineDistance})");
                 if (shippedHudConfig.TryGetConfigProblem(out string problem))
                     _log.AppendLine($"    ⚠ PROBLEM: {problem}");
                 else
@@ -848,6 +863,11 @@ namespace CameraGame.UI
                 yield return Grab(t => settled = t);
                 Save(settled, name + ".png");
 
+                // Story 1.19: in the legibility run, freeze this very frame and photograph its variants.
+                if (_legibility)
+                    yield return CaptureVariants(name, "real-shutter", "phase-a:" + name, name, whatTheCameraDid,
+                                                 grade: shutter.LastGrade.ToString());
+
                 _log.AppendLine($"{name}  —  {whatTheCameraDid}");
                 if (!string.IsNullOrEmpty(_lastVantageNote))
                     _log.AppendLine($"    {_lastVantageNote}");
@@ -1174,6 +1194,14 @@ namespace CameraGame.UI
             yield return Boundary("fade NaN", MakeConfig(2.2f, float.NaN));
             yield return Boundary("fade huge (9999)", MakeConfig(2.2f, 9999f));
             yield return Boundary("every colour at alpha 0", InvisibleColours());
+
+            // Story 1.19: the outline is the newest way to switch a feature off with a value that looks
+            // deliberate. Each must be repaired (an outline still drawn) and reported once.
+            yield return Boundary("outline distance 0", OutlineConfig(0f, Color.black));
+            yield return Boundary("outline distance negative (-2)", OutlineConfig(-2f, Color.black));
+            yield return Boundary("outline distance NaN", OutlineConfig(float.NaN, Color.black));
+            yield return Boundary("outline distance huge (999)", OutlineConfig(999f, Color.black));
+            yield return Boundary("outline colour alpha 0", OutlineConfig(1.5f, new Color(0f, 0f, 0f, 0f)));
             yield return Boundary("config ASSET MISSING", null);
             yield return Boundary("channel UNASSIGNED", MakeConfig(2.2f, 0.6f), noChannel: true);
             yield return Boundary("labels UNASSIGNED", MakeConfig(2.2f, 0.6f), noLabels: true);
@@ -1200,6 +1228,13 @@ namespace CameraGame.UI
 
             GradeHud probe = BuildThrowawayHud(cfg, noChannel ? null : channel, noLabels, noGroup);
             yield return null;
+
+            // What Awake actually applied to the label (Story 1.19) — the repaired value, not the typed one.
+            var probeLabel = GetPrivate(probe, "ratingLabel") as Text;
+            Outline applied = probeLabel != null ? probeLabel.GetComponent<Outline>() : null;
+            _log.AppendLine(applied != null
+                ? $"    outline applied:       distance {applied.effectDistance}  colour {applied.effectColor}"
+                : "    outline applied:       none" + (probeLabel == null ? " (no label)" : ""));
 
             photo.SetPhotoMode(true);
             if (TryGetActor(out EventActor a)) PlaceCamera(new State("d", "", 2.2f), a.Bounds);
@@ -1434,6 +1469,14 @@ namespace CameraGame.UI
             c.fadeSeconds = fade;
             c.hideOnCameraLowered = hideOnLower;
             _tempConfigs.Add(c);
+            return c;
+        }
+
+        private GradeHudConfig OutlineConfig(float distance, Color colour)
+        {
+            GradeHudConfig c = MakeConfig(2.2f, 0.6f);
+            c.outlineDistance = distance;
+            c.outlineColor = colour;
             return c;
         }
 
