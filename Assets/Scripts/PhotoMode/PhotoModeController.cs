@@ -5,6 +5,7 @@ using UnityEngine.UI;
 using CameraGame.Core;
 using CameraGame.Events;
 using CameraGame.Grading;
+using CameraGame.Recording;
 
 namespace CameraGame.PhotoMode
 {
@@ -15,8 +16,15 @@ namespace CameraGame.PhotoMode
     ///
     /// MUST live on the player object ("main characters") — the GameObject that carries
     /// <c>PlayerInput</c> — because PlayerInput "Send Messages" only calls OnXxx methods on its own
-    /// GameObject, not on the camera or children. Stories 1.4 (zoom) and 1.5 (capture) gate on
+    /// GameObject, not on the camera or children. Zoom (Story 1.4) and Record (Story 1.15) gate on
     /// <see cref="IsPhotoMode"/>.
+    ///
+    /// ⚠️ SINCE STORY 1.15 THE CAPTURE INPUT RECORDS A CLIP. <see cref="OnCapture"/> (LMB / RT) toggles the
+    /// <see cref="ClipRecorder"/> through <see cref="ToggleRecording"/>, and every way the camera leaves Photo
+    /// stops the recording and keeps the clip (<see cref="SetMode"/>). <see cref="Capture"/>, the still-photo
+    /// shutter, is unchanged but no longer bound to any input: the Photo, Gallery and Grade HUD Shoot rigs
+    /// still pull it, and it stays the per-frame grade path until Story 1.16 decides its fate. So between
+    /// 1.15 and 1.16/1.17 a player's clip shows no grade and stores no photograph; that is the honest interim.
     /// </summary>
     public class PhotoModeController : MonoBehaviour
     {
@@ -74,6 +82,12 @@ namespace CameraGame.PhotoMode
                  "live and never cached. If unassigned, capture falls back to the placeholder grade.")]
         [SerializeField] private EventManager eventManager;
 
+        [Header("Recording (Story 1.15)")]
+        [Tooltip("The camcorder's recorder. Record (the Capture input, LMB / RT) starts and stops it while the " +
+                 "camera is raised, and lowering the camera stops it and keeps the clip. If unassigned, Record " +
+                 "does nothing at all (no clip, no beep, no REC).")]
+        [SerializeField] private ClipRecorder clipRecorder;
+
         /// <summary>Current camera mode. Read-only to the outside world.</summary>
         public CameraMode Mode { get; private set; } = CameraMode.Walk;
 
@@ -113,6 +127,10 @@ namespace CameraGame.PhotoMode
         // must not disable the flash, and a missing flash must not disable grading — the same independence
         // the 1.4 and 1.5 reviews called out. When false, capture keeps raising the placeholder grade.
         private bool _gradingReady;
+
+        // Story 1.15: Record can drive a recorder. Independent of every flag above: a missing recorder never
+        // disables zoom, the viewfinder or the (rig-only) photo shutter, and vice versa.
+        private bool _recordReady;
 
         // Flash decay timer: set to 1 on capture, eased to 0 over captureConfig.flashDuration in Update,
         // so the flash onset is immediate but its fade is frame-rate-eased rather than a one-frame pop.
@@ -154,6 +172,16 @@ namespace CameraGame.PhotoMode
                 // meaningless verdicts, which is far harder to notice than an outright failure.
                 GameLog.Warn("Grading", $"GradingConfig: {gradingProblem}");
             }
+
+            // Recording (Story 1.15). An ERROR, not a warning: in the real game a camcorder that cannot record
+            // has lost its verb. The isolated rigs that build their own controller (Photo/Gallery Shoot) list
+            // this line among the errors they provoke on purpose.
+            _recordReady = clipRecorder != null;
+            if (!_recordReady)
+                GameLog.Error("PhotoMode", "ClipRecorder unassigned: Record does nothing (zoom and the viewfinder still work).", this);
+            else if (clipRecorder.RecordCamera != null && photoCamera != null && clipRecorder.RecordCamera != photoCamera)
+                GameLog.Warn("PhotoMode", $"The ClipRecorder films through '{clipRecorder.RecordCamera.name}' but zoom drives " +
+                                          $"'{photoCamera.name}': clips would not show what the player frames.");
 
             _shutterReady = captureAudioSource != null && shutterClip != null && captureConfig != null;
             if (!_shutterReady)
@@ -332,11 +360,27 @@ namespace CameraGame.PhotoMode
         // Method name "OnCapture" derives from the action name GameConstants.InputActions.Capture
         // ("Capture"). Unlike RaiseCamera/Zoom, Capture is a *Button* action on purpose: a discrete
         // one-shot tap. Under PlayerInput Send Messages a Button delivers exactly ONE call per press —
-        // exactly one shot. (A Value action would fire on press AND release, double-capturing, unless
-        // guarded with `if (!value.isPressed) return;`.) See story guardrail #1.
+        // exactly one toggle, which is what Record needs. (A Value action would fire on press AND release,
+        // starting and stopping the clip in one click, unless guarded with `if (!value.isPressed) return;`.)
+        //
+        // Story 1.15: the press now toggles recording. It used to pull the photo shutter (Capture()), which
+        // stays for the rigs but is bound to no input; see the class comment.
         public void OnCapture(InputValue value)
         {
-            Capture();
+            ToggleRecording();
+        }
+
+        /// <summary>
+        /// Record (LMB / RT): starts a clip if none is running, stops it (keeping it) if one is. A no-op in Walk
+        /// (AC4: nothing at all happens, no clip, no beep, no REC) and when no recorder is assigned.
+        /// <see cref="OnCapture"/> is a thin input adapter over this, so a rig can drive the real path.
+        /// </summary>
+        public void ToggleRecording()
+        {
+            if (!IsPhotoMode || !_recordReady) return;
+
+            if (clipRecorder.IsRecording) clipRecorder.Stop(StopReason.PlayerPressed);
+            else clipRecorder.Begin();
         }
 
         /// <summary>
@@ -593,7 +637,22 @@ namespace CameraGame.PhotoMode
             if (Mode == CameraMode.Photo && _zoomReady && cameraConfig.resetZoomOnRaise)
                 _zoomT = 0f;
 
+            // Story 1.15 (AC2): EVERY way out of Photo stops the recording and keeps the clip. SetMode is the one
+            // choke point the RaiseCamera release, SetRaiseSuppressed(true) and every SetPhotoMode(false) reach.
+            // AFTER Mode changes, deliberately: a listener of the stop (the beep, the channel) that reads
+            // IsPhotoMode sees the camera already down, which is what the reason CameraLowered says.
+            if (Mode != CameraMode.Photo && _recordReady)
+                clipRecorder.Stop(StopReason.CameraLowered);
+
             GameLog.Debug_("PhotoMode", $"Mode -> {Mode}");
+        }
+
+        // Story 1.15 (Task 5.3): disabled or destroyed mid-clip (a scene unload, leaving play mode, a rig) stops
+        // the recording and keeps the clip. The camera mode itself is left as it was (deferred-work: the 1.4
+        // review's "No OnDisable teardown", still open).
+        private void OnDisable()
+        {
+            if (_recordReady && clipRecorder != null) clipRecorder.Stop(StopReason.Disabled);
         }
     }
 }

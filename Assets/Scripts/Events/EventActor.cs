@@ -196,6 +196,26 @@ namespace CameraGame.Events
 
         public string SubjectId => definition != null ? definition.Id : name;
 
+        // --- Recordability (Story 1.15; game-architecture.md §Cross-cutting Concerns) ---------------------
+        // Read-only views for the clip recorder's track. Nothing here changes behaviour.
+
+        /// <summary>The data this actor runs. A clip names it, so a replay can rebuild the actor from the
+        /// definition's prefab rather than from a live, pooled instance (ADR-4 Consequences).</summary>
+        public EventDefinition Definition => definition;
+
+        /// <summary>The Animator cached in Awake (null before Awake). The recorder reads its state each tick
+        /// instead of calling GetComponent per tick.</summary>
+        public Animator Animator => _animator;
+
+        /// <summary>
+        /// Which lifecycle this actor is running: a session-wide serial taken in <see cref="Begin"/>, so it is
+        /// unique across every actor and every cycle. 0 before the first Begin. The drunk is the SAME pooled
+        /// instance on every cycle, so without this a clip spanning a respawn could not tell two lifecycles apart.
+        /// </summary>
+        public int LifecycleSerial { get; private set; }
+
+        private static int s_lastLifecycleSerial;
+
         // --- Local (intra-system) signals -----------------------------------------------------------
 
         /// <summary>Raised on Despawn so the EventManager can return this actor to the pool. The actor
@@ -486,6 +506,7 @@ namespace CameraGame.Events
             }
 
             _running = true;
+            LifecycleSerial = ++s_lastLifecycleSerial;   // Story 1.15: a new lifecycle, for the clip track
 
             // Peak begins after Spawn + Build elapse, so seed the countdown with their combined duration.
             TimeToPeak = definition.GetPhase(EventPhase.Spawn).duration
