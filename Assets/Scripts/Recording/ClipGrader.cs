@@ -57,10 +57,6 @@ namespace CameraGame.Recording
         /// <summary>Seconds of footage graded since <see cref="Begin"/>.</summary>
         public double GradedSeconds => _builder.GradedSeconds;
 
-        /// <summary>The config clips are graded against (the same asset as <c>ClipRecorder.GradingConfig</c>, which
-        /// PhotoModeController compares with its own and validates at Awake).</summary>
-        public GradingConfig Config => _config;
-
 #if UNITY_EDITOR
         /// <summary>One graded sample, for the verification rig only (editor builds). Raised after the sample is
         /// folded; with no subscriber it costs one null check.</summary>

@@ -685,7 +685,7 @@ only in EditMode, or not at all:*
 
 *Every finding marked **reproduced** was triggered before it was fixed and re-run after. Evidence:
 `_bmad-output/verification/1-16-grade-a-clip/review-a1/` (before) and `review-a1-fix/` (after), each with
-`report.txt`, `ticks.csv`, `clips.csv` and the frames.*
+`report.txt`, `ticks.csv`, `clips.csv` and the frames; `review-a1-gc2/` (allocation counted, Phase G).*
 
 **What the stress phase confirmed (no change needed).**
 - Coverage on the subject's clock holds live. The whole framed window reads **exactly 100 %** at timeScale 2 (62
@@ -694,6 +694,7 @@ only in EditMode, or not at all:*
   in shot 69 % because nobody passes the gate during the respawn gaps and the occluded early Build).
 - Rapid reuse: 12 of 12 clips raised, each with graded = footage seconds, no exception.
 - Zero allocation with three live actors: 0 B over 9,000 `SampleTick` calls, against a positive control of 57,344 B.
+  But see the next fix: that instrument cannot see strings.
 - Editor.log: zero exceptions across both runs. The only warnings are the two that R6 announces as provoked.
 
 **Fixed (patch):**
@@ -726,6 +727,26 @@ only in EditMode, or not at all:*
   - **Fix:** the tests read the report under the invariant culture (`InvariantProblem`).
   - After: PASS under fr-FR, de-DE and tr-TR. The culture of the designer-facing messages themselves is pre-existing
     and deferred.
+- [x] [Review][Patch] **AC5's "0 B per tick" could not see strings** [the evidence: Phase E's `HeapGrowth`]. Raised by
+  the standards / zero-GC pass.
+  - **Reproduced** in the editor: `GC.GetTotalMemory` and `Profiler.GetMonoUsedSizeLong` both read **0 B for 9,000
+    retained strings** (and for `byte[64]`), while 9,000 `new object()` read 65-70 KB. So the 0 B proved only that no
+    OBJECT is allocated per tick.
+  - **Fix (rig, Phase G):** allocation is now COUNTED by the profiler's "GC Allocated In Frame" counter, over whole
+    frames that do only the work under test. Each round has a baseline frame, a string control, an object control,
+    and a busy-wait as long as the SampleTick frame.
+  - Result (`review-a1-gc2/`, 3 rounds):
+    - **9,000 `SampleTick` calls read 18,109 B, exactly the baseline frame's 18,109 B;**
+    - the string control reads +405,000 B and the object control +144,000 B;
+    - the equally long busy-wait shows the same 0-6.6 KB frame noise that an earlier round had attributed to the
+      ticks.
+  - **Zero allocation per tick, strings included, is now measured with an instrument proven to see strings.**
+    `Unity.PerformanceTesting`'s `Measure.Method().GC()` would count the same way; it was not adopted, because a new
+    test assembly is a decision for a story, and this rig phase is the evidence.
+- [x] [Review][Patch] **`ClipRecorder.Grader` handed any caller a grader that could change the clip being graded**
+  [ClipRecorder.cs, ClipGrader.cs]. Raised by the standards pass. `Begin`, `SampleTick` and `Finish` are public, and the
+  only user is this assembly's rig. **Fix:** the property is `internal`, and the unread `ClipGrader.Config` is deleted.
+  Compiles and runs with the rig (the same assembly).
 - [x] [Review][Patch] **The no-peak warning misstated the score** [ClipGrader.cs]. It said clips of a subject with no
   peak window "are graded on framing only". The blend gives them coverage 0, so they keep only the floor's share.
   - **Measured** through the real builder and the shipped config: a perfectly framed 3-s clip of a no-peak subject
@@ -767,7 +788,12 @@ only in EditMode, or not at all:*
 **Deferred** (in `deferred-work.md`, "code review of story-1-16"):
 
 - [x] [Review][Defer] Overflow eviction can drop a live lifecycle, and ranks with a floor-0 blend [ClipGradeBuilder.cs
-  `Open`] — unreachable today: it needs 32 lifecycles in one clip, and R5 and R6 hold at most 5 and about 15.
+  `Open`]; the capacity is a bare `× 8` that ignores `maxClipSeconds` (up to 300 s) — unreachable at shipped values
+  (it needs 32 lifecycles in one clip, and R5 and R6 hold at most 5 and about 15).
+- [x] [Review][Defer] The footage and the grader each walk `ActiveActors` with the same three steps, kept in step only
+  by a comment (they drifted once: the cap fix above) [ReplayBackend.cs `SampleActors`, ClipGrader.cs `SampleTick`] —
+  a refactor of `IClipBackend` (the backend exposes the actors it recorded on the tick). The rig's per-tick lifecycle
+  check is the guard until then.
 - [x] [Review][Defer] The HUD's missing-controller warning depends on `hideOnCameraLowered`, which a clip's guard
   ignores [GradeHud.cs `Awake`] — diagnostics for a mis-wired scene; the fix changes the Grade HUD rig's provoked lines.
 - [x] [Review][Defer] Validator messages print in the current culture [GradingConfig, RecordingConfig, GradeHudConfig]
@@ -808,6 +834,9 @@ only in EditMode, or not at all:*
   console must stay clean in normal play.
 - *`OnValidate` does not repair the clip fields.* Task 3.2's instruction.
 - *`Framing01`'s doc is wrong under `PeakTicksWhenCovered`.* A sweep-only shape; the shipped one matches the doc.
+- *The rig hooks (`TickGraded`, `TickClosed`) run inside the grading `try`, so a throwing rig subscriber reads as a
+  grading failure.* Editor-only, and only rigs subscribe. The failure line names the exception and its stack, which
+  points at the rig.
 
 ## Dev Notes
 
@@ -1327,8 +1356,8 @@ Modified:
 - `Assets/Scripts/PhotoMode/PhotoModeController.cs` (comments, `GradeRanking.Beats`, the recorder-config check)
 - `Assets/Scripts/Recording/RecordClipShootRunner.cs`, `Assets/Scripts/UI/GradeHudShootRunner.cs` (rigs: wire the new references, fact 12)
 - Review phase (2026-11-15): `ClipGrader.cs`, `ClipGradeBuilder.cs`, `ClipGrade.cs`, `GradeText.cs`, `GradingConfig.cs`,
-  `PhotoModeController.cs`, `ClipRecorder.cs` (comment), `GradeHud.cs` (tooltip), `ClipGradeTests.cs`; the rig
-  `GradeClipShootRunner.cs` gained the stress phase `R`
+  `PhotoModeController.cs`, `ClipRecorder.cs` (comment; `Grader` internal), `GradeHud.cs` (tooltip), `ClipGradeTests.cs`;
+  the rig `GradeClipShootRunner.cs` gained the stress phase `R` and the counted-allocation phase `G`
 - `Assets/Tests/EditMode/RecordingTests.cs` (the `RecordedClip` construction site)
 - `Assets/Data/Grading/GradingConfig.asset` (`clipPeakFloor` 0.3, `clipAbsenceWeight` 0.25)
 - `Assets/Scenes/SampleScene.unity` (two references: `ClipRecorder.gradingConfig`, `GradeHud.clipRecordedChannel`)
@@ -1354,11 +1383,14 @@ Not in git (evidence): `_bmad-output/verification/1-16-grade-a-clip/`; `Builds/1
   Findings.
   - Three review layers and a standards and zero-GC pass ran. A stress phase **R** was added to the Grade Clip rig and
     run before and after the fixes.
-  - Four reproduced defects were fixed and re-run:
+  - Five reproduced defects were fixed and re-run:
     - the actor-cap mismatch between the footage and the grader (52 samples were graded outside the footage; now 0);
     - the unvalidated clip config (0 lines; now 1);
     - the culture-fragile validator tests;
-    - the misstated no-peak warning.
+    - the misstated no-peak warning;
+    - AC5's "0 B per tick" measured with an instrument blind to strings (now counted by the profiler: the 9,000-tick
+      frame equals the baseline frame, while a string control reads +405 KB).
+  - `ClipRecorder.Grader` is now internal.
   - Also fixed: the silent low floor (now warned), "photograph" in a clip's miss line, and seven false comments.
   - One design consequence is flagged for Alexv: a single framed tick earns 2★.
-  - 6 deferred, 15 dismissed. EditMode 424/424. The console is clean in normal play.
+  - 7 deferred, 16 dismissed. EditMode 424/424. The console is clean in normal play.

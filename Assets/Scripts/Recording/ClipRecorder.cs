@@ -123,9 +123,11 @@ namespace CameraGame.Recording
         /// <summary>The config clips are graded against (PhotoModeController checks it is its own).</summary>
         public GradingConfig GradingConfig => gradingConfig;
 
-        /// <summary>The clip grader (Story 1.16), or null before Awake or when the recorder cannot record. Read-only
-        /// diagnostics for the verification rig; the grade itself travels on <see cref="RecordedClip.Grade"/>.</summary>
-        public ClipGrader Grader => _grader;
+        /// <summary>The clip grader (Story 1.16), or null before Awake or when the recorder cannot record. Diagnostics for
+        /// the verification rig only; the grade itself travels on <see cref="RecordedClip.Grade"/>. INTERNAL (code review
+        /// 2026-11-15): its Begin / SampleTick / Finish change the clip being graded, so only this assembly's rig may hold
+        /// it, never a listener such as the HUD or the memory card.</summary>
+        internal ClipGrader Grader => _grader;
 
         /// <summary>False when the recorder cannot record at all (no camera). Begin then refuses.</summary>
         public bool CanRecord => _ready;

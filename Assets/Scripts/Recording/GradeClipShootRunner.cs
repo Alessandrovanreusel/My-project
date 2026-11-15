@@ -160,6 +160,7 @@ namespace CameraGame.Recording
             if (phases.Contains("E")) yield return PhaseE();
             if (phases.Contains("F")) yield return PhaseF();
             if (phases.Contains("R")) yield return PhaseR();
+            if (phases.Contains("G")) yield return PhaseG();
 
             Teardown();
             File.WriteAllText(Path.Combine(outputDir, "ticks.csv"), _ticks.ToString());
@@ -1316,6 +1317,59 @@ namespace CameraGame.Recording
             SetConcurrent(_reviewPrevConcurrent);
             Line($"   maxConcurrent restored to {GetConcurrent()}");
             _reviewPrevConcurrent = 0;
+        }
+
+        // =====================================================================================================
+        // Phase G — allocation COUNTED, not inferred from heap growth (Story 1.16 review, 2026-11-15). In this Mono,
+        // GC.GetTotalMemory and Profiler.GetMonoUsedSizeLong both read 0 B for 9,000 RETAINED strings or byte[64]
+        // (measured in the editor), so the 0 B of Phase E proves only that no OBJECT is allocated. The profiler's
+        // "GC Allocated In Frame" counter is read for whole frames that do nothing but the work under test, beside a
+        // baseline frame, a string control and an object control.
+        // =====================================================================================================
+
+        private static string[] _sinkStrings;
+
+        private IEnumerator PhaseG()
+        {
+            Line("\n== Phase G — per-tick allocation counted by the profiler (GC Allocated In Frame), with controls ==");
+            AimAt(0.55f);
+            photo.SetPhotoMode(true);
+            yield return WaitTau(-6f);
+            var rec = Unity.Profiling.ProfilerRecorder.StartNew(Unity.Profiling.ProfilerCategory.Memory, "GC Allocated In Frame");
+            if (!rec.Valid) { Line("⚠ the 'GC Allocated In Frame' counter is not available here; nothing measured."); rec.Dispose(); yield break; }
+
+            var g = new ClipGrader(cam, manager, gradingConfig, RecordingConfig.MaxActorsPerTickOf(recordingConfig));
+            g.Begin();
+            for (int i = 0; i < 10; i++) g.SampleTick(1);
+            const int N = 9000;
+            var keepS = new string[N];
+            var keepO = new object[N];
+            var rows = new List<string>();
+            double tickFrameMs = 0;
+            for (int round = 0; round < 3; round++)
+            {
+                for (int kind = 0; kind < 5; kind++)
+                {
+                    yield return null;                       // start a clean frame
+                    var sw = Stopwatch.StartNew();
+                    if (kind == 1) { for (int i = 0; i < N; i++) g.SampleTick(1); tickFrameMs = sw.Elapsed.TotalMilliseconds; }
+                    else if (kind == 2) for (int i = 0; i < N; i++) keepS[i] = new string('x', 8 + (i & 7));
+                    else if (kind == 3) for (int i = 0; i < N; i++) keepO[i] = new object();
+                    else if (kind == 4) while (sw.Elapsed.TotalMilliseconds < tickFrameMs) { }   // a frame as LONG as the ticks', allocating nothing
+                    double ms = sw.Elapsed.TotalMilliseconds;
+                    yield return null;                       // that frame is now complete
+                    long bytes = rec.LastValue;
+                    string name = kind == 0 ? "baseline (nothing)" : kind == 1 ? $"{N} SampleTick, {LiveCount()} live" :
+                                  kind == 2 ? $"{N} retained strings (control)" : kind == 3 ? $"{N} retained objects (control)" :
+                                  "a busy-wait as long as the SampleTick frame (control: frame length alone)";
+                    rows.Add($"round {round}: {name}: {bytes} B ({F(ms, "0")} ms of work)");
+                }
+            }
+            _sinkStrings = keepS;
+            _sinkObject = keepO[N - 1];
+            rec.Dispose();
+            foreach (string r in rows) Line("   " + r);
+            Line($"   (the grader's own grade over these ticks: {g.Finish()})");
         }
     }
 }
