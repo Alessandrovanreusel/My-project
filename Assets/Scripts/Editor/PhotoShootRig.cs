@@ -397,6 +397,9 @@ namespace CameraGame.EditorTools
             runner.eyeHeight = eyeHeight;
             runner.eyeHeightSource = eyeSource;
 
+            // Story 1.15: this isolated world has no ClipRecorder, so its controller logs ONE expected error at Awake.
+            Debug.Log("[PhotoShoot] Expected error, provoked by this rig: '[PhotoMode] ClipRecorder unassigned' — this " +
+                      "isolated world has no recorder (Story 1.15); the shots go through Capture(), which needs none.");
             Debug.Log("[PhotoShoot] World built. Entering play mode — shots will land in " + OutputDir);
             EditorApplication.EnterPlaymode();
         }
