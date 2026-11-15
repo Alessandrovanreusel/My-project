@@ -656,7 +656,100 @@ recorded in the result file.
 
 ### Review Findings
 
-*(Filled by the code-review phase.)*
+*Loop REVIEW phase, 2026-11-15 (Claude Opus 5.5). Diff `1f83710..83c74fe`, shipped code only; rigs were run, not
+reviewed. Layers: Blind Hunter (diff only), Edge Case Hunter (diff + project), Acceptance Auditor (diff + this
+story + game-architecture.md), and a standards / zero-GC pass (`unity-perf:code-standards`,
+`unity-perf:csharp-zero-gc`, `unity-perf:unity-performance`). Every finding below marked **reproduced** was
+triggered in SampleScene play mode through the real path (`PhotoModeController.ToggleRecording`, `SetPhotoMode`,
+Send Messages, `AudioSettings.Reset`, a 440 Hz tone source as the known signal) before it was fixed, and
+re-run after the fix. Evidence: `_bmad-output/verification/1-15-record-a-clip/review/` (`runtime.txt` holds
+every probe's before and after numbers).*
+
+**Fixed (patch):**
+
+- [x] [Review][Patch] **A clip stopped in the frame it started had 0 ticks and 0 s, and its readers' `TickAt(0)`
+  threw** [ReplayBackend.cs `End`]. Reproduced: `ToggleRecording()` then `SetPhotoMode(false)` in one frame (RT
+  pressed and LT released in the same input update) announced `clip_0001 0.000 s, 0 ticks`, replaced the held
+  clip, and `TickAt(0)` threw `ArgumentOutOfRangeException`. Found by all three layers. **Fix:** `End` takes the
+  start tick when none was sampled (the camera and actors as last seen, one slot). After: 1 tick, 0.0333 s.
+  Test `Backend_ClipStoppedBeforeItsFirstSample_StillHasItsStartTick`, mutation-proven (red without the fix).
+- [x] [Review][Patch] **A speaker-mode change mid-clip threw away the clip's whole sound** [ReplayBackend.cs
+  `End`: `hasSound = armed && !mismatch`]. Reproduced: 7.47 s of tone was written (RMS 0.125, 670,936 of
+  672,000 samples non-zero), then a switch to Mono with a 200 ms hitch. The clip came back `HasSound False,
+  PcmFrames 0`. That contradicts AC6, `StopReason`'s "every stop keeps the footage" and the tap's own doc.
+  **Fix:** `HasSound` means the tap wrote samples; what came before the change is kept and the rest is padded.
+  After: `HasSound True`, PCM exactly ticks × 1600, RMS 0.125 up to the 5.167-s change. Test
+  `Tap_ChannelChangeMidClip_KeepsTheSoundRecordedBeforeIt`, mutation-proven.
+- [x] [Review][Patch] **A tap destroyed before the stop had its sound zeroed while the clip still claimed sound**
+  [ReplayBackend.cs `End`: Unity's `_tap != null`]. Reproduced: 8.3 s of tone came back as 0 non-zero samples
+  with `HasSound True`. **Fix:** a reference check (`Disarm` touches no Unity API). After: 7.57 s kept, RMS
+  0.125. Test `Tap_DestroyedBeforeTheStop_KeepsTheSoundItWrote`, mutation-proven.
+- [x] [Review][Patch] **A tap that heard nothing produced a clip flagged as having sound** (pure padding).
+  Reproduced with the AudioListener disabled: the tap saw no block, yet the 6.8-s clip had `HasSound True` with
+  326,400 frames of zeros. **Fix:** the same `HasSound` rule. After: `HasSound False`, `PcmFrames 0`, the
+  timeline kept (5.9 s). Test `Tap_ThatHeardNothing_GivesAClipFlaggedSilent`, mutation-proven.
+- [x] [Review][Patch] **The clip's channel count came from `speakerMode`, not from what the listener delivers**
+  (Task 4.2). Reproduced on this stereo-only device (`driverCapabilities` Stereo): with Quad or 5.1 configured,
+  the callback did not deliver 4 or 6 channels. Every clip would therefore mismatch on its first block, stop
+  with `AudioDeviceChanged` and be silent. A mono-only output (a headset in hands-free mode) would do the same to
+  the shipped Stereo setting. **Fix:** `ReplayBackend.ListenerChannels()` clamps the speaker mode to
+  `driverCapabilities`. After: an 8.4-s clip under 5.1 has 2 channels, no mismatch, and sound (RMS 0.125). Not
+  measured on real mono or 5.1 hardware.
+- [x] [Review][Patch] **A disabled `PhotoModeController` still started clips** [PhotoModeController.cs
+  `ToggleRecording`]. Reproduced: Send Messages reaches disabled components, and `OnDisable` leaves Mode at
+  Photo. A control with the controller enabled showed the probe fires (a null argument does not reach
+  `OnCapture(InputValue)`, so the first probe was blind). **Fix:** gate on `isActiveAndEnabled`, plus Unity's
+  null check on `clipRecorder` (a recorder destroyed on its own made every press throw), and the same null
+  check in `SetMode`. After: control True, disabled False.
+- [x] [Review][Patch] **STBY ("ready") showed on a camera that cannot record** [RecordingHud.cs `Update`].
+  Reproduced: the camera raised with the recorder disabled. **Fix:** STBY needs `CanRecord` and an enabled
+  recorder. After: STBY False; control (recorder enabled) True.
+- [x] [Review][Patch] **A tick sampled after the camera was destroyed replayed an older clip's camera** (the
+  tick array is reused) [ReplayBackend.cs `Sample`]. Reproduced in EditMode: clip 2 showed clip 1's FOV of 42.
+  **Fix:** a defined "no camera" sample (FieldOfView 0). Test
+  `Backend_CameraDestroyedMidClip_NeverShowsAnOlderClipsCamera`, mutation-proven.
+- [x] [Review][Patch] **Two log lines for one fault:** a recorder with no camera logged an Error at startup and
+  again on the first press (AC6, "one clear log line"). **Fix:** the press adds nothing; the disabled-recorder
+  line stays. Verified by reading.
+- [x] [Review][Patch] **`FootageFormat` wrapped on huge times** (an unchecked `(long)` of a double above
+  ~9.2e18). A huge time counted negative boundaries, so a clip never reached its limit. **Fix:** saturate. The
+  backend's `Prepare` also clamps to the config's cap itself. Test
+  `HugeClipTimes_Saturate_AndStillReachTheLimit` (2 cases).
+- [x] [Review][Patch] **Docs that said what the code does not do:**
+  - `Capture()`'s comment still called `OnCapture` its input adapter (Task 5.2; the body is untouched).
+  - `ListenerTap` said "never a Sleep" (`SpinWait` can yield up to `Sleep(1)` if the audio thread is
+    preempted mid-copy).
+  - `IFootage.Dispose` is now marked main-thread-only.
+  - `RecordingConfig` now says memory scales with the device's rate.
+  - `game-architecture.md` said Recording reads Events "through ISubject only", and that "nothing is
+    allocated on the press frame".
+
+**Deferred** (with reasons, in `deferred-work.md` § "code review of story-1-15"):
+- the press-frame allocations after a device change or with both blocks held (measured 2.4–5.9 ms per block);
+- unbounded growth with claimers that never dispose, including an OOM escaping into `OnCapture`;
+- memory scaling with the device rate;
+- a sample-rate change mid-clip (hypothesis);
+- config read only at Awake;
+- the stale held clip once claimers exist;
+- an editor Pause mid-clip (hypothesis).
+
+**Dismissed:**
+- *The zero-allocation EditMode test covers the camera-only path.* The rig's Phase E measured the full path
+  with the live drunk: 0 B over 9,000 ticks (`rig-run3/report.txt:43`).
+- *Re-entrant `Begin` from a `Stopped` handler.* Reproduced: it works, with one raise per clip and a
+  consistent state. A third block is allocated on that frame, and no shipped listener does this.
+- *A listener that disposes without claiming.* A contract violation, but reproduced: nothing leaks and the
+  block goes back.
+- *The pool accepts a block of another length.* No caller re-prepares with a different length.
+- *Hot reload loses `_backend`.* Project-wide: every system's events are lost under Recompile And Continue
+  Playing. Hypothesis.
+- *A/V anchor phase of up to one DSP block.* Already deferred by dev.
+- *Error, not Warn, for a missing channel or config while recording continues.* This matches
+  `PhotoModeController`'s existing pattern for `ShotCapturedChannel`.
+- *Listed-but-inactive actors are recorded as `Live = false`.* AC5 asks for liveness; there are 2 slots
+  against `maxConcurrent` 1.
+- *Interlocked state machine replaced by a lock.* Not needed: the CAS protocol was re-read by two layers and
+  holds.
 
 ## Dev Notes
 

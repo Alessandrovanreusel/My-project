@@ -88,8 +88,12 @@ namespace CameraGame.Recording
         /// </summary>
         public void Prepare(float maxSeconds)
         {
+            // The backend bounds itself with the config's own limits, whoever calls it: no length can ask for more
+            // than RecordingConfig.MaxClipSecondsCap of storage.
+            maxSeconds = RecordingConfig.ClampFinite(maxSeconds, RecordingConfig.MinClipSeconds,
+                RecordingConfig.MaxClipSecondsCap, RecordingConfig.DefaultMaxClipSeconds);
             int rate = AudioSettings.outputSampleRate;
-            int channels = ChannelsOf(AudioSettings.speakerMode);
+            int channels = ListenerChannels();
             if (rate <= 0) rate = 48000;   // no audio device: keep a valid timeline, the tap will not arm
 
             if (_free.Count == PooledStorages && Mathf.Approximately(maxSeconds, _preparedSeconds)
@@ -134,7 +138,7 @@ namespace CameraGame.Recording
 
             // A device change since Prepare (sample rate, speaker mode) makes the pooled buffers the wrong shape.
             if (AudioSettings.outputSampleRate > 0
-                && (AudioSettings.outputSampleRate != _preparedRate || ChannelsOf(AudioSettings.speakerMode) != _preparedChannels))
+                && (AudioSettings.outputSampleRate != _preparedRate || ListenerChannels() != _preparedChannels))
                 Prepare(_preparedSeconds);
 
             if (_free.Count > 0)
@@ -191,6 +195,13 @@ namespace CameraGame.Recording
                 Transform ct = _camera.transform;
                 ct.GetPositionAndRotation(out t.Camera.Position, out t.Camera.Rotation);
                 t.Camera.FieldOfView = _camera.fieldOfView;
+            }
+            else
+            {
+                // The camera was destroyed mid-clip. Write a defined "no camera" sample (FieldOfView 0): the tick
+                // array is reused clip after clip, so leaving it untouched replayed an OLDER clip's camera (code
+                // review 2026-11-15).
+                t.Camera = new CameraSample { Rotation = Quaternion.identity };
             }
 
             t.ActorStart = _actors;
@@ -304,6 +315,13 @@ namespace CameraGame.Recording
         public IFootage End()
         {
             if (_cur == null) return null;
+
+            // EVERY CLIP HAS ITS START TICK (code review 2026-11-15). A clip stopped before its first LateUpdate (RT
+            // pressed and LT released in the same input update, or a stop on the press frame) used to end with 0
+            // ticks and 0 s, and its readers' TickAt(0) threw. Take the start tick now: it holds the camera and the
+            // actors as the player last saw them, one 1/30-s slot long.
+            if (_ticks == 0) Sample(0d);
+
             ReplayStorage s = _cur;
             _cur = null;
 
@@ -311,13 +329,26 @@ namespace CameraGame.Recording
             bool mismatch = false;
             bool armed = _tapArmed;
             _tapArmed = false;
-            if (armed) written = _tap != null ? _tap.Disarm(out mismatch, out _) : 0;
+
+            // A REFERENCE check, not Unity's overloaded ==: a tap whose GameObject was destroyed first (Main Camera
+            // torn down before the recorder at a scene unload) still holds the samples it wrote, and Disarm touches
+            // no Unity API. With `_tap != null` the destroyed tap was never disarmed and the whole clip's sound was
+            // zeroed below while it still claimed to have sound (code review 2026-11-15).
+            if (armed && !ReferenceEquals(_tap, null)) written = _tap.Disarm(out mismatch, out _);
 
             // PAD OR TRIM TO THE TICK TIMELINE, never truncate the picture to the sound (ADR-4 risk 3): the PCM
             // lasts exactly as long as the ticks, to the frame.
             long target = FootageFormat.PcmFramesFor(_emitted, s.SampleRate);
             if (target > s.PcmCapacityFrames) target = s.PcmCapacityFrames;
-            bool hasSound = armed && !mismatch;
+
+            // A clip HAS SOUND when the tap actually wrote samples into it (code review 2026-11-15):
+            //   - a tap that heard no block at all (its AudioListener disabled, the tap switched off) gives a
+            //     silent clip, flagged as such, rather than "sound" that is only padding;
+            //   - a channel-count change mid-clip (a speaker-mode change) stops the tap writing at the change, so the
+            //     sound recorded BEFORE it is kept and the rest is padded with silence. It used to throw the whole
+            //     clip's sound away, against "footage recorded so far is always kept".
+            if (written > target) written = target;
+            bool hasSound = armed && written > 0;
             if (hasSound && written < target)
                 System.Array.Clear(s.Pcm, (int)(written * s.Channels), (int)((target - written) * s.Channels));
 
@@ -339,6 +370,16 @@ namespace CameraGame.Recording
             foreach (ReplayStorage s in _free) s.Orphan();
             _free.Clear();
         }
+
+        /// <summary>
+        /// The channel count the listener's <c>OnAudioFilterRead</c> really delivers: the configured speaker mode,
+        /// clamped to what the output device can do. Measured 2026-11-15 on this laptop's stereo-only device: with
+        /// Quad or 5.1 configured, the callback did NOT deliver 4 or 6 channels, so a clip sized from the speaker
+        /// mode alone stopped on its first audio block, silent. A mono-only device (a headset in hands-free mode)
+        /// would do the same to the shipped Stereo setting.
+        /// </summary>
+        public static int ListenerChannels() =>
+            Mathf.Min(ChannelsOf(AudioSettings.speakerMode), ChannelsOf(AudioSettings.driverCapabilities));
 
         /// <summary>The channel count of the listener's mix for a speaker mode.</summary>
         public static int ChannelsOf(AudioSpeakerMode mode)

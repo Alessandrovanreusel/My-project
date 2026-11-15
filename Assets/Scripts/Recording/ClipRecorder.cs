@@ -203,14 +203,16 @@ namespace CameraGame.Recording
             if (IsRecording) return false;
             if (!_initialised) Initialise();
 
-            if (!_ready || !isActiveAndEnabled)
+            // A recorder that cannot record (no camera) already said so ONCE, at startup: a press adds no second line
+            // for the same fault (AC6, "one clear log line"; code review 2026-11-15).
+            if (!_ready) return false;
+
+            if (!isActiveAndEnabled)
             {
                 if (!_refusalLogged)
                 {
                     _refusalLogged = true;
-                    GameLog.Warn("Recording", _ready
-                        ? "Record pressed while the recorder is disabled: nothing was recorded. Said once."
-                        : "Record pressed, but the recorder cannot record (see the error at startup). Said once.");
+                    GameLog.Warn("Recording", "Record pressed while the recorder is disabled: nothing was recorded. Said once.");
                 }
                 return false;
             }

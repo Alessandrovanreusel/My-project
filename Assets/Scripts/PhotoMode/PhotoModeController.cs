@@ -377,16 +377,21 @@ namespace CameraGame.PhotoMode
         /// </summary>
         public void ToggleRecording()
         {
-            if (!IsPhotoMode || !_recordReady) return;
+            // isActiveAndEnabled: PlayerInput's Send Messages reaches DISABLED components too, so a controller switched
+            // off while raised (OnDisable leaves Mode at Photo) started clips behind its own back (reproduced by the
+            // 2026-11-15 code review). `clipRecorder == null` is Unity's check: a recorder destroyed on its own would
+            // otherwise throw on every press.
+            if (!IsPhotoMode || !_recordReady || !isActiveAndEnabled || clipRecorder == null) return;
 
             if (clipRecorder.IsRecording) clipRecorder.Stop(StopReason.PlayerPressed);
             else clipRecorder.Begin();
         }
 
         /// <summary>
-        /// Takes the photo: feedback, grade, event. <see cref="OnCapture"/> is a thin input adapter over
-        /// this, so the shutter can also be pulled by something other than a key press — which is what lets
-        /// the real capture path be driven and photographed rather than approximated.
+        /// Takes the photo: feedback, grade, event. Since Story 1.15 NO INPUT calls this (<see cref="OnCapture"/>
+        /// toggles recording instead): the Photo, Gallery and Grade HUD Shoot rigs pull this shutter directly, so
+        /// the real capture path can be driven and photographed rather than approximated, until Story 1.16
+        /// decides its fate.
         /// </summary>
         public void Capture()
         {
@@ -641,7 +646,7 @@ namespace CameraGame.PhotoMode
             // choke point the RaiseCamera release, SetRaiseSuppressed(true) and every SetPhotoMode(false) reach.
             // AFTER Mode changes, deliberately: a listener of the stop (the beep, the channel) that reads
             // IsPhotoMode sees the camera already down, which is what the reason CameraLowered says.
-            if (Mode != CameraMode.Photo && _recordReady)
+            if (Mode != CameraMode.Photo && _recordReady && clipRecorder != null)
                 clipRecorder.Stop(StopReason.CameraLowered);
 
             GameLog.Debug_("PhotoMode", $"Mode -> {Mode}");

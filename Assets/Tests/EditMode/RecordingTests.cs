@@ -100,6 +100,17 @@ namespace CameraGame.Tests
             Assert.AreEqual(0, FootageFormat.RepeatsDue(t, 0, long.MaxValue));
         }
 
+        // Code review 2026-11-15: an unchecked (long) of a double past ~9.2e18 wrapped to long.MinValue, so a huge time
+        // counted a NEGATIVE number of boundaries and a clip could never reach its limit.
+        [TestCase(1e300)]
+        [TestCase(double.MaxValue)]
+        public void HugeClipTimes_Saturate_AndStillReachTheLimit(double t)
+        {
+            Assert.AreEqual(long.MaxValue, FootageFormat.BoundariesThrough(t));
+            Assert.AreEqual(90, FootageFormat.RepeatsDue(t, 0, 90), "a huge time fills the clip to its limit");
+            Assert.AreEqual(long.MaxValue, FootageFormat.MaxBoundariesFor(t));
+        }
+
         // --- The PCM length rule ------------------------------------------------------------------------
 
         [TestCase(1L, 48000, 1600L)]
@@ -378,6 +389,177 @@ namespace CameraGame.Tests
             {
                 backend.Destroy();
                 Object.DestroyImmediate(go);
+            }
+        }
+
+        // Code review 2026-11-15: a clip stopped in the frame it started (before any Sample) was announced with 0 ticks
+        // and 0 s, and TickAt(0) threw (reproduced in SampleScene through ToggleRecording + SetPhotoMode(false)).
+        [Test]
+        public void Backend_ClipStoppedBeforeItsFirstSample_StillHasItsStartTick()
+        {
+            Camera cam = NewCamera(out GameObject go);
+            var backend = new ReplayBackend(cam, null, null, 2, 2);
+            try
+            {
+                backend.Prepare(2f);
+                cam.fieldOfView = 37f;
+                Assert.IsTrue(backend.Begin(0d, 2f));
+                var f = (ReplayFootage)backend.End();   // no Sample in between
+
+                Assert.AreEqual(1, f.TickCount, "the start tick");
+                Assert.AreEqual(1, f.TickAt(0).Repeats);
+                Assert.AreEqual(1, f.Boundaries);
+                Assert.AreEqual(1f / 30f, f.Seconds, 1e-6f, "one 1/30-s slot, not 0 s");
+                Assert.AreEqual(37f, f.TickAt(0).Camera.FieldOfView, "the camera as the player last saw it");
+                f.Dispose();
+            }
+            finally
+            {
+                backend.Destroy();
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        // Code review 2026-11-15: the tick array is reused clip after clip, and a tick sampled after the camera was
+        // destroyed left the slot untouched, so it replayed an OLDER clip's camera.
+        [Test]
+        public void Backend_CameraDestroyedMidClip_NeverShowsAnOlderClipsCamera()
+        {
+            Camera cam = NewCamera(out GameObject go);
+            var backend = new ReplayBackend(cam, null, null, 2, 2);
+            try
+            {
+                backend.Prepare(2f);
+                cam.fieldOfView = 42f;
+                Assert.IsTrue(backend.Begin(0d, 2f));
+                backend.Sample(0.01);
+                backend.End().Dispose();               // clip 1 hands its block back: clip 2 reuses it
+
+                Assert.IsTrue(backend.Begin(0d, 2f));
+                Object.DestroyImmediate(go);
+                backend.Sample(0.01);
+                var f = (ReplayFootage)backend.End();
+                Assert.AreEqual(1, f.TickCount);
+                Assert.AreEqual(0f, f.TickAt(0).Camera.FieldOfView, "a defined 'no camera' sample, not clip 1's 42");
+                f.Dispose();
+            }
+            finally
+            {
+                backend.Destroy();
+                if (go != null) Object.DestroyImmediate(go);
+            }
+        }
+
+        // --- The listener tap through the backend's End (code review 2026-11-15) -----------------------------------
+        //
+        // The tap's OnAudioFilterRead is driven by reflection with a known block: it places the block by
+        // AudioSettings.dspTime read inside the callback, so a clip armed at "now" receives it within a block or two of
+        // its start, well inside the 1-s clip below.
+
+        private const float BlockLevel = 0.5f;
+
+        private static void FeedBlock(ListenerTap tap, int channels, int frames = 1024)
+        {
+            var data = new float[frames * channels];
+            for (int i = 0; i < data.Length; i++) data[i] = BlockLevel;
+            typeof(ListenerTap).GetMethod("OnAudioFilterRead",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .Invoke(tap, new object[] { data, channels });
+        }
+
+        private static int NonZeroSamples(ReplayFootage f)
+        {
+            var buf = new short[f.PcmFrames * f.Channels];
+            int frames = f.ReadPcm(0, buf);
+            int nz = 0;
+            for (int i = 0; i < frames * f.Channels; i++) if (buf[i] != 0) nz++;
+            return nz;
+        }
+
+        private static ReplayBackend TapBackend(out GameObject camGo, out GameObject tapGo, out ListenerTap tap)
+        {
+            Camera cam = NewCamera(out camGo);
+            tapGo = new GameObject("RecordingTests Tap");
+            tap = tapGo.AddComponent<ListenerTap>();
+            var backend = new ReplayBackend(cam, null, tap, 2, 2);
+            backend.Prepare(2f);
+            Assume.That(AudioSettings.outputSampleRate, Is.GreaterThan(0), "needs an audio device");
+            Assume.That(backend.Begin(AudioSettings.dspTime, 2f), Is.True);
+            Assume.That(tap.IsArmed, Is.True, "the backend armed the tap");
+            return backend;
+        }
+
+        [Test]
+        public void Tap_ChannelChangeMidClip_KeepsTheSoundRecordedBeforeIt()
+        {
+            ReplayBackend backend = TapBackend(out GameObject camGo, out GameObject tapGo, out ListenerTap tap);
+            try
+            {
+                int ch = backend.Channels;
+                FeedBlock(tap, ch);                    // real sound
+                FeedBlock(tap, ch == 1 ? 2 : 1);       // the speaker mode changed
+                Assert.IsTrue(tap.ChannelMismatch);
+                backend.Sample(0.01);
+                backend.Sample(1.0);
+                var f = (ReplayFootage)backend.End();
+
+                Assert.IsTrue(f.HasSound, "the sound before the change is kept");
+                Assert.AreEqual(FootageFormat.PcmFramesFor(f.Boundaries, f.SampleRate), f.PcmFrames, "padded to the ticks");
+                Assert.AreEqual(1024 * ch, NonZeroSamples(f), "exactly the block before the change, the rest silence");
+                f.Dispose();
+            }
+            finally
+            {
+                backend.Destroy();
+                Object.DestroyImmediate(tapGo);
+                Object.DestroyImmediate(camGo);
+            }
+        }
+
+        [Test]
+        public void Tap_DestroyedBeforeTheStop_KeepsTheSoundItWrote()
+        {
+            ReplayBackend backend = TapBackend(out GameObject camGo, out GameObject tapGo, out ListenerTap tap);
+            try
+            {
+                FeedBlock(tap, backend.Channels);
+                Object.DestroyImmediate(tapGo);       // Main Camera torn down before the recorder
+                backend.Sample(0.01);
+                backend.Sample(1.0);
+                var f = (ReplayFootage)backend.End();
+
+                Assert.IsTrue(f.HasSound);
+                Assert.AreEqual(1024 * backend.Channels, NonZeroSamples(f), "the written block survives the tap");
+                f.Dispose();
+            }
+            finally
+            {
+                backend.Destroy();
+                if (tapGo != null) Object.DestroyImmediate(tapGo);
+                Object.DestroyImmediate(camGo);
+            }
+        }
+
+        [Test]
+        public void Tap_ThatHeardNothing_GivesAClipFlaggedSilent()
+        {
+            ReplayBackend backend = TapBackend(out GameObject camGo, out GameObject tapGo, out ListenerTap tap);
+            try
+            {
+                backend.Sample(0.01);                  // no block ever arrives (the AudioListener is disabled)
+                backend.Sample(1.0);
+                var f = (ReplayFootage)backend.End();
+
+                Assert.IsFalse(f.HasSound, "padding alone is not sound");
+                Assert.AreEqual(0, f.PcmFrames);
+                Assert.Greater(f.Seconds, 0.9f, "the timeline is still valid");
+                f.Dispose();
+            }
+            finally
+            {
+                backend.Destroy();
+                Object.DestroyImmediate(tapGo);
+                Object.DestroyImmediate(camGo);
             }
         }
 

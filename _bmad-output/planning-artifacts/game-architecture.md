@@ -238,8 +238,11 @@ Holding RMB still raises the camera into the Viewfinder state; the code keeps th
 (press) / lower / card full → `ClipRecorder.Stop` → `ClipGrader` → `ClipRecordedChannel.Raise` →
 `MemoryCardService` stores the clip, and `GradeHud` shows its grade.
 
-**Dependency direction:** `PhotoMode` → `Recording` → `Grading` and `Events` (through `ISubject` only). The
-memory card (`Gallery`) and `UI` listen through `ClipRecordedChannel` and never the reverse.
+**Dependency direction:** `PhotoMode` → `Recording` → `Grading` and `Events`. The memory card (`Gallery`) and
+`UI` listen through `ClipRecordedChannel` and never the reverse. *As built (Story 1.15):* the track reads
+`Events` directly, not through `ISubject` only (`EventManager.ActiveActors`, and on `EventActor` the
+read-only `Definition`, `Animator` and `LifecycleSerial`), because a replay must rebuild the actor from its
+`EventDefinition` and tell pooled lifecycles apart, which `ISubject` does not expose.
 
 **As built by Story 1.15 (2026-11-15).** Stories 1.16–1.17 add the grade and the card; the shapes below are
 the seams they plug into.
@@ -266,8 +269,15 @@ the seams they plug into.
 - **Ownership (NFR3):** a listener that keeps the footage calls `RecordedClip.Claim(owner)` during the raise
   and disposes it later. The recorder claims whatever nobody claimed and holds one (`LastClip`), disposing
   the one before. Footage storage is preallocated at `Awake` (two clips' worth, sized from
-  `RecordingConfig.maxClipSeconds`) and returned to the pool on dispose, so nothing is allocated on the
-  press frame or per frame. Story 1.17's card claims every clip, and the recorder then holds nothing.
+  `RecordingConfig.maxClipSeconds`) and returned to the pool on dispose, so in normal play nothing is
+  allocated on the press frame or per frame. Two exceptions allocate a block on the press (2–6 ms each,
+  measured by the 2026-11-15 review): the first press after an audio device change re-shapes the pool, and a
+  press while listeners hold both blocks takes a third (`deferred-work.md`). Story 1.17's card claims every
+  clip, and the recorder then holds nothing.
+- **Sound flag (code review 2026-11-15):** a clip `HasSound` when the tap actually wrote samples into it. A
+  speaker-mode change mid-clip keeps the sound recorded before it and pads the rest; a tap that heard nothing
+  gives a clip flagged silent. The clip's channel count is the speaker mode clamped to the device's
+  `driverCapabilities`, which is what the listener's callback really delivers.
 - **Driving it:** `PhotoModeController.OnCapture` → `ToggleRecording()` (a no-op in Walk); `SetMode` stops the
   recording on every way out of Photo (`CameraLowered`); `OnDisable` stops it (`Disabled`). `Capture()`, the
   still shutter, stays unchanged but unbound from input, for the regression rigs and Story 1.16.

@@ -25,7 +25,9 @@ namespace CameraGame.Recording
         public const float MinClipSeconds = 1f;
 
         /// <summary>The longest clip any value can ask for. The recorder preallocates two clips' storage at
-        /// this length at worst (~58 MB each for 48 kHz stereo), so a typo of 1e9 cannot ask for gigabytes.</summary>
+        /// this length at worst (~58 MB each for 48 kHz stereo), so a typo of 1e9 cannot ask for gigabytes.
+        /// The PCM part scales with the OUTPUT DEVICE's rate and channels, which no config caps: the shipped 120 s
+        /// is ~23 MB a block at 48 kHz stereo and ~92 MB at 192 kHz stereo (deferred-work, Story 1.17).</summary>
         public const float MaxClipSecondsCap = 300f;
 
         public const int DefaultMaxActorsPerTick = 2;

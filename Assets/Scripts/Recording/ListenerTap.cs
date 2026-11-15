@@ -28,8 +28,10 @@ namespace CameraGame.Recording
     ///     <c>_state</c>, an int moved only by <see cref="Interlocked"/>: Idle → Armed (main), Armed → Writing
     ///     → Armed (audio, around each block's copy), Armed → Idle (main, in <see cref="Disarm"/>). Disarm can
     ///     therefore never complete while a block is half-written, and once it returns the audio thread can
-    ///     no longer touch the buffer. The wait is a spin of at most one block's copy (a few microseconds):
-    ///     never a Sleep, never a lock held across a copy.
+    ///     no longer touch the buffer. The wait lasts at most one block's copy (a few microseconds), so it is
+    ///     a <c>SpinWait</c>, not a lock or a Sleep loop. Strictly, <c>SpinWait</c> starts yielding (up to
+    ///     <c>Sleep(1)</c>) after about ten spins, which only happens if the audio thread is preempted in the
+    ///     middle of a copy; that costs the stop frame a few milliseconds at worst (code review 2026-11-15).
     ///
     /// ================================================================================================
     /// THE CLOCK (decision 1d)
@@ -68,7 +70,8 @@ namespace CameraGame.Recording
         public bool IsArmed => Volatile.Read(ref _state) != Idle;
 
         /// <summary>Set by the audio thread when a block arrived with a channel count other than the clip's
-        /// (the speaker mode changed). The clip's sound stops there; the recorder stops the clip.</summary>
+        /// (the speaker mode changed). The clip's sound stops there: what was written before is kept and the rest
+        /// of the clip is padded with silence; the recorder stops the clip.</summary>
         public bool ChannelMismatch => Volatile.Read(ref _channelMismatch);
 
         private void Awake()

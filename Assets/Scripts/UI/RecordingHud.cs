@@ -131,7 +131,10 @@ namespace CameraGame.UI
             if (!_ready) return;
             bool rec = recorder.IsRecording;
             SetVisible(_recGroup, rec);
-            SetVisible(_standbyGroup, !rec && photoMode != null && photoMode.IsPhotoMode);
+            // STBY means "ready to record": not shown by a camera that cannot record (no camera to film through, or
+            // the recorder switched off), where it promised a press that does nothing (code review 2026-11-15).
+            SetVisible(_standbyGroup, !rec && photoMode != null && photoMode.IsPhotoMode
+                                      && recorder != null && recorder.CanRecord && recorder.isActiveAndEnabled);
             if (rec) ShowTimecode(recorder.ElapsedSeconds);
         }
 

@@ -18,7 +18,9 @@ namespace CameraGame.Recording
         /// <summary>True once <see cref="Dispose"/> has run. A disposed footage reads as empty.</summary>
         bool IsDisposed { get; }
 
-        /// <summary>Releases the footage's memory. Idempotent: a second call does nothing.</summary>
+        /// <summary>Releases the footage's memory. Idempotent: a second call does nothing. MAIN THREAD ONLY: the
+        /// replay footage hands its storage back to the recorder's pool, which is not synchronised (a future owner
+        /// writing a clip to disk on a worker must dispose it back on the main thread).</summary>
         void Dispose();
     }
 }

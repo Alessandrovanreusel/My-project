@@ -38,7 +38,9 @@ namespace CameraGame.Recording
         public static long BoundariesThrough(double clipSeconds)
         {
             if (!(clipSeconds >= 0d) || double.IsInfinity(clipSeconds)) return 0;
-            return (long)Math.Floor(clipSeconds * TickRate) + 1;
+            double slots = Math.Floor(clipSeconds * TickRate);
+            // Saturate: an unchecked (long) of a double past ~9.2e18 wraps to long.MinValue (code review 2026-11-15).
+            return slots >= MaxSlots ? long.MaxValue : (long)slots + 1;
         }
 
         /// <summary>
@@ -62,9 +64,14 @@ namespace CameraGame.Recording
         public static long MaxBoundariesFor(double maxSeconds)
         {
             if (!(maxSeconds > 0d) || double.IsInfinity(maxSeconds)) return 1;
-            long n = (long)Math.Floor(maxSeconds * TickRate + 1e-6);
+            double slots = Math.Floor(maxSeconds * TickRate + 1e-6);
+            if (slots >= MaxSlots) return long.MaxValue;
+            long n = (long)slots;
             return n < 1 ? 1 : n;
         }
+
+        // Below long.MaxValue with room for the +1, and exactly representable as a double.
+        private const double MaxSlots = 9.0e18;
 
         /// <summary>
         /// The exact number of PCM frames (samples per channel) that a clip of <paramref name="boundaries"/>
