@@ -4,13 +4,28 @@ using CameraGame.Core;
 using CameraGame.Events;
 using CameraGame.Grading;
 using CameraGame.PhotoMode;
+using CameraGame.Recording;
 
 namespace CameraGame.UI
 {
     /// <summary>
-    /// The player's grade readout (Story 1.12, FR4/NFR10). Subscribes to <c>ShotCapturedChannel</c> and,
-    /// for every capture, puts the star rating, the percentage and the subject / composition / timing
-    /// breakdown on screen for a moment, then fades it out.
+    /// The player's grade readout (Story 1.12, FR4/NFR10). Subscribes to <c>ClipRecordedChannel</c> (Story
+    /// 1.16: every clip the player records) and to <c>ShotCapturedChannel</c> (every still, which since Story
+    /// 1.15 only the regression rigs take) and, for each, puts the star rating, the percentage and the
+    /// breakdown on screen for a moment, then fades it out. A clip shows framing / peak coverage / in-shot; a
+    /// still shows composition / timing / seen.
+    ///
+    /// ================================================================================================
+    /// WHEN EACH READOUT GETS OUT OF THE WAY (Story 1.16, decision 1g)
+    /// ================================================================================================
+    /// The two readouts yield to different things, on purpose:
+    ///   - a STILL's readout hides the moment the camera comes down, when
+    ///     <see cref="GradeHudConfig.hideOnCameraLowered"/> is on (unchanged since Story 1.12);
+    ///   - a CLIP's readout ignores the camera's mode and yields only to a screen owner: it hides the moment
+    ///     <see cref="PhotoModeController.RaiseSuppressed"/> turns on (the gallery). Lowering the camera is the
+    ///     most natural way to END a clip, and by the time the clip is announced the camera is already down
+    ///     (PhotoModeController.SetMode stops the recording AFTER Mode changes), so the still's rule would put
+    ///     every such clip's grade on screen and take it off in the same frame.
     ///
     /// ⚠️ THIS SHIPS. It is not debug code and is not wrapped in <c>#if UNITY_EDITOR</c> — that is the whole
     /// reason <see cref="ShotGrade"/> carries the breakdown as plain fields (ShotGrade.cs:55-60). The
@@ -45,8 +60,8 @@ namespace CameraGame.UI
     /// caller that would break it. A transient readout has no business freezing the camera anyway: the
     /// player must be able to keep shooting THROUGH it, and chasing a better grade immediately is the loop
     /// this readout exists to encourage. Nothing here writes to PhotoModeController — it only READS
-    /// <see cref="PhotoModeController.IsPhotoMode"/>, which is UI → PhotoMode and already sanctioned
-    /// (game-architecture.md §Architectural Boundaries).
+    /// <see cref="PhotoModeController.IsPhotoMode"/> and <see cref="PhotoModeController.RaiseSuppressed"/>, which
+    /// is UI → PhotoMode and already sanctioned (game-architecture.md §Architectural Boundaries).
     /// </summary>
     [RequireComponent(typeof(Canvas))]
     public class GradeHud : MonoBehaviour
@@ -54,9 +69,16 @@ namespace CameraGame.UI
         [Header("Wiring")]
 
         [Tooltip("The channel raised on every capture (Assets/Data/Channels/ShotCapturedChannel.asset). " +
-                 "The HUD's only wire to the capture path — if unassigned, the readout never appears and " +
-                 "capture, grading, flash, shutter and the gallery all keep working exactly as before.")]
+                 "A still's readout listens here (only the regression rigs take stills since Story 1.15; clips arrive " +
+                 "on the clip channel below) — if unassigned, no still's readout appears and capture, grading, flash, " +
+                 "shutter and the gallery all keep working exactly as before.")]
         [SerializeField] private ShotCapturedChannel shotCapturedChannel;
+
+        [Tooltip("The channel raised once per finished clip (Assets/Data/Channels/ClipRecordedChannel.asset), " +
+                 "carrying the clip's grade (Story 1.16). The readout for the player's whole verb: if unassigned, " +
+                 "recording keeps working and no clip ever shows its grade. The HUD only READS the clip; it never " +
+                 "claims it (it keeps no footage).")]
+        [SerializeField] private ClipRecordedChannel clipRecordedChannel;
 
         [Tooltip("Designer-facing HUD tunables (hold, fade, colours). Required: without it there are no " +
                  "authored timings, and a readout on screen for an unauthored length of time is worse than " +
@@ -67,9 +89,10 @@ namespace CameraGame.UI
                  "and disappears, it just does not fade. Falls back to a CanvasGroup on this object.")]
         [SerializeField] private CanvasGroup fadeGroup;
 
-        [Tooltip("The controller whose photo mode this readout watches, so it can get out of the way when " +
-                 "the camera comes down (see GradeHudConfig.hideOnCameraLowered). READ-ONLY — the HUD never " +
-                 "calls anything on it. If unassigned, the readout simply runs its full hold.")]
+        [Tooltip("The controller whose photo mode this readout watches, so it can get out of the way: a still's " +
+                 "readout when the camera comes down (GradeHudConfig.hideOnCameraLowered), a clip's when the gallery " +
+                 "takes the screen (RaiseSuppressed). READ-ONLY — the HUD never calls anything on it. If unassigned, " +
+                 "the readout simply runs its full hold.")]
         [SerializeField] private PhotoModeController photoMode;
 
         [Header("Labels")]
@@ -101,6 +124,14 @@ namespace CameraGame.UI
         private float _remaining;
 
         private bool _visible;
+
+        // True while the readout on screen describes a CLIP, which yields to a screen owner rather than to the
+        // camera coming down (see the class header).
+        private bool _showingClip;
+
+        /// <summary>True while the readout is on screen and describes a clip (false for a still). Read-only, for
+        /// the verification rig.</summary>
+        public bool IsShowingClip => _visible && _showingClip;
 
         /// <summary>True while the readout is on screen. Read-only; exposed for the verification rig, which
         /// has to know whether it is photographing a HUD that is up, mid-fade, or already gone.</summary>
@@ -136,11 +167,17 @@ namespace CameraGame.UI
 
             // Each reference on its own line into its own flag. A missing channel must not be reported as a
             // missing config, and a missing label must disable only that line.
-            bool haveChannel = shotCapturedChannel != null;
-            if (!haveChannel)
+            bool haveShotChannel = shotCapturedChannel != null;
+            if (!haveShotChannel)
                 GameLog.Error("GradeHud",
-                    "ShotCapturedChannel unassigned — the grade readout will never appear. Capture, " +
+                    "ShotCapturedChannel unassigned — a still's grade readout will never appear. Capture, " +
                     "grading, flash, shutter and the gallery are unaffected.", this);
+
+            // An ERROR, like the shot channel: without it the HUD is blind to the player's whole verb (Story 1.16).
+            bool haveClipChannel = clipRecordedChannel != null;
+            if (!haveClipChannel)
+                GameLog.Error("GradeHud",
+                    "ClipRecordedChannel unassigned — no clip will ever show its grade. Recording is unaffected.", this);
 
             bool haveConfig = config != null;
             if (!haveConfig)
@@ -167,8 +204,8 @@ namespace CameraGame.UI
             // readout itself still works perfectly.
             if (photoMode == null && haveConfig && config.hideOnCameraLowered)
                 GameLog.Warn("GradeHud",
-                    "No PhotoModeController assigned while hideOnCameraLowered is ON — the guard cannot " +
-                    "fire, so the readout will run its full hold and can sit over the gallery.");
+                    "No PhotoModeController assigned while hideOnCameraLowered is ON — the guards cannot " +
+                    "fire, so a readout (a still's or a clip's) will run its full hold and can sit over the gallery.");
 
             if (ratingLabel == null || axesLabel == null || whyLabel == null)
                 GameLog.Error("GradeHud",
@@ -176,7 +213,8 @@ namespace CameraGame.UI
                     $"axes:{(axesLabel != null ? "ok" : "MISSING")} " +
                     $"why:{(whyLabel != null ? "ok" : "MISSING")}. The remaining lines still draw.", this);
 
-            _hudReady = haveChannel && haveConfig
+            // Either channel is enough: each missing one disables only its own readout.
+            _hudReady = (haveShotChannel || haveClipChannel) && haveConfig
                         && (ratingLabel != null || axesLabel != null || whyLabel != null);
 
             ApplyFont();
@@ -204,17 +242,22 @@ namespace CameraGame.UI
         // is the one this comment already warned about, plus a Canvas switching itself back on that the
         // developer believes is off.
         private ShotCapturedChannel _subscribedChannel;
+        private ClipRecordedChannel _subscribedClipChannel;   // the same caching, for the same reason (Story 1.16)
 
         private void OnEnable()
         {
             _subscribedChannel = shotCapturedChannel;
             if (_subscribedChannel != null) _subscribedChannel.Raised += HandleShotCaptured;
+            _subscribedClipChannel = clipRecordedChannel;
+            if (_subscribedClipChannel != null) _subscribedClipChannel.Raised += HandleClipRecorded;
         }
 
         private void OnDisable()
         {
             if (_subscribedChannel != null) _subscribedChannel.Raised -= HandleShotCaptured;
             _subscribedChannel = null;
+            if (_subscribedClipChannel != null) _subscribedClipChannel.Raised -= HandleClipRecorded;
+            _subscribedClipChannel = null;
 
             // Leave nothing on screen. Without this, disabling mid-hold and re-enabling later would bring
             // back a readout describing a capture from before — a stale verdict is worse than none.
@@ -242,7 +285,74 @@ namespace CameraGame.UI
             // full hold again, not the remainder of the previous one. This project's bugs live almost
             // exclusively in reuse and in the second cycle onward.
             _remaining = config.SafeVisibleSeconds;
+            _showingClip = false;
             Show(true);
+        }
+
+        /// <summary>
+        /// Runs synchronously inside <c>ClipRecorder.Stop</c>, once per finished clip (Story 1.16), whatever stopped
+        /// it: Record pressed again, the camera lowered, the length limit, the audio device changing.
+        ///
+        /// ⚠️ IT DOES NOT CLAIM THE CLIP. The HUD keeps no footage, and a claim here would take ownership of
+        /// megabytes it never disposes (RecordedClip's ownership rule). It reads the grade and lets go.
+        /// Strings are built here, once per clip, never in <see cref="Update"/>; and it does not log, because the
+        /// recorder already wrote the grade's breakdown on this frame.
+        /// </summary>
+        private void HandleClipRecorded(RecordedClip clip)
+        {
+            if (!_hudReady || clip == null) return;
+
+            // A clip stopped BY a screen owner (the gallery suppresses the raise, which lowers the camera, which
+            // stops the clip) is announced with the gallery already owning the screen: show nothing, and take
+            // down whatever was up, rather than flash a readout over it for a frame.
+            if (ClipYields())
+            {
+                Show(false);
+                return;
+            }
+
+            Format(clip.Grade);
+            _remaining = config.SafeVisibleSeconds;
+            _showingClip = true;
+            Show(true);
+        }
+
+        /// <summary>A clip's readout yields to a screen owner only (see the class header).</summary>
+        private bool ClipYields() => photoMode != null && photoMode.RaiseSuppressed;
+
+        /// <summary>
+        /// A clip's readout: the same four states, the same every-branch-writes-every-label rule and the same
+        /// single colour rule as a still's (<see cref="Format(ShotGrade)"/>), with a clip's breakdown and advice.
+        /// </summary>
+        private void Format(ClipGrade grade)
+        {
+            Color colour = config.ColorFor(grade.Counted, grade.IsMiss, grade.Stars, grade.Percent01);
+
+            if (!grade.Counted && !grade.IsMiss)
+            {
+                // Not graded (no grading config, or the grader failed), and the zeroed default(ClipGrade): nothing
+                // was measured, so no rating either.
+                SetText(ratingLabel, "NOT GRADED");
+                SetText(axesLabel, GradeText.ClipAxesNotMeasured);
+                SetText(whyLabel, GradeText.ClipMissLong(GradeMiss.Unevaluated));
+                SetColor(colour);
+                return;
+            }
+
+            if (grade.IsMiss)
+            {
+                // Dashes, never zeroes: a miss measured no framing and no coverage.
+                SetText(ratingLabel, $"{GradeText.Stars(grade.Stars)}   MISSED");
+                SetText(axesLabel, GradeText.ClipAxesNotMeasured);
+                SetText(whyLabel, GradeText.ClipMissLong(grade.MissReason));
+                SetColor(colour);
+                return;
+            }
+
+            SetText(ratingLabel, $"{GradeText.Stars(grade.Stars)}   {GradeText.Percent(grade.Percent01)}");
+            SetText(axesLabel, GradeText.ClipAxes(grade));
+            SetText(whyLabel, GradeText.PeakAdvice(grade));
+            SetColor(colour);
         }
 
         /// <summary>
@@ -448,7 +558,13 @@ namespace CameraGame.UI
             // top of the gallery — which is Screen Space - Camera and therefore draws UNDERNEATH this
             // whatever the sorting orders say. Reads IsPhotoMode and nothing else; see the class header for
             // why this HUD never writes to PhotoModeController.
-            if (config.hideOnCameraLowered && photoMode != null && !photoMode.IsPhotoMode)
+            //
+            // A CLIP's readout yields to a screen owner instead (Story 1.16; see the class header): a clip ended by
+            // lowering the camera must still show its grade.
+            bool yield = _showingClip
+                ? ClipYields()
+                : config.hideOnCameraLowered && photoMode != null && !photoMode.IsPhotoMode;
+            if (yield)
             {
                 Show(false);
                 return;

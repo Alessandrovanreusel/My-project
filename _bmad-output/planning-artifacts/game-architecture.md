@@ -222,7 +222,7 @@ Holding RMB still raises the camera into the Viewfinder state; the code keeps th
 - **`ClipGrader`**: samples `ShotGrader.Grade(...)` on frames throughout the recording. The per-frame subject
   gate and composition are **unchanged and not re-implemented**. It aggregates the samples, plus **peak
   coverage** read from `ISubject`, into a `ClipGrade` (0–100% → 1–5★, with a per-axis breakdown). Tunables
-  live in `GradingConfig`.
+  live in `GradingConfig`. *(As built by Story 1.16: see "As built by Story 1.16" below.)*
 - **`MemoryCardService`** (evolves `GalleryService`, stays in `Scripts/Gallery/`): stores `CapturedClip`s,
   enforces capacity in **seconds of footage**, and frees footage on delete. It remains the **single owner**
   of any native memory, as `GalleryService` is today.
@@ -231,8 +231,9 @@ Holding RMB still raises the camera into the Viewfinder state; the code keeps th
   `CapturedShot` (a file-name-safe, unique Id; UTC wall-clock time; a small DTO for JSON, because
   `JsonUtility` handles neither `DateTime` nor textures).
 - **`ClipRecordedChannel : EventChannel<…>`**: raised once per finished clip. The memory card, the grade HUD
-  and (later) reputation listen to it. `ShotCapturedChannel` stays for as long as the clip stories still
-  need the per-frame grade path.
+  and (later) reputation listen to it. `ShotCapturedChannel` stays, unbound from input: the Photo, Gallery and
+  Grade HUD Shoot regression rigs photograph the grader through `Capture()`, and `GalleryService` stores
+  photos from it until Story 1.17's card replaces the gallery's storage *(Story 1.16, decision 1h)*.
 
 **Data flow:** Capture (press) → `ClipRecorder.Start` → on each sampled frame, `ShotGrader.Grade` → Capture
 (press) / lower / card full → `ClipRecorder.Stop` → `ClipGrader` → `ClipRecordedChannel.Raise` →
@@ -249,7 +250,7 @@ the seams they plug into.
 
 - **Recording** (`Scripts/Recording/`): `ClipRecorder` (MonoBehaviour on `main characters`, execution order
   10000 so it samples after `ThirdPersonCamera`'s final camera write) talks to an `IClipBackend` (`Begin`,
-  `Sample` once per frame, `End → IFootage`, `Abort`). `ReplayBackend` is the first backend: a 30 Hz track of
+  `Sample` once per frame, returning the repeats of the tick it took or 0 (Story 1.16), `End → IFootage`, `Abort`). `ReplayBackend` is the first backend: a 30 Hz track of
   the camera the player films through and of every live event actor, read live from
   `EventManager.ActiveActors` on every tick (its `EventDefinition`, a session-wide lifecycle serial from
   `EventActor.LifecycleSerial`, liveness, transform, and per Animator layer the state, time and transition
@@ -264,7 +265,7 @@ the seams they plug into.
   pause menu must suppress the raise, which stops the recording.
 - **Payload and channel:** `ClipRecordedChannel : EventChannel<RecordedClip>`, raised once per finished clip,
   after the recorder's own `Stopped` event. `RecordedClip { Id; IFootage Footage; StartedAtUtc;
-  DurationSeconds; StopReason; Owner }`, with `StopReason` = PlayerPressed, CameraLowered, LengthLimit,
+  DurationSeconds; StopReason; ClipGrade Grade /* Story 1.16 */; Owner }`, with `StopReason` = PlayerPressed, CameraLowered, LengthLimit,
   AudioDeviceChanged or Disabled. Every reason keeps the clip.
 - **Ownership (NFR3):** a listener that keeps the footage calls `RecordedClip.Claim(owner)` during the raise
   and disposes it later. The recorder claims whatever nobody claimed and holds one (`LastClip`), disposing
@@ -280,14 +281,47 @@ the seams they plug into.
   `driverCapabilities`, which is what the listener's callback really delivers.
 - **Driving it:** `PhotoModeController.OnCapture` → `ToggleRecording()` (a no-op in Walk); `SetMode` stops the
   recording on every way out of Photo (`CameraLowered`); `OnDisable` stops it (`Disabled`). `Capture()`, the
-  still shutter, stays unchanged but unbound from input, for the regression rigs and Story 1.16.
+  still shutter, stays unchanged but unbound from input: Story 1.16 KEPT it and `ShotCapturedChannel` for the
+  three regression rigs, the gallery (until 1.17) and Epic 5's prints.
 - **Feedback:** `UI/RecordingHud` (its own Overlay canvas) reads `IsRecording` and `ElapsedSeconds` and plays
   the REC beeps from `Started`/`Stopped`. The beeps bypass listener effects, so they stay out of the footage.
 - **Config:** `Data/Recording/RecordingConfig.asset` (`maxClipSeconds` 120, the stand-in for the card until
   1.17; `maxActorsPerTick`; `maxAnimatorLayers`; `beepVolume`), `Safe*` accessors plus `TryGetConfigProblem`.
 
-*The section above fixes the responsibilities and the dependency direction; Stories 1.16–1.17 finalise the
-grade and the card.*
+**As built by Story 1.16 (2026-11-15): the grade.**
+
+- **`ClipGrader`** (`Scripts/Recording/`, plain C#, owned and driven by `ClipRecorder` exactly as it owns its
+  backend): `Begin` with the clip; `SampleTick(repeats)` on exactly the ticks `IClipBackend.Sample` reports, so the
+  grade describes exactly the frames the footage holds (graded seconds = `IFootage.Seconds`, the start tick
+  included); `Finish()` inside `ClipRecorder.Stop` BEFORE the raise. Each tick grades every live actor
+  (`EventManager.ActiveActors`, filtered by `isActiveAndEnabled`) through `ShotGrader.Grade(recordCamera, actor,
+  gradingConfig)` and keeps only the gate and `Composition01`; the photo's `Timing01` is not used.
+- **`ClipGradeBuilder`** (`Scripts/Grading/`, pure: plain values in, `ClipGrade` out): one candidate per
+  `LifecycleSerial`, never merged; the best by `GradeRanking.Beats` (the predicate lifted, unchanged, from
+  `PhotoModeController.GradeBestSubject`). **Peak coverage is measured on the subject's own clock**
+  (`−TimeToPeak`): each tick stands for the stretch of that clock since the lifecycle's previous tick, so the
+  stretches join end to end and a whole framed window reads exactly 100 % at any frame rate. Preallocated and
+  allocation-free per tick (measured: 0 B over 9,000 ticks with the live drunk).
+- **The blend** (decided by measuring, `_bmad-output/verification/1-16-grade-a-clip/run2/decision.md`):
+  `percent = framing × (floor + (1 − floor) × coverage)`, framing = mean gated composition ×
+  `(1 − absenceWeight × (1 − in-shot share))`, where a tick is in shot when ANY subject passed the gate.
+  `GradingConfig.clipPeakFloor` 0.30 and `clipAbsenceWeight` 0.25; the shape, the framing source, the presence
+  rule and the miss rule (the reason that held the longest) are constants on `GradingConfig`. One star ladder
+  serves photos and clips.
+- **`ClipGrade`** (`Scripts/Grading/`, readonly struct, pure data): `Percent01`, stored `Stars`, `MissReason`
+  (zero value `Unevaluated` = not graded), `Composition01`, `Framing01`, `PeakCoverage01`, `PeakBeforeClip01`,
+  `PeakAfterClip01`, `InShot01`, `HasPeak`, `GradedSeconds`, `SubjectId`. The peak window partitions into before
+  the clip / after it / held out of shot / held and framed, which the HUD's advice line reads.
+- **`ISubject.PeakDuration`** (added): the Peak phase's length on the subject's clock; 0 means "no peak to cover".
+- **The readout:** `GradeHud` also listens to `ClipRecordedChannel` (never claims) and shows the clip's stars,
+  "framing · peak · in shot" and `GradeText.PeakAdvice`. A clip's readout ignores the camera's mode and yields
+  only to a screen owner (`PhotoModeController.RaiseSuppressed`), because a clip usually ENDS by lowering the
+  camera; a still's readout keeps `hideOnCameraLowered`.
+- **Fail-soft:** no `GradingConfig` on the recorder → one Error at Awake, every clip "not graded"; no
+  `EventManager` → "not graded"; anything thrown inside grading is caught, logged once, and that clip reads
+  "not graded". `PhotoModeController` warns when the recorder grades against a different config than photos.
+
+*Story 1.17 finalises the card.*
 
 ### Event-Actor System (reusable engine)
 
@@ -386,8 +420,9 @@ added later without reshaping the model.
 - Folders: `Assets/Scripts/{Core,PhotoMode,Events,Grading,Gallery}`; SO configs in `Assets/Data/`.
 - Assemblies: start with one `CameraGame.asmdef` (+ test asmdef when tests arrive); split
   only when compile times justify it.
-- Decoupling: a `ShotCaptured` ScriptableObject event channel connects capture → gallery
-  (and later → reputation). Avoid heavy singletons/DI; `EventManager` is the one manager.
+- Decoupling: ScriptableObject event channels connect capture → listeners: `ClipRecordedChannel` (every clip
+  and its grade) since Stories 1.15–1.16, and `ShotCapturedChannel` for the still path the rigs still pull.
+  Avoid heavy singletons/DI; `EventManager` is the one manager.
 
 ### Architecture Decision Records
 
@@ -813,10 +848,10 @@ My project/
 │   │   ├── Core/            # GameLog, GameConstants, AnimHashes, ObjectPool<T>, event-channel base
 │   │   ├── Player/          # PlayerController, FirstPersonCamera, CharacterAnimator (renamed from ThirdPerson*)
 │   │   ├── PhotoMode/       # PhotoModeController (mode toggle, FOV zoom, viewfinder hookup)
-│   │   ├── Grading/         # ShotGrader, ShotGrade, GradingConfig (SO)
+│   │   ├── Grading/         # ShotGrader, ShotGrade, GradingConfig (SO), GradeText; ClipGrade, ClipGradeBuilder (pure clip aggregation and blend, Story 1.16)
 │   │   ├── Events/          # EventActor, EventManager, EventDefinition (SO), lifecycle states, ISubject
 │   │   ├── Gallery/         # GalleryService → MemoryCardService, CapturedShot (2026-11-10)
-│   │   ├── Recording/       # ClipRecorder, IClipBackend, IFootage, ReplayBackend, ReplayFootage, ListenerTap, RecordedClip, StopReason, ClipRecordedChannel, RecordingConfig (SO), FootageFormat (Story 1.15); ClipGrader (1.16); RecordClipShoot* rigs (#if UNITY_EDITOR)
+│   │   ├── Recording/       # ClipRecorder, IClipBackend, IFootage, ReplayBackend, ReplayFootage, ListenerTap, RecordedClip, StopReason, ClipRecordedChannel, RecordingConfig (SO), FootageFormat (Story 1.15); ClipGrader (1.16); RecordClipShoot* and GradeClipShootRunner rigs (#if UNITY_EDITOR)
 │   │   ├── World/           # TownBoundsConfig (SO), FallRecovery, ColliderRule; TownRigRunner rigs (#if UNITY_EDITOR) (added 2026-11-11, Story 2.2)
 │   │   ├── Editor/          # AddMeshColliders, ColorCharacter (existing); MapCheck, TownNavMeshBaker, TownBoundsBuilder, TownRig (Story 2.2)
 │   │   └── CameraGame.asmdef
@@ -902,16 +937,18 @@ My project/
   everyone (recorded in `deferred-work.md`).
   The same reasoning extends to `Gallery` → `Player` (`ThirdPersonController.SetInputSuppressed`),
   which is already covered by the "may depend on `Player`" clause above.
-- **`PhotoMode` → `Recording` → `Events` (read-only accessors) and `Core`** (added 2026-11-15, Story 1.15).
-  `Recording` never references `PhotoMode`, `UI` or `Gallery`; they reach it through `ClipRecordedChannel`
-  or by reading.
+- **`PhotoMode` → `Recording` → `Grading`, `Events` (read-only accessors) and `Core`** (added 2026-11-15, Story
+  1.15; `Grading` added by Story 1.16, for `ClipGrader`). `Recording` never references `PhotoMode`, `UI` or
+  `Gallery`; they reach it through `ClipRecordedChannel` or by reading. `Grading` never references `Recording`.
 - **`UI` → `Recording` is a READ-ONLY dependency** (added 2026-11-15, Story 1.15). The REC indicator needs live
   state (recording or not, for how long), which a channel raised once per finished clip cannot give, so
   `RecordingHud` reads `ClipRecorder.IsRecording` / `ElapsedSeconds` and listens to its `Started`/`Stopped`
   C# events, exactly as `GradeHud` reads `PhotoModeController.IsPhotoMode`. It never calls anything on the
   recorder.
 - **Grading ↔ Events decoupling:** Grading reads subjects through an `ISubject` interface
-  (`Bounds`, `IsAtPeak`), so it never hard-references concrete event types.
+  (`Bounds`, `IsAtPeak`, `TimeToPeak`, `PeakOffset`, `PeakDuration`, `SubjectId`), so it never hard-references
+  concrete event types. (`ClipGrader`, in `Recording`, reads `EventActor.LifecycleSerial` to tell pooled
+  lifecycles apart, as the track does.)
 - **One assembly** (`CameraGame.asmdef`) for the slice; `Editor/` and `Tests/` are
   separate assemblies. Split features into more asmdefs only when compile times justify it.
 - **Data lives in `Data/`**, code in `Scripts/` — never hard-code tunable numbers in code.
@@ -935,7 +972,7 @@ with no new code.
 - `EventActor` — MonoBehaviour FSM; drives phases on timers; exposes `ISubject`
 - `EventDefinition` (ScriptableObject) — per-phase duration, animation state, cue clip, NavMesh route, cue radius
 - `EventManager` — spawns/pools actors, caps concurrency, owns spawn cadence
-- `ISubject` — what the grader reads (`Bounds`, `IsAtPeak`, `TimeToPeak`, `SubjectId`)
+- `ISubject` — what the grader reads (`Bounds`, `IsAtPeak`, `TimeToPeak`, `PeakOffset`, `PeakDuration` (Story 1.16), `SubjectId`)
 
 **Data flow:** `EventManager` pulls an actor from the pool → actor reads its `EventDefinition`
 → advances phases on timers, cross-fading animations and firing cues → raises `EventPeaked`
@@ -1121,7 +1158,7 @@ State pattern for when an entity has many complex states — overkill for the 5-
 | E4 — Progression & Reputation | `ClipRecordedChannel` already decoupled; ReputationSystem subscribes later *(2026-11-10: was `ShotCapturedChannel`)* |
 | E5 — Home Base | The memory card's disk seam (cashed in by E9) is reused for printing stills *(2026-11-10: was `GalleryService`'s seam)* |
 | E6 — Nature & Collection | Reuses EventActor for nature-spectacle events (lightning, eclipse) |
-| E7 — Missions & Mystery | Additive — new `MissionService` listens to `ShotCapturedChannel` |
+| E7 — Missions & Mystery | Additive — new `MissionService` listens to `ClipRecordedChannel` (the clip carries its `ClipGrade`) *(2026-11-15, Story 1.16: was `ShotCapturedChannel`)* |
 | E8 — Stealth Layer | Additive — `EventActor` already exposes phase events for spotted/abort |
 
 ### Minor Observations (non-blocking)

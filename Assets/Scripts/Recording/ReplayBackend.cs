@@ -177,13 +177,13 @@ namespace CameraGame.Recording
             return _full;
         }
 
-        public void Sample(double clipSeconds)
+        public int Sample(double clipSeconds)
         {
-            if (_cur == null || _full) return;
+            if (_cur == null || _full) return 0;
 
             int repeats = FootageFormat.RepeatsDue(clipSeconds, _emitted, _maxBoundaries);
-            if (repeats <= 0) return;
-            if (_ticks >= _cur.Ticks.Length) { _full = true; return; }
+            if (repeats <= 0) return 0;
+            if (_ticks >= _cur.Ticks.Length) { _full = true; return 0; }
 
             ref TickSample t = ref _cur.Ticks[_ticks];
             t.Time = clipSeconds;
@@ -211,6 +211,7 @@ namespace CameraGame.Recording
             _ticks++;
             _emitted += repeats;
             if (_emitted >= _maxBoundaries) _full = true;
+            return repeats;
         }
 
         private void SampleActors(ref TickSample t)

@@ -21,10 +21,14 @@ namespace CameraGame.PhotoMode
     ///
     /// ⚠️ SINCE STORY 1.15 THE CAPTURE INPUT RECORDS A CLIP. <see cref="OnCapture"/> (LMB / RT) toggles the
     /// <see cref="ClipRecorder"/> through <see cref="ToggleRecording"/>, and every way the camera leaves Photo
-    /// stops the recording and keeps the clip (<see cref="SetMode"/>). <see cref="Capture"/>, the still-photo
-    /// shutter, is unchanged but no longer bound to any input: the Photo, Gallery and Grade HUD Shoot rigs
-    /// still pull it, and it stays the per-frame grade path until Story 1.16 decides its fate. So between
-    /// 1.15 and 1.16/1.17 a player's clip shows no grade and stores no photograph; that is the honest interim.
+    /// stops the recording and keeps the clip (<see cref="SetMode"/>). Since Story 1.16 every clip is graded by
+    /// the recorder's <c>ClipGrader</c>, through the same per-frame grader, and the HUD shows its grade.
+    ///
+    /// <see cref="Capture"/>, the still-photo shutter, and <c>ShotCapturedChannel</c> are KEPT, unchanged and
+    /// bound to no input (Story 1.16, decision 1h): the Photo, Gallery and Grade HUD Shoot regression rigs
+    /// photograph the grader through it, <c>GalleryService</c> stores photos from the channel until Story 1.17's
+    /// memory card replaces the gallery's storage, and Epic 5's prints may want a still's grade. The honest
+    /// interim: a clip SHOWS its grade but is stored nowhere except the recorder's single <c>LastClip</c> until 1.17.
     /// </summary>
     public class PhotoModeController : MonoBehaviour
     {
@@ -179,9 +183,31 @@ namespace CameraGame.PhotoMode
             _recordReady = clipRecorder != null;
             if (!_recordReady)
                 GameLog.Error("PhotoMode", "ClipRecorder unassigned: Record does nothing (zoom and the viewfinder still work).", this);
-            else if (clipRecorder.RecordCamera != null && photoCamera != null && clipRecorder.RecordCamera != photoCamera)
-                GameLog.Warn("PhotoMode", $"The ClipRecorder films through '{clipRecorder.RecordCamera.name}' but zoom drives " +
-                                          $"'{photoCamera.name}': clips would not show what the player frames.");
+            else
+            {
+                if (clipRecorder.RecordCamera != null && photoCamera != null && clipRecorder.RecordCamera != photoCamera)
+                    GameLog.Warn("PhotoMode", $"The ClipRecorder films through '{clipRecorder.RecordCamera.name}' but zoom drives " +
+                                              $"'{photoCamera.name}': clips would not show what the player frames.");
+
+                // Story 1.16: clips and photos are graded against ONE config. A different asset on the recorder is
+                // said once here, and its own problems are reported here too, since this Awake is where a grading
+                // config is validated (the recorder does not, so one bad value is one warning, not two).
+                GradingConfig clipConfig = clipRecorder.GradingConfig;
+                if (clipConfig != null)
+                {
+                    if (gradingConfig != null && clipConfig != gradingConfig)
+                        GameLog.Warn("Grading", $"Clips are graded against a different config ('{clipConfig.name}') than photos " +
+                                                $"('{gradingConfig.name}'): the same framing can score differently in a clip.");
+
+                    // The block above validated the clip config only when it is this controller's own AND this
+                    // controller's grading is ready. In every other shape (a different asset, no config here, or no
+                    // EventManager / camera here) validate it now, or a bad clip value is clamped with a clean
+                    // console: code review 2026-11-15 reproduced 0 lines for a NaN floor in both shapes.
+                    bool alreadyValidated = clipConfig == gradingConfig && _gradingReady;
+                    if (!alreadyValidated && clipConfig.TryGetConfigProblem(out string clipProblem))
+                        GameLog.Warn("Grading", $"GradingConfig '{clipConfig.name}' (clips): {clipProblem}");
+                }
+            }
 
             _shutterReady = captureAudioSource != null && shutterClip != null && captureConfig != null;
             if (!_shutterReady)
@@ -390,8 +416,8 @@ namespace CameraGame.PhotoMode
         /// <summary>
         /// Takes the photo: feedback, grade, event. Since Story 1.15 NO INPUT calls this (<see cref="OnCapture"/>
         /// toggles recording instead): the Photo, Gallery and Grade HUD Shoot rigs pull this shutter directly, so
-        /// the real capture path can be driven and photographed rather than approximated, until Story 1.16
-        /// decides its fate.
+        /// the real capture path can be driven and photographed rather than approximated. Story 1.16 kept it
+        /// (decision 1h; see the class header).
         /// </summary>
         public void Capture()
         {
@@ -618,9 +644,10 @@ namespace CameraGame.PhotoMode
                 // 2026-07-28 after the code review surfaced it. Invisible until maxConcurrent > 1, which is
                 // Epic 2 (The Living Town) — which is exactly why it had to be fixed before Epic 2, not
                 // during it. "First graded wins ties" is preserved WITHIN each class.
-                bool better = !graded
-                              || (g.Counted && !best.Counted)
-                              || (g.Counted == best.Counted && g.Percent01 > best.Percent01);
+                //
+                // Story 1.16 lifted the predicate into GradeRanking.Beats, unchanged, so the clip grader ranks its
+                // lifecycles by the very same rule and the two cannot drift.
+                bool better = !graded || GradeRanking.Beats(g.Counted, g.Percent01, best.Counted, best.Percent01);
 
                 if (better)
                 {

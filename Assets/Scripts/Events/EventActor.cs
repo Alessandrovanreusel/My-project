@@ -194,6 +194,23 @@ namespace CameraGame.Events
             }
         }
 
+        /// <summary>
+        /// The Peak phase's authored duration (Story 1.16, <see cref="ISubject.PeakDuration"/>), with the same
+        /// guard <see cref="PeakOffset"/> uses: <c>GetPhase</c> can return null. A NaN, infinite, zero or negative
+        /// duration reads 0 ("no peak to cover"): <c>EventDefinition.IsValid</c> lets a NaN duration through
+        /// (deferred-work.md), and a clip grader must never divide by it.
+        /// </summary>
+        public float PeakDuration
+        {
+            get
+            {
+                EventDefinition.PhaseConfig peakPhase =
+                    definition != null ? definition.GetPhase(EventPhase.Peak) : null;
+                float d = peakPhase != null ? peakPhase.duration : 0f;
+                return d > 0f && !float.IsInfinity(d) ? d : 0f;   // NaN fails `d > 0f`
+            }
+        }
+
         public string SubjectId => definition != null ? definition.Id : name;
 
         // --- Recordability (Story 1.15; game-architecture.md §Cross-cutting Concerns) ---------------------

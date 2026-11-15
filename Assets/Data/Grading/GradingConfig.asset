@@ -30,3 +30,5 @@ MonoBehaviour:
   starThreshold4: 0.7
   starThreshold3: 0.45
   starThreshold2: 0.2
+  clipPeakFloor: 0.3
+  clipAbsenceWeight: 0.25

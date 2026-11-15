@@ -37,7 +37,11 @@ namespace CameraGame.UI
                  "and means it simply disappears.")]
         [Range(MinFadeSeconds, MaxFadeSeconds)] public float fadeSeconds = DefaultFadeSeconds;
 
-        [Tooltip("Hide the readout the moment the camera is lowered.\n\n" +
+        [Tooltip("Hide a STILL's readout the moment the camera is lowered.\n\n" +
+                 "⚠️ A CLIP's readout (Story 1.16) ignores this switch: it yields only to the gallery " +
+                 "(PhotoModeController.RaiseSuppressed). Lowering the camera is how a clip usually ENDS, and the " +
+                 "camera is already down when the clip is announced, so this rule would take every such clip's " +
+                 "grade off screen in the frame it appeared. Stills are only taken by the regression rigs now.\n\n" +
                  "ON (default) is what stops a lingering HUD sitting on top of the gallery: the player can " +
                  "capture, release the raise and press Tab well inside the hold, and this HUD is a Screen " +
                  "Space - Overlay canvas, which draws OVER the gallery's Screen Space - Camera one.\n\n" +

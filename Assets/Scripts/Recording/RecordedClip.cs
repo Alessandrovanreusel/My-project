@@ -1,11 +1,12 @@
 using System;
 using System.Globalization;
+using CameraGame.Grading;
 
 namespace CameraGame.Recording
 {
     /// <summary>
-    /// One finished clip, as <see cref="ClipRecordedChannel"/> announces it (Story 1.15, decision 1c). Story
-    /// 1.16 adds the grade to it, and Story 1.17's <c>CapturedClip</c> is built FROM it by the memory card.
+    /// One finished clip, as <see cref="ClipRecordedChannel"/> announces it (Story 1.15, decision 1c), with its
+    /// <see cref="Grade"/> (Story 1.16). Story 1.17's <c>CapturedClip</c> is built FROM it by the memory card.
     ///
     /// ================================================================================================
     /// WHO OWNS THE FOOTAGE: AN EXPLICIT CLAIM
@@ -42,19 +43,26 @@ namespace CameraGame.Recording
         /// <summary>Why it stopped. Every reason keeps the clip.</summary>
         public StopReason StopReason { get; }
 
+        /// <summary>The clip's grade (Story 1.16), finished by <see cref="ClipRecorder.Stop"/> before the clip is
+        /// announced: framing, peak coverage, the stars and the miss reason. Pure data, so it outlives the
+        /// footage (a card entry keeps it after the footage is disposed). "Not graded" when grading could not run.</summary>
+        public ClipGrade Grade { get; }
+
         /// <summary>Whoever claimed the clip, or null while it is unclaimed.</summary>
         public object Owner { get; private set; }
 
         /// <summary>True once someone has claimed the clip.</summary>
         public bool IsClaimed => Owner != null;
 
-        public RecordedClip(string id, IFootage footage, DateTime startedAtUtc, float durationSeconds, StopReason reason)
+        public RecordedClip(string id, IFootage footage, DateTime startedAtUtc, float durationSeconds, StopReason reason,
+                            ClipGrade grade)
         {
             Id = id;
             Footage = footage;
             StartedAtUtc = startedAtUtc;
             DurationSeconds = durationSeconds;
             StopReason = reason;
+            Grade = grade;
         }
 
         /// <summary>Takes ownership of the footage. True for the first non-null owner only: a second claim
@@ -75,7 +83,7 @@ namespace CameraGame.Recording
             string.Format(CultureInfo.InvariantCulture, "clip_{0:D4}_{1:yyyyMMdd}T{1:HHmmss}Z", index, utc);
 
         public override string ToString() =>
-            string.Format(CultureInfo.InvariantCulture, "{0}  {1:0.000} s  {2}  {3}", Id, DurationSeconds, StopReason,
-                Footage == null ? "no footage" : Footage.IsDisposed ? "disposed" : (Footage.Bytes / 1024) + " KB");
+            string.Format(CultureInfo.InvariantCulture, "{0}  {1:0.000} s  {2}  {3}  {4}", Id, DurationSeconds, StopReason,
+                Footage == null ? "no footage" : Footage.IsDisposed ? "disposed" : (Footage.Bytes / 1024) + " KB", Grade);
     }
 }

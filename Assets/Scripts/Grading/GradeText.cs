@@ -191,5 +191,78 @@ namespace CameraGame.Grading
                 ? seconds + "s early — wait for it"
                 : seconds + "s late — shoot sooner";
         }
+
+        // --- Clips (Story 1.16) ---------------------------------------------------------------------------
+
+        /// <summary>The axes line of a clip nobody measured, or of a miss: dashes, never zeroes (the rule the shot
+        /// readout follows, <c>GradeHud.NotMeasuredAxes</c>).</summary>
+        public const string ClipAxesNotMeasured = "framing —   ·   peak —   ·   in shot —";
+
+        /// <summary>
+        /// A counted clip's breakdown: "framing 92 %   ·   peak 100 %   ·   in shot 64 %". Every percentage
+        /// through <see cref="Percent"/>, so the whole line is in the invariant culture.
+        ///
+        /// ⚠️ DOTS, NOT "×". The shot readout writes "composition × timing" because its percentage IS that product.
+        /// A clip's is not: a clip that missed the peak keeps a floor of its framing, so "framing 92 % × peak 0 %"
+        /// beside "28 %" would state an equation the player can check and find false. "peak" prints the TRUE
+        /// coverage (Story 1.13's rule: the floor lives in the blend, never in the number shown).
+        /// </summary>
+        public static string ClipAxes(ClipGrade grade)
+        {
+            if (!grade.Counted) return ClipAxesNotMeasured;
+            string peak = grade.HasPeak ? Percent(grade.PeakCoverage01) : "—";
+            return "framing " + Percent(grade.Framing01) + "   ·   peak " + peak +
+                   "   ·   in shot " + Percent(grade.InShot01);
+        }
+
+        private static readonly string HundredPercent = Percent(1f);
+
+        /// <summary>
+        /// The actionable half of a COUNTED clip's peak axis, in a player's words (Story 1.16, decision 1g): the
+        /// one thing that cost the clip the most of its peak window. Empty when there is nothing measured to say
+        /// (a miss, a clip nobody graded, a subject with no peak), so the line prints nothing rather than a
+        /// placeholder. Invariant: it contains no number at all.
+        ///
+        /// The window splits into before the clip / after the clip / held but out of shot / held and framed
+        /// (<see cref="ClipGrade"/>'s header), so the advice names the largest loss:
+        ///   - the peak axis PRINTS "100 %": "caught the whole moment". Decided from the printed text, as
+        ///     <see cref="PrintsZero"/> is, so the advice can never praise a clip whose axes line reads "peak 99 %"
+        ///     or criticise one that reads "peak 100 %";
+        ///   - most of it passed before the clip started: "started too late — record sooner";
+        ///   - most of it came after the clip stopped: "stopped too soon — keep rolling";
+        ///   - most of it happened while he was out of shot: "it happened out of shot — keep him framed".
+        /// A clip that held none of the window says which side it missed on, the same two sentences.
+        /// </summary>
+        public static string PeakAdvice(ClipGrade grade)
+        {
+            if (!grade.Counted || !grade.HasPeak) return string.Empty;
+
+            if (Percent(grade.PeakCoverage01) == HundredPercent) return "caught the whole moment";
+
+            float before = grade.PeakBeforeClip01;
+            float after = grade.PeakAfterClip01;
+            float outOfShot = grade.PeakOutOfShot01;
+
+            // Ties go to the side the player can act on soonest: rolling longer, then starting sooner.
+            if (after >= before && after >= outOfShot) return "stopped too soon — keep rolling";
+            if (before >= outOfShot) return "started too late — record sooner";
+            return "it happened out of shot — keep him framed";
+        }
+
+        /// <summary>
+        /// <see cref="MissLong"/> for a CLIP: the same words everywhere they are true of a clip, and a clip's
+        /// wording only where the photo's would be wrong ("this shot was never graded" over a clip's readout).
+        /// <see cref="MissShort"/> is untouched: it is the gallery's, and load-bearing.
+        /// </summary>
+        public static string ClipMissLong(GradeMiss miss)
+        {
+            switch (miss)
+            {
+                case GradeMiss.Unevaluated:      return "this clip was never graded";
+                case GradeMiss.NoCamera:         return "no camera — the clip could not be graded";
+                case GradeMiss.DegenerateBounds: return "there was nothing there to film";   // code review 2026-11-15
+                default:                    return MissLong(miss);
+            }
+        }
     }
 }

@@ -3,6 +3,7 @@ using System.Globalization;
 using UnityEngine;
 using CameraGame.Core;
 using CameraGame.Events;
+using CameraGame.Grading;
 
 namespace CameraGame.Recording
 {
@@ -17,7 +18,7 @@ namespace CameraGame.Recording
     /// <c>PhotoModeController</c> calls <see cref="Begin"/> and <see cref="Stop"/>: Record toggles it, and every
     /// way the camera leaves the Viewfinder stops it with <see cref="StopReason.CameraLowered"/>. The recorder
     /// knows NOTHING about PhotoMode, UI, Gallery or the beeps: the direction is PhotoMode → Recording →
-    /// Events and Core (game-architecture.md §Clip Recording). The REC indicator READS
+    /// Grading, Events and Core (game-architecture.md §Clip Recording). The REC indicator READS
     /// <see cref="IsRecording"/> and <see cref="ElapsedSeconds"/>, and plays the beeps from
     /// <see cref="Started"/> and <see cref="Stopped"/>, so every stop beeps, including the ones the recorder
     /// decides itself (the length limit, a device change).
@@ -45,8 +46,17 @@ namespace CameraGame.Recording
     /// claims the rest and holds ONE (<see cref="LastClip"/>), disposing the one before. Before a memory card
     /// exists (Story 1.17) at most two clips' storage is live: the one recording and the one held.
     ///
+    /// ================================================================================================
+    /// THE GRADE (Story 1.16)
+    /// ================================================================================================
+    /// While a clip records, its <see cref="ClipGrader"/> grades every footage tick the backend takes, through
+    /// the unchanged per-frame grader. <see cref="Stop"/> finishes the grade BEFORE the clip is announced, so
+    /// <see cref="RecordedClip.Grade"/> is set when listeners hear about it. Recording → Grading is the sanctioned
+    /// direction (game-architecture.md §Clip Recording); Grading never references Recording.
+    ///
     /// Fail-soft (NFR8): a missing camera stands the recorder down with one error; a missing channel, tap,
-    /// event manager or config degrades with one line each. Nothing throws into Update.
+    /// event manager or config degrades with one line each (a missing grading config or event manager: every
+    /// clip reads NOT GRADED). Nothing throws into Update.
     /// </summary>
     [DefaultExecutionOrder(ExecutionOrder)]
     public class ClipRecorder : MonoBehaviour
@@ -78,7 +88,13 @@ namespace CameraGame.Recording
                  "recorded silent (their footage says so).")]
         [SerializeField] private ListenerTap listenerTap;
 
+        [Tooltip("The grading thresholds every clip is graded against (Assets/Data/Grading/GradingConfig.asset): the " +
+                 "SAME asset PhotoModeController grades photos with (it warns when they differ). If unassigned, " +
+                 "clips are still recorded, announced and kept, and every one reads NOT GRADED (Story 1.16).")]
+        [SerializeField] private GradingConfig gradingConfig;
+
         private ReplayBackend _backend;
+        private ClipGrader _grader;
         private bool _ready;
         private bool _channelReady;
         private bool _initialised;
@@ -103,6 +119,15 @@ namespace CameraGame.Recording
 
         /// <summary>The camera the recorder films through (PhotoModeController checks it is its own).</summary>
         public Camera RecordCamera => recordCamera;
+
+        /// <summary>The config clips are graded against (PhotoModeController checks it is its own).</summary>
+        public GradingConfig GradingConfig => gradingConfig;
+
+        /// <summary>The clip grader (Story 1.16), or null before Awake or when the recorder cannot record. Diagnostics for
+        /// the verification rig only; the grade itself travels on <see cref="RecordedClip.Grade"/>. INTERNAL (code review
+        /// 2026-11-15): its Begin / SampleTick / Finish change the clip being graded, so only this assembly's rig may hold
+        /// it, never a listener such as the HUD or the memory card.</summary>
+        internal ClipGrader Grader => _grader;
 
         /// <summary>False when the recorder cannot record at all (no camera). Begin then refuses.</summary>
         public bool CanRecord => _ready;
@@ -156,10 +181,20 @@ namespace CameraGame.Recording
                 GameLog.Warn("Recording", "No ListenerTap assigned: clips are recorded with no sound (their footage is flagged silent).");
 
             if (eventManager == null)
-                GameLog.Warn("Recording", "No EventManager assigned: clips record the camera only, with no event actors.");
+                GameLog.Warn("Recording", "No EventManager assigned: clips record the camera only, with no event actors, " +
+                                          "and every clip reads NOT GRADED (there is nobody to grade).");
+
+            // Story 1.16. An ERROR, like a missing channel: without a config the player's whole verb gives no
+            // feedback. One line here and nothing per press. The config's own values are validated where they
+            // always were, by PhotoModeController at Awake (it also warns when this asset differs from its own),
+            // so a bad value is ONE warning, not one per component that reads the asset.
+            if (gradingConfig == null)
+                GameLog.Error("Grading", "GradingConfig unassigned on the ClipRecorder: clips are recorded, announced and " +
+                                         "kept, but every clip reads NOT GRADED. Assign Assets/Data/Grading/GradingConfig.asset.", this);
 
             _backend = new ReplayBackend(recordCamera, eventManager, listenerTap,
                 RecordingConfig.MaxActorsPerTickOf(config), RecordingConfig.MaxAnimatorLayersOf(config));
+            _grader = new ClipGrader(recordCamera, eventManager, gradingConfig, RecordingConfig.MaxActorsPerTickOf(config));
 
             // PREALLOCATE NOW, never on the press frame: a 120-s stereo clip is ~23 MB of PCM, and allocating it
             // inside the < 0.2 s record budget would also churn memory on every take (NFR2, NFR3).
@@ -236,6 +271,7 @@ namespace CameraGame.Recording
             StartDspTime = dsp;
             _startUtc = DateTime.UtcNow;
             _clipIndex++;
+            _grader.Begin();
             IsRecording = true;
 
             GameLog.Info("Recording", "Recording started.");
@@ -254,7 +290,16 @@ namespace CameraGame.Recording
 
             IFootage footage = _backend.End();
             float seconds = footage != null ? footage.Seconds : 0f;
-            var clip = new RecordedClip(RecordedClip.MakeId(_clipIndex, _startUtc), footage, _startUtc, seconds, reason);
+
+            // Story 1.16, in the architecture's order: End → grade → build the clip WITH its grade → log → beep →
+            // announce → claim. A clip stopped before its first LateUpdate got its start tick from End() (one
+            // 1/30-s slot); grade that tick too, so every clip has at least one graded tick and the grade still
+            // describes exactly the frames the footage holds.
+            if (_grader.TicksGraded == 0 && footage != null)
+                _grader.SampleTick(Math.Max(1, (int)Math.Round(seconds * FootageFormat.TickRate)));
+            ClipGrade grade = _grader.Finish();
+
+            var clip = new RecordedClip(RecordedClip.MakeId(_clipIndex, _startUtc), footage, _startUtc, seconds, reason, grade);
 
             // Milestone, once per clip. Says whether the clip has sound, so a silent clip is never a surprise.
             var replay = footage as ReplayFootage;
@@ -263,6 +308,9 @@ namespace CameraGame.Recording
                 clip.Id, seconds, replay != null ? replay.TickCount : 0,
                 replay != null && replay.HasSound ? $"sound {replay.SampleRate} Hz x{replay.Channels}" : "NO SOUND",
                 footage != null ? footage.Bytes / (1024.0 * 1024.0) : 0.0, reason));
+
+            // The grade's milestone, beside the clip's (one per clip; the HUD does not log it again).
+            GameLog.Info("Grading", $"Clip graded — {clip.Id}: {grade}");
 
             // Feedback first (the stop beep, REC off), then the announcement.
             Raise(Stopped, reason);
@@ -291,7 +339,10 @@ namespace CameraGame.Recording
                 return;
             }
 
-            _backend.Sample(Time.realtimeSinceStartupAsDouble - _rt0);
+            // Grade exactly the ticks the backend takes (Story 1.16), BEFORE the stop request below: the tick that
+            // fills the clip to its length limit is graded like any other, then the clip stops.
+            int repeats = _backend.Sample(Time.realtimeSinceStartupAsDouble - _rt0);
+            if (repeats > 0) _grader.SampleTick(repeats);
 
             if (_backend.TryGetStopRequest(out StopReason reason))
             {

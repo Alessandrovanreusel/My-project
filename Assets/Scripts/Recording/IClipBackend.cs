@@ -17,8 +17,11 @@ namespace CameraGame.Recording
         bool Begin(double startDspTime, float maxSeconds);
 
         /// <summary>Called once per game frame while recording, after the camera's final write, with the clip
-        /// time in seconds since <see cref="Begin"/>. The backend decides whether a 30 Hz tick is due.</summary>
-        void Sample(double clipSeconds);
+        /// time in seconds since <see cref="Begin"/>. The backend decides whether a 30 Hz tick is due.
+        /// Returns the repeat count of the tick it took (how many 1/30-s slots it stands for), or 0 when no tick
+        /// was taken on this frame (none due, the clip full, or no clip running). Story 1.16 grades exactly the
+        /// ticks this reports, so the grade describes exactly the frames the footage holds.</summary>
+        int Sample(double clipSeconds);
 
         /// <summary>Seconds of footage so far (what the clip would play for if it stopped now).</summary>
         double RecordedSeconds { get; }
