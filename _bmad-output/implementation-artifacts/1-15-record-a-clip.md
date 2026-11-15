@@ -795,6 +795,54 @@ read all 21 changed source files and reported one finding. Evidence:
   tests passed (not inconclusive), the console clean, and no `RecordingTests*` objects left in the editor. The
   `catch` path itself cannot run on this machine (it needs the missing device); that gap is in `deferred-work.md`.
 
+#### Close gate (loop CLOSE phase, 2026-11-15)
+
+*The final checks before merge, on HEAD `9c35300`, run in a freshly started editor. Evidence:
+`_bmad-output/verification/1-15-record-a-clip/close-a1/rig-run-close/`. No shipped code, asset or setting changed in
+this phase.*
+
+- **Compile and console.** A forced recompile (`refresh_unity`, compile requested) left the console with 0 errors and 0
+  warnings, and `Editor.log` holds no `warning CS`. The EditMode run adds 5 lines, all provoked by pre-existing tests
+  (`ObjectPoolTests`: the three `[Pool]` lines; `TownMapGuardTests`: two PhysX "triangles greater than 500 units"
+  notices). None comes from this story.
+- **Tests.** EditMode **371/371** passed, the spike and bench fence tests included. The project has no PlayMode test
+  assembly. The fence was also re-listed on disk: the plain build's `Managed/` holds only `CameraGame.dll`, and the
+  bench build's holds `CameraGame.Bench.RecordingBench.dll` too.
+- **Record Clip Shoot re-run on HEAD**, all phases (0ABCDEF), in SampleScene at 1920×1080. The dev's `rig/` evidence was
+  parked first and put back byte-identical (`diff -rq`). The run reproduces the review's run on every measured line:
+  - controls: luma sd 43.1, Overlay marker 100.00 % / 0.00 %;
+  - A1: the press in Walk arrived and nothing happened;
+  - REC on screen 21.1 ms after the press, beep at the speaker ≤ 112.1 ms;
+  - timecode `0:00:02` at 2.400 s; 2 stop bursts against 1 start burst;
+  - Phase B: one raise per clip on every route, B4 stopped at exactly 3.000 s, ten cycles at 2 storages;
+  - Phase E: 0 B over 9,000 full sampling calls, positive control 77,824 B;
+  - Phase C: track = live (yaw 331.4 → 338.6°, FOV 60 → 34.8);
+  - Phase D: poses and bones 0.000 cm on every tick, transitions included; 10/10 re-renders SSIM 1.0000 (controls
+    0.63–0.9996); PCM exactly the tick timeline in d1, d2 and d3; clicks sample-exact; the respawn seen as lifecycles
+    4 → 5 → 6; loudness against distance r −0.97 / −0.90 in 2-s windows; the beep's positive control +9.8 dB;
+  - Phase F: one line per provoked fault (only the announced ones in `Editor.log`), no exception, and no "Native
+    Collection has not been disposed" warning on the play-mode exit mid-clip (F7).
+  This run also covers the normal-session checks the review's changes touch: the real `PlayerInput` path, raise,
+  record, lower, gallery suppression, and the drunk over pooled cycles.
+- **Regression rigs not re-run (Photo, Gallery, Grade HUD Shoot), with the reason.** Shipped code changed since their
+  dev re-runs (`git diff 83c74fe..HEAD -- Assets/`) in only three places they can reach. `SetMode` gained
+  `&& clipRecorder != null` behind `_recordReady`, which is false in the two recorder-less worlds; the Grade HUD runner
+  copies a real recorder, so the guard is true there. `Capture()` changed only its comment, and `ToggleRecording` is
+  called by none of them. Every change after the review's own rig run is a comment (`37b104f..HEAD`: `IFootage.cs`
+  comments and test code).
+- **Human checks re-read.** No queued `my_read` says its AC is likely not met. The AC3 read gained one honest detail
+  from `bench/run1/bench-frames.csv`. The **mean** DiD is +0.10 ms/frame, but the **median** frame time is higher while
+  recording in all three rounds (+0.13, +1.35 and +0.85 ms, mean +0.78 ms, close to 1.14's +0.8 ms for replay). The
+  runs of slow frames (> 33 ms) appear in baseline and recording segments alike (round 2's baseline had 139 of
+  them), so they are not periodic recorder hitches. This does not decide AC3: the 60 FPS verdict needs the desktop.
+- **Restore.** SampleScene is open and not dirty, with no rig objects. `timeScale` is 1 and the Game View size index
+  is 0. `maxClipSeconds` reads 120 (it equals git). No `RecordClipShoot.*` SessionState key remains. No gamepad, input
+  background behaviour `ResetAndDisableNonBackgroundDevices`, audio 48 kHz / 1024 / Stereo. `git status` is clean
+  apart from `.codex/`, which is not this story's. The ignored `Assets/_Recovery/` predates the story (newest file
+  2026-09-27).
+- **Status stays `review`.** Four perceptual or hardware checks are open for Alexv: the AC1 look and beeps, the AC3
+  desktop 60 FPS, the AC5 sound, and the optional AC1 feel.
+
 ## Dev Notes
 
 ### What already exists — reuse it, do not rebuild it
@@ -1206,3 +1254,8 @@ Modified:
   fixed: the tap tests' helper now cleans up when an `Assume` fails. Its sub-claim about `ListenerTap.Awake` was
   disproven by measurement. EditMode 371/371, console clean. No shipped code changed, so no rig needed a re-run.
   Status stays review.
+- 2026-11-15: Loop CLOSE phase (attempt 1). Forced recompile with a clean console, EditMode 371/371, fence re-listed
+  on disk, Record Clip Shoot re-run on HEAD in a fresh editor (`close-a1/rig-run-close/`; same results as the review's
+  run), the editor restored and read back, git clean. The other regression rigs were not re-run, for the reason in
+  *Close gate*. The AC3 read gained the median frame-time delta. No shipped change. Status stays review: four checks
+  remain open for Alexv.
