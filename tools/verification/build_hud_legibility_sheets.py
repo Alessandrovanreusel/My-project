@@ -85,7 +85,11 @@ def numbers_no_outline(entry):
 
 
 def stack(rows, path, title):
-    """rows: list of (image, caption lines)."""
+    """rows: list of (image, caption lines). Long captions are wrapped to the sheet's width."""
+    import textwrap
+    rows = [(img, [w for c in caps for w in (textwrap.wrap(c, 88) or [""])]) for img, caps in rows]
+    rows.insert(0, (Image.new("RGB", (1, 1), BACKDROP), textwrap.wrap(title, 88)))
+    title = ""
     w = max(img.width for img, _ in rows) + 2 * PAD
     line_h = 22
     h = PAD + line_h * 2

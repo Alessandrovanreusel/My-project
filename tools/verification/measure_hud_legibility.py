@@ -33,7 +33,8 @@ WHAT IS REPORTED (WCAG relative luminance, contrast = (L1 + 0.05) / (L2 + 0.05))
     NOT "WCAG compliance": WCAG treats a narrow border as part of the letter and a wide one as a halo.
 
 REFUSALS (a number from a broken capture is worse than no number)
-    the set caught the fade (alpha < 1 at any grab); the world moved between A and P (freeze control
+    the set caught the fade on A, M or P (every reported number uses those three); if only N caught it,
+    only the no-outline numbers are dropped (they are the only ones N feeds); the world moved between A and P (freeze control
     > 8/255 outside the panel); the capture is not 1920x1080 at canvas scale 1.0 (reported, flagged);
     fewer than MIN_CORE core pixels on a line.
 
@@ -171,9 +172,13 @@ def measure_set(meta, d):
         res["panel_L_median"] = round(float(np.median(YP[core])), 4)
         res["panel_L_p95"] = round(pct(YP[core], 95), 4)
 
-        tn = contrast(YN[core], YP[core])
-        res["no_outline_text_vs_panel_median"] = round(float(np.median(tn)), 2)
-        res["no_outline_text_vs_panel_worst5"] = round(pct(tn, 5), 2)
+        alphas = meta.get("alphaAtGrab", [])
+        if len(alphas) == 4 and alphas[3] >= 0.999:
+            tn = contrast(YN[core], YP[core])
+            res["no_outline_text_vs_panel_median"] = round(float(np.median(tn)), 2)
+            res["no_outline_text_vs_panel_worst5"] = round(pct(tn, 5), 2)
+        else:
+            res["no_outline_note"] = "N caught the fade - no-outline numbers dropped"
 
         if res["ring_px"] >= MIN_CORE:
             ring_sum = box_sum(np.where(ring, YA, 0.0), RING_RADIUS)
@@ -190,8 +195,9 @@ def measure_set(meta, d):
             res["text_vs_outline_median"] = None
 
     refusals = []
-    if not meta.get("heldFullAlpha", False):
-        refusals.append("caught the fade (alpha " + "/".join(f"{a:.2f}" for a in meta.get("alphaAtGrab", [])) + ")")
+    alphas = meta.get("alphaAtGrab", [])
+    if len(alphas) < 3 or min(alphas[:3]) < 0.999:
+        refusals.append("caught the fade on A/M/P (alpha " + "/".join(f"{a:.2f}" for a in alphas) + ")")
     if meta.get("freezeMaxDiff", 255) > FREEZE_LIMIT:
         refusals.append(f"world moved (freeze max diff {meta.get('freezeMaxDiff')}/255)")
 
@@ -263,7 +269,8 @@ def main():
                "text vs outline med / w5 | text vs panel med / w5 | no-outline text vs panel med / w5 | note |")
     out.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for meta, refused, ln in rows:
-        note = "; ".join(refused + ([ln["refused"]] if ln.get("refused") else []))
+        note = "; ".join(refused + ([ln["refused"]] if ln.get("refused") else [])
+                         + ([ln["no_outline_note"]] if ln.get("no_outline_note") else []))
         if ln.get("dE_rendered_vs_authored") is not None and ln["dE_rendered_vs_authored"] > 6:
             note += ("; " if note else "") + f"CONTROL: rendered colour dE {ln['dE_rendered_vs_authored']} from authored"
         to = ln.get("text_vs_outline_median")
@@ -294,11 +301,12 @@ def main():
         if ln.get("text_vs_outline_worst5") is not None:
             s["to"].append(ln["text_vs_outline_worst5"])
         s["tp"].append(ln["text_vs_panel_worst5"])
-        s["tn"].append(ln["no_outline_text_vs_panel_worst5"])
+        if ln.get("no_outline_text_vs_panel_worst5") is not None:
+            s["tn"].append(ln["no_outline_text_vs_panel_worst5"])
     for key in sorted(by_state):
         s = by_state[key]
         out.append(f"| {key} | {len(s['sets'])} | {fmt(min(s['to'])) if s['to'] else 'no outline'} | "
-                   f"{fmt(min(s['tp']))} | {fmt(min(s['tn']))} |")
+                   f"{fmt(min(s['tp']))} | {fmt(min(s['tn'])) if s['tn'] else 'N caught the fade'} |")
 
     refused_sets = [m["id"] for m in metas if measure_refusal(m)]
     out.append("")
@@ -314,7 +322,8 @@ def main():
 
 
 def measure_refusal(meta):
-    return (not meta.get("heldFullAlpha", False)) or meta.get("freezeMaxDiff", 255) > FREEZE_LIMIT
+    a = meta.get("alphaAtGrab", [])
+    return len(a) < 3 or min(a[:3]) < 0.999 or meta.get("freezeMaxDiff", 255) > FREEZE_LIMIT
 
 
 if __name__ == "__main__":
