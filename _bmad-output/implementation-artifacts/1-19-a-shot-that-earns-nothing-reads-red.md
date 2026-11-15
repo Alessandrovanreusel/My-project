@@ -460,6 +460,129 @@ rather than a heavy box. This is a **human** check and stays open until he has d
         rules (no `: ` and no trailing `:`; continuation lines indented; verify with `yaml.safe_load`; edit the real
         key near line 40, not the commented line 2).
 
+### Review Findings
+
+Code review on 2026-11-15, loop REVIEW phase (attempt 1), of `91d3f8b..270ffed`. A fresh session that did not
+write the code ran it.
+
+**How the review was run.**
+- **Layers:** Blind Hunter (diff only), Edge Case Hunter (diff + project) and Acceptance Auditor (diff + story +
+  evidence summaries). The `unity-perf:code-standards` lens was applied as a condensed pass over the hard rules: the
+  three layers had already covered its four perspectives for ~200 shipped lines, and a play-mode probe settled their
+  claims.
+- **What was reviewed:** the shipped code (`GradeText`, `GradeHudConfig`, `GradeHud`, the asset) and its tests. The
+  rigs (`GradeHudShootRunner*`, `GradeHudShootRig`, `tools/verification/*.py`) were run as tools, not reviewed.
+- **How findings were checked:** every finding was reproduced in Play mode before it was reported. The probe built
+  throwaway HUDs through the real `GradeHud.Awake` and `Format`, using a private channel and copies of the shipped
+  config. It pushed 2,302 shots through the real handler under six cultures, and rendered the outline to count its
+  pixels.
+- **Evidence:** `_bmad-output/verification/1-19-a-shot-that-earns-nothing-reads-red/review/` (`probe/*.txt`,
+  `probe/*.png`, `mutation_results.md`, `regression-hud/`).
+
+**Patches, all applied and re-verified:**
+- [x] [Review][Patch] **A reused `Outline` was never switched on** [Assets/Scripts/UI/GradeHud.cs `OutlineLabel`].
+  - *Symptom:* an `Outline` the label already carried, unticked in the Inspector or arriving disabled on a cloned
+    HUD, was configured but left disabled. `Outline.ModifyMesh` returns at `!IsActive()`, so that line drew with no
+    outline and a clean console.
+  - *Reproduced:* 1,324 outline pixels on a fresh label, **0** on one that carried a disabled `Outline`, and the
+    clone inherited it (`probe/R1_fresh_outline.png`, `probe/R2_pre_disabled_outline.png`).
+  - *Fixed:* `outline.enabled = true`. After the fix, a fresh label, a pre-disabled one and its clone each show 1,324
+    (`probe/F1_after_fix_*.png`, `probe/probe_after_fix.txt`).
+  - *Found by:* blind + edge.
+- [x] [Review][Patch] **"The whole readout prints in one culture" was false** [Assets/Scripts/Grading/GradeText.cs
+  `TimingAdvice`; GradeHud.cs comment].
+  - *Symptom:* the why line still used `{x:0.0}` in the player's culture. Through the real `GradeHud`, fr-FR, de-DE
+    and tr-TR printed "2,4s late" under an invariant "92 %" breakdown.
+  - *Fixed:* `TimingAdvice` pins `InvariantCulture`; en-US output is byte-identical. Every culture now prints "2.4s
+    late".
+  - *Test:* `TimingAdvice_DoesNotFollowThePlayersLocale`, five cultures, mutation-proven.
+  - *Found by:* blind.
+- [x] [Review][Patch] **Three validator messages described consequences uGUI does not produce**
+  [Assets/Scripts/UI/GradeHudConfig.cs `WhyOutlineDistance`, the `outlineColor` check].
+  - A negative thickness was said to draw "no outline at all". It draws its mirror image: 4,402 dark pixels at −2,
+    4,402 at +2 (`probe/R4`, `probe/R5`).
+  - ±∞ was said to reach uGUI "unclamped". The setter clamps it to 600, so four ghost copies land at the screen edge
+    (`probe/R6`).
+  - A NaN colour channel with a valid alpha was said to be "not drawn". It is drawn, with that channel at 0.
+  - *Fixed:* each message now matches the value typed, and the tests pin 0, −2, NaN, ±∞ and the NaN channel.
+  - *Found by:* edge + auditor.
+- [x] [Review][Patch] **A test assertion could not fail** [Assets/Tests/EditMode/GradeHudConfigTests.cs
+  `ColorFor_IsRedExactlyWhenTheReadoutPrintsZero`].
+  - *Symptom:* it compared `Percent(p) == Percent(0)` against `PrintsZero(p)`, which is defined as exactly that.
+  - *Fixed:* replaced by an independent oracle that reads the number back out of the printed text.
+  - *Mutation:* a `< 0.01f` threshold now fails on that line at exactly 0.005 ("1 %") (`review/mutation_results.md`).
+  - *Found by:* blind.
+- [x] [Review][Patch] **Six comments and tooltips contradicted the evidence or had gone stale** [GradeHudConfig.cs,
+  GradeHud.cs]. This is Task 4.5's risk again. Each one now says what was measured:
+  - `MaxOutlineDistance` said "2 is the last thickness that is still one outline", while its own photograph shows
+    the "·" split at 2.
+  - The `outlineDistance` tooltip did not say that 1.0 measured 4.36:1 for the red.
+  - The `missColor` tooltip said "2 degrees". It is 1.3° in Lab; in HSV, salmon sits at 11° against the validator's
+    15° window.
+  - "Every 0 % shot is 1★" depends on the star thresholds.
+  - `ReportConfusable` still called a counted shot reading like a miss a failure.
+  - The `ApplyOutline` doc credited `useGraphicAlpha` with the CanvasGroup fade. The CanvasGroup fades the whole
+    renderer; `useGraphicAlpha` follows the text colour's own alpha.
+  - *Found by:* auditor + edge.
+
+**Deferred, logged in `deferred-work.md` under "code review of story-1-19":**
+- [x] [Review][Defer] **Outline tunables apply once at Awake, not live** [GradeHud.cs `ApplyOutline`] — deferred.
+  - *Reproduced:* the text colour followed a Play-mode edit on the next shot; the outline stayed at 1.5.
+  - *Why deferred:* the candidate sweep writes thicknesses onto the components and depends on a shot not overwriting
+    them. The tooltip and the code now say it applies at Awake.
+- [x] [Review][Defer] **The guard bands are looser than the measurements** [GradeHudConfig.cs `MinOutlineDistance`,
+  `MaxOutlineDistance`, `MinOutlineAlpha`] — deferred.
+  - Inside the range with a clean console: 1.0 gives the red 4.36:1, 2.0 splits the smallest glyphs, and alpha 0.85
+    gives 4.23:1. Repairs of 0 and −2 land on 1.0.
+  - *Why deferred:* narrowing the range needs photographs between 1.5 and 2, and Alexv's call on "thin". The numbers
+    are now in the tooltips.
+- [x] [Review][Defer] **A `Shadow` authored on a label stacks under the code-added `Outline`** [GradeHud.cs
+  `OutlineLabel`] — deferred.
+  - *Reproduced:* the order is Shadow then Outline, so the outline copies the shadow too, giving a heavier, smeared
+    grey halo (`probe/R3_pre_shadow_plus_outline.png`).
+  - *Why deferred:* no label carries a `Shadow` today.
+- [x] [Review][Defer] **Below 1080p the outline thins** [CanvasScaler match 0.5] — deferred, unmeasured. At 1280×720,
+  1.5 units become 1.0 px and the minimum becomes 0.67 px. 1080p is the shipping target.
+
+**Dismissed (6):**
+- *A NOT GRADED or MISSED branch could disagree with `ColorFor`* (blind, hypothesis). The probe shows
+  `Missed(Unevaluated)` and `default` both read NOT GRADED in grey; the conditions are identical.
+- *The culture cases in the agreement test are redundant* (blind). They guard the pin against regressing, and
+  mutation M2 shows they bite.
+- *Overlapping translucent outline copies darken mid-fade* (edge, hypothesis). Not reproduced. The dev's frame
+  analysis measured the outline tracking the group-alpha model and matching the world once gone; what is left is
+  perceptual and belongs to AC7.
+- *The gallery and other readouts disagree with the HUD* (edge). Already deferred to Story 1.17 by the dev.
+- *`b1_three_star_cream` renders amber, and `build_hud_panel_sheet.py` labels it CREAM* (auditor). That is a rig
+  scenario and label. Cream is covered by the channel-raised sets, and Alexv's `panels_red.png` is labelled
+  correctly.
+- *"Sets refused: 0" sits beside `a_money_shot` dropping its no-outline numbers* (auditor). This is disclosed per
+  variant.
+
+**Re-verification:**
+- EditMode **290 → 297**, all green. Mutation proof: with `TimingAdvice` unpinned and `PrintsZero` turned into a
+  threshold, 10 tests failed, each the one meant to catch it.
+- Console: no error, and no warning from this change. The `[Pool]` lines are provoked on purpose by
+  `ObjectPoolTests`, and the PhysX large-triangle advisory is pre-existing.
+- `Tools > HUD > Grade HUD Shoot (Play)`, full run on the fixed code (`56a8aa0`), written to
+  `review/regression-hud/` through the one-shot output key, so Story 1.12's `hud/` and the dev's folders are
+  untouched.
+  - **Phase A:** every label agrees, unmasked, with its own grade (stars, percentage and wording), and the counted
+    0 % shot reads red with the outline (`review/regression-hud_c_counted_but_zero_panel.png`). Grades moved by the
+    usual live-pose variance (89 → 88 %, 51 → 48 %).
+    - `f_blocked` caught the drunk between cycles (`NoSubject`, "there was nobody in the frame"), which is correct
+      wording for that grade.
+    - `h_behind_you` graded `OutsideFrustum`, as on HEAD's own baseline.
+  - **Phase B:** 0 of 12 thumbnails contaminated.
+  - **Phase D:** prints the corrected messages for 0 and −2, and every boundary still applies (1.5, or 1.0 for
+    0 and −2). The NaN and ∞ wording was tightened after this run, text only, so that it claims nothing that was
+    not rendered. The 297 tests ran on the final wording.
+  - **Phase E:** mean 30.1 ms with the HUD listening against 27.1 ms with it disabled (worst 47.8 ms), against the
+    200 ms budget.
+- **Editor restored and read back:** SampleScene open and not dirty, no rig objects, `timeScale` 1, culture en-US,
+  Game View index 0, no `GradeHudShoot.*` SessionState keys, and the asset holds the committed values. `git status`
+  shows only the intended files.
+
 ## Dev Notes
 
 ### What already exists. Read these before writing anything
@@ -804,3 +927,4 @@ restored to 290/290:
 |------|--------|
 | 2026-11-15 | Story context created by the loop CREATE phase (`gds-create-story`). 7 ACs (verbatim from epics.md), 9 tasks with 6 gating decisions. Facts measured for it: Mono's `P0` output in this editor (0.005 → `1 %`, −0 → `0 %`, fr-FR → U+066A), `Clamp01(-0f)` keeps the sign, uGUI `Outline` present, and an authored-colour shortlist of reds (`create/red_candidates.txt`). Status → ready-for-dev. |
 | 2026-11-15 | Loop DEV phase (`gds-dev-story`). All 9 tasks done. Anything that earned nothing now reads red: a MISS and a counted shot printing `0 %` share red E `(1, 0.33, 0.28)`, decided from the printed text through `GradeText.Percent`/`PrintsZero` and `GradeHudConfig.ColorFor`. A shot printing `1 %` keeps amber. Every readout line has a 1.5 px black uGUI Outline applied in `GradeHud.Awake` from the config. Measured at 1920x1080 on frozen frames with renderer-made masks: every colour clears 4.5:1 against its outline on every measured background (red 4.64 at worst). The red and thickness were chosen by a sweep, the bound of 2 px by photographs. EditMode 254 -> 290, mutation-proven. HUD, Photo and Gallery shoots show no regression. Editor restored. Status -> review; AC7 queued for Alexv. |
+| 2026-11-15 | Loop REVIEW phase (`gds-code-review`, attempt 1), by a fresh session: Blind Hunter, Edge Case Hunter and Acceptance Auditor, plus a play-mode probe through the real `GradeHud`. 5 patches applied and re-verified: a reused disabled `Outline` is now switched on (0 → 1,324 outline px); `TimingAdvice` is pinned to the invariant culture (fr-FR printed "2,4s late"); the validator messages for negative, infinite and NaN-channel values now match what uGUI does; a tautological test assertion is replaced by an independent oracle; six comments and tooltips that contradicted the evidence are corrected. 4 deferred (outline applied only at Awake, guard bands looser than the measurements, Shadow stacking, sub-1080p), 6 dismissed. EditMode 290 → 297, mutation-proven; HUD shoot re-run on the fixed code; editor restored. Status stays `review`: AC7 is still Alexv's. |

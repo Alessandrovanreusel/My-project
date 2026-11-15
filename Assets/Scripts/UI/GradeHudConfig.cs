@@ -568,11 +568,12 @@ namespace CameraGame.UI
             // ⚠️ EACH SENTENCE SAYS WHAT uGUI WOULD ACTUALLY DO WITH THAT VALUE — checked by the Story 1.19 code
             // review on rendered pixels, because the first wording was wrong for two of the four cases.
             if (float.IsNaN(authored))
-                return "uGUI's Outline lets a NaN thickness straight through its setter, and the outline is " +
-                       "not drawn.";
+                return "uGUI's Outline lets a NaN thickness straight through its setter (its ±600 clamp compares " +
+                       "false against NaN), so the outline's copies would be placed at NaN — not an outline.";
             if (float.IsInfinity(authored))
                 return "uGUI clamps an infinite thickness to 600 canvas units, so the outline would leave the " +
-                       "text altogether and draw four dark ghost copies of the readout at the screen's edge.";
+                       "text altogether: four dark ghost copies of the readout drawn 600 px away from it, which " +
+                       "can land mid-screen or off it.";
             if (authored == 0f)
                 return "A thickness of zero draws the outline's copies exactly under the text — no outline at " +
                        "all, with a clean console.";
