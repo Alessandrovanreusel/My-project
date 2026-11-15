@@ -208,6 +208,13 @@ The final grade determines reputation gained and whether the clip is a "new best
 
 _Revised 2026-11-10 (`../../sprint-change-proposal-2026-11-10.md`). The photo-era model scored a single frame on Subject + Composition + **Timing**: "proximity to the event's peak window — maximal at the peak, falling off the earlier or later the click lands". With video, catching the peak becomes a question of coverage rather than of one click's timing. The per-frame Subject and Composition scoring built in Stories 1.9–1.10 is unchanged and is the engine underneath. The floor carries Alexv's Story 1.12 feedback ("too extreme to give 0") from superseded Story 1.13. How the axes blend, and whether footage without the subject lowers the grade, is decided by measuring recorded clips in Story 1.16._
 
+_Decided 2026-11-15 by measuring recorded clips (Story 1.16; evidence `_bmad-output/verification/1-16-grade-a-clip/run2/decision.md`):_
+- _**Blend:** `percent = framing × (floor + (1 − floor) × peak coverage)`. Framing is the mean composition over the frames in which the subject passed the gate; peak coverage is the share of the peak window the clip holds with him framed, measured on the event's own clock so the whole window reads exactly 100 %._
+- _**Floor 0.30:** a well-framed clip that missed the peak reads 30 % and 2★ (amber, never red); the same framing over the whole peak reads 99 % and 5★, three stars clear._
+- _**Footage without anybody in shot costs a little:** framing × (1 − 0.25 × the share of the clip with nobody in shot). The whole-peak clip preceded by ~20 s of aiming away reads 79 % and 4★ instead of 99 % and 5★. Every second also costs memory-card capacity (Story 1.17), so the grade charges it lightly. A clip filmed continuously across a respawn is not charged for the earlier lifecycle._
+- _**A miss names the reason that held longest** (out of frame, too far, occluded, nobody there), not the rarest glimpse._
+- _Alexv's judgement of the ladder is pending (a human check of Story 1.16)._
+
 #### 5. Initial tuning targets (starting values — confirm via playtest)
 
 These are first-guess numbers so the build has something concrete to test against; expect to tune them.
@@ -227,6 +234,10 @@ These are first-guess numbers so the build has something concrete to test agains
     - **"~25–50% of the frame" was never measurable as written.** It describes a photograph, not a quantity the code has. Prominence is now the subject's **height as a fraction of the frame**, with the sweet spot set by looking at the shoot (see `GradingConfig`); measured as *area*, a good full-body portrait reads 4.5%.
 - **Timing score** *(photo era — kept as history; superseded by Peak coverage on 2026-11-10)*: full marks within **±0.5 s** of the peak, decaying to zero by **±2 s**.
 - **Peak coverage:** full marks when the whole peak window (**1.5 s** for the drunk) is recorded with the subject framed. The floor for a clip that missed the peak is set by measuring recorded clips (Story 1.16). *(Added 2026-11-10.)*
+  - *Set 2026-11-15 (Story 1.16, measured):* floor **0.30**, absence weight **0.25**, both in `GradingConfig`
+    (`clipPeakFloor`, `clipAbsenceWeight`). Star boundaries unchanged (one ladder serves photos and clips).
+    Evidence: `_bmad-output/verification/1-16-grade-a-clip/run2/decision.md` (the pass grid of 280 candidates
+    against criteria written before any clip was recorded, the choice and the runner-up).
 - **Memory card:** **~2 minutes** of footage to start (tunable). *(Added 2026-11-10.)*
 - **Camera feel:** zoom range **~1×–4×**; raise/lower transition **< 0.3 s**; record-start-to-feedback (REC + beep) **< 0.2 s**. *(2026-11-10: was capture-to-feedback.)*
 

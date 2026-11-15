@@ -952,6 +952,7 @@ namespace CameraGame.Recording
         }
 
         private static byte[] _sink;
+        private static object _sinkObject;
 
         private IEnumerator PhaseE()
         {
@@ -990,16 +991,21 @@ namespace CameraGame.Recording
             {
                 int c0 = GC.CollectionCount(0);
                 growth[r] = HeapGrowth(() => { for (int i = 0; i < N; i++) g.SampleTick(1); });
-                gcs[r] = GC.CollectionCount(0) - c0;
+                gcs[r] = GC.CollectionCount(0) - c0 - 2;   // minus HeapGrowth's own two Collect() calls
             }
-            var keep = new byte[N][];
+            // Two controls. run3 measured a RETAINED byte[64] per call (576 KB) as 0 B: in this Mono, GetTotalMemory does not
+            // see pointer-free arrays that way. Story 1.15's control, a retained new object() per call, does register.
+            var keepBytes = new byte[N][];
+            var keepObjects = new object[N];
             int cc0 = GC.CollectionCount(0);
-            long control = HeapGrowth(() => { for (int i = 0; i < N; i++) { g.SampleTick(1); keep[i] = new byte[64]; } });
-            int controlGcs = GC.CollectionCount(0) - cc0;
-            _sink = keep[N - 1];
+            long controlBytes = HeapGrowth(() => { for (int i = 0; i < N; i++) { g.SampleTick(1); keepBytes[i] = new byte[64]; } });
+            long control = HeapGrowth(() => { for (int i = 0; i < N; i++) { g.SampleTick(1); keepObjects[i] = new object(); } });
+            int controlGcs = GC.CollectionCount(0) - cc0 - 4;   // HeapGrowth's own two Collect() calls, twice
+            _sink = keepBytes[N - 1];
+            _sinkObject = keepObjects[N - 1];
             long finish = HeapGrowth(() => { for (int i = 0; i < 100; i++) g.Finish(); });
             Line($"Heap growth over {N} full SampleTick calls: {growth[0]} / {growth[1]} / {growth[2]} B, gen-0 collections {gcs[0]} / {gcs[1]} / {gcs[2]} (3 rounds); " +
-                 $"positive control (+ a RETAINED new byte[64] per call, {N * 64} B of payload): {control} B, {controlGcs} collections; " +
+                 $"positive controls: + a RETAINED new object() per call (>= {N * 16} B) {control} B; + a RETAINED new byte[64] per call ({N * 64} B) {controlBytes} B; {controlGcs} collections inside them; " +
                  $"100 Finish() calls: {finish} B (Finish runs once per clip).");
 
             // GC collections while the real recorder records a 10-s graded clip.
